@@ -3,6 +3,8 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 
+import { validateWindowsOfflineInstallerTemplatePin } from '../resolve-windows-offline-installer-template-pin.mjs';
+
 /**
  * @typedef {{
  *   repository: string;
@@ -86,7 +88,47 @@ function readOfflineInstallerPin(assignments) {
   if (present !== Object.keys(values).length) {
     throw new Error('Release manifest must contain the complete Windows offline installer pin');
   }
+
+  validateWindowsOfflineInstallerTemplatePin(
+    {
+      version: values.windows_offline_installer_template_version,
+      commit: values.windows_offline_installer_template_commit,
+      releaseTag: values.windows_offline_installer_template_release_tag,
+      sha256: values.windows_offline_installer_template_sha256,
+    },
+    { context: 'Release manifest Windows offline installer pin' }
+  );
+
   return values;
+}
+
+function readCanonicalOfflineInstallerPin(manifest) {
+  const pin = {
+    version:
+      manifest.windows_offline_installer_template_version ??
+      manifest.windowsOfflineInstallerTemplateVersion,
+    commit:
+      manifest.windows_offline_installer_template_commit ??
+      manifest.windowsOfflineInstallerTemplateCommit,
+    releaseTag:
+      manifest.windows_offline_installer_template_release_tag ??
+      manifest.windowsOfflineInstallerTemplateReleaseTag,
+    sha256:
+      manifest.windows_offline_installer_template_sha256 ??
+      manifest.windowsOfflineInstallerTemplateSha256,
+  };
+  const present = Object.values(pin).filter(Boolean).length;
+  if (present === 0) return {};
+
+  const validated = validateWindowsOfflineInstallerTemplatePin(pin, {
+    context: 'Release manifest Windows offline installer pin',
+  });
+  return {
+    windows_offline_installer_template_version: validated.version,
+    windows_offline_installer_template_commit: validated.commit,
+    windows_offline_installer_template_release_tag: validated.releaseTag,
+    windows_offline_installer_template_sha256: validated.sha256,
+  };
 }
 
 /**
@@ -203,6 +245,8 @@ export function buildCanonicalReleaseManifest({ repository, runId, manifest }) {
     throw new Error('runId is required to build the canonical release manifest');
   }
 
+  const offlineInstallerPin = readCanonicalOfflineInstallerPin(manifest);
+
   return {
     repository,
     run_id: String(runId),
@@ -216,16 +260,75 @@ export function buildCanonicalReleaseManifest({ repository, runId, manifest }) {
     linux_agent_apt_suite: manifest.linuxAgentAptSuite,
     spa_image: manifest.spaImage,
     verifier_image: manifest.verifierImage,
-    ...(manifest.windowsOfflineInstallerTemplateVersion
-      ? {
-          windows_offline_installer_template_version:
-            manifest.windowsOfflineInstallerTemplateVersion,
-          windows_offline_installer_template_commit: manifest.windowsOfflineInstallerTemplateCommit,
-          windows_offline_installer_template_release_tag:
-            manifest.windowsOfflineInstallerTemplateReleaseTag,
-          windows_offline_installer_template_sha256: manifest.windowsOfflineInstallerTemplateSha256,
-        }
-      : {}),
+    ...offlineInstallerPin,
+  };
+}
+
+/**
+ * Builds the artifact manifest for the manifest-only release-candidate path.
+ * The image references and previous Windows tuple are copied from the previous
+ * candidate; only the ClassroomPath SHA and explicitly resolved OpenPath
+ * metadata are supplied by the new run.
+ *
+ * @param {{
+ *   appSha: string;
+ *   previousManifest: Record<string, string>;
+ *   openpathVersion: string;
+ *   linuxAgentVersion: string;
+ *   linuxAgentAptSuite: string;
+ * }} params
+ * @returns {Record<string, string>}
+ */
+export function buildManifestOnlyReleaseCandidateArtifact({
+  appSha,
+  previousManifest,
+  openpathVersion,
+  linuxAgentVersion,
+  linuxAgentAptSuite,
+}) {
+  const requiredValues = {
+    APP_SHA: appSha,
+    CLASSROOMPATH_GATEWAY_IMAGE: previousManifest?.gateway_image,
+    CLASSROOMPATH_MIGRATIONS_IMAGE: previousManifest?.migrations_image,
+    OPENPATH_FIREFOX_ASSETS_IMAGE: previousManifest?.openpath_firefox_assets_image,
+    OPENPATH_API_IMAGE: previousManifest?.openpath_api_image,
+    OPENPATH_VERSION: openpathVersion,
+    OPENPATH_LINUX_AGENT_VERSION: linuxAgentVersion,
+    OPENPATH_LINUX_AGENT_APT_SUITE: linuxAgentAptSuite,
+    CLASSROOMPATH_SPA_IMAGE: previousManifest?.spa_image,
+    CLASSROOMPATH_VERIFIER_IMAGE: previousManifest?.verifier_image,
+  };
+  for (const [key, value] of Object.entries(requiredValues)) {
+    if (!String(value ?? '').trim()) {
+      throw new Error(`Manifest-only release candidate is missing required value: ${key}`);
+    }
+  }
+
+  const windowsPin = validateWindowsOfflineInstallerTemplatePin(
+    {
+      version: previousManifest?.windows_offline_installer_template_version,
+      commit: previousManifest?.windows_offline_installer_template_commit,
+      releaseTag: previousManifest?.windows_offline_installer_template_release_tag,
+      sha256: previousManifest?.windows_offline_installer_template_sha256,
+    },
+    { context: 'Previous Windows offline installer pin' }
+  );
+
+  return {
+    APP_SHA: String(appSha).trim(),
+    CLASSROOMPATH_GATEWAY_IMAGE: previousManifest.gateway_image,
+    CLASSROOMPATH_MIGRATIONS_IMAGE: previousManifest.migrations_image,
+    OPENPATH_FIREFOX_ASSETS_IMAGE: previousManifest.openpath_firefox_assets_image,
+    OPENPATH_API_IMAGE: previousManifest.openpath_api_image,
+    OPENPATH_VERSION: String(openpathVersion).trim(),
+    OPENPATH_LINUX_AGENT_VERSION: String(linuxAgentVersion).trim(),
+    OPENPATH_LINUX_AGENT_APT_SUITE: String(linuxAgentAptSuite).trim(),
+    windows_offline_installer_template_version: windowsPin.version,
+    windows_offline_installer_template_commit: windowsPin.commit,
+    windows_offline_installer_template_release_tag: windowsPin.releaseTag,
+    windows_offline_installer_template_sha256: windowsPin.sha256,
+    CLASSROOMPATH_SPA_IMAGE: previousManifest.spa_image,
+    CLASSROOMPATH_VERIFIER_IMAGE: previousManifest.verifier_image,
   };
 }
 
@@ -236,7 +339,8 @@ export function buildCanonicalReleaseManifest({ repository, runId, manifest }) {
 export function serializeReleaseManifest(manifest) {
   /** @type {string[]} */
   const keys = [...CANONICAL_RELEASE_MANIFEST_KEYS];
-  if (manifest.windows_offline_installer_template_version) {
+  const offlineInstallerPin = readCanonicalOfflineInstallerPin(manifest);
+  if (Object.keys(offlineInstallerPin).length > 0) {
     keys.push(
       'windows_offline_installer_template_version',
       'windows_offline_installer_template_commit',
@@ -244,7 +348,7 @@ export function serializeReleaseManifest(manifest) {
       'windows_offline_installer_template_sha256'
     );
   }
-  return `${keys.map((key) => `${key}=${manifest[key]}`).join('\n')}\n`;
+  return `${keys.map((key) => `${key}=${offlineInstallerPin[key] ?? manifest[key]}`).join('\n')}\n`;
 }
 
 /**
@@ -292,8 +396,45 @@ function parseCliArgs(args) {
   return parsed;
 }
 
+function serializeArtifactReleaseManifest(manifest) {
+  return `${Object.entries(manifest)
+    .map(([key, value]) => `${key}=${value}`)
+    .join('\n')}\n`;
+}
+
+function runManifestOnlyCli() {
+  const artifact = buildManifestOnlyReleaseCandidateArtifact({
+    appSha: process.env.APP_SHA,
+    previousManifest: {
+      gateway_image: process.env.PREVIOUS_CLASSROOMPATH_GATEWAY_IMAGE,
+      migrations_image: process.env.PREVIOUS_CLASSROOMPATH_MIGRATIONS_IMAGE,
+      openpath_firefox_assets_image: process.env.PREVIOUS_OPENPATH_FIREFOX_ASSETS_IMAGE,
+      openpath_api_image: process.env.PREVIOUS_OPENPATH_API_IMAGE,
+      spa_image: process.env.PREVIOUS_CLASSROOMPATH_SPA_IMAGE,
+      verifier_image: process.env.PREVIOUS_CLASSROOMPATH_VERIFIER_IMAGE,
+      windows_offline_installer_template_version:
+        process.env.PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION,
+      windows_offline_installer_template_commit:
+        process.env.PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT,
+      windows_offline_installer_template_release_tag:
+        process.env.PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG,
+      windows_offline_installer_template_sha256:
+        process.env.PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256,
+    },
+    openpathVersion: process.env.OPENPATH_VERSION,
+    linuxAgentVersion: process.env.OPENPATH_LINUX_AGENT_VERSION,
+    linuxAgentAptSuite: process.env.OPENPATH_LINUX_AGENT_APT_SUITE,
+  });
+  process.stdout.write(serializeArtifactReleaseManifest(artifact));
+}
+
 function runCli() {
   const [command, ...args] = process.argv.slice(2);
+  if (command === 'manifest-only') {
+    runManifestOnlyCli();
+    return;
+  }
+
   if (command !== 'normalize') {
     return;
   }

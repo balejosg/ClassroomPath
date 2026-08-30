@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 
 import { buildReleaseManifestScenario } from './helpers/release-fixtures.ts';
 import {
+  buildManifestOnlyReleaseCandidateArtifact,
   normalizeReleaseManifestText,
   parseCanonicalReleaseManifestText,
   serializeReleaseManifest,
@@ -75,6 +76,65 @@ windows_offline_installer_template_sha256=abcdef0123456789abcdef0123456789abcdef
           `${buildReleaseManifestScenario()}\nwindows_offline_installer_template_version=4.1.0\n`,
           { repository: 'balejosg/ClassroomPath', runId: '24006418074', sha: 'target-sha' }
         ),
+      /complete Windows offline installer pin/
+    );
+  });
+
+  test('builds a manifest-only artifact with the previous complete Windows tuple unchanged', () => {
+    const previousManifest = {
+      gateway_image: 'ghcr.io/example/gateway@sha256:old-gateway',
+      migrations_image: 'ghcr.io/example/migrations@sha256:old-migrations',
+      openpath_firefox_assets_image: 'ghcr.io/example/firefox@sha256:old-firefox',
+      openpath_api_image: 'ghcr.io/example/api@sha256:old-api',
+      openpath_version: '4.1.0',
+      linux_agent_version: '4.1.0',
+      linux_agent_apt_suite: 'stable',
+      spa_image: 'ghcr.io/example/spa@sha256:old-spa',
+      verifier_image: 'ghcr.io/example/verifier@sha256:old-verifier',
+      windows_offline_installer_template_version: '4.1.0',
+      windows_offline_installer_template_commit: '0123456789abcdef0123456789abcdef01234567',
+      windows_offline_installer_template_release_tag: 'scripts-v4.1.0-01234567',
+      windows_offline_installer_template_sha256:
+        'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
+    };
+
+    const artifact = buildManifestOnlyReleaseCandidateArtifact({
+      appSha: 'new-classroompath-sha',
+      previousManifest,
+      openpathVersion: '4.1.1',
+      linuxAgentVersion: '4.1.1',
+      linuxAgentAptSuite: 'unstable',
+    });
+
+    assert.deepEqual(
+      Object.fromEntries(
+        Object.keys(previousManifest)
+          .filter((key) => key.startsWith('windows_'))
+          .map((key) => [key, artifact[key]])
+      ),
+      Object.fromEntries(
+        Object.keys(previousManifest)
+          .filter((key) => key.startsWith('windows_'))
+          .map((key) => [key, previousManifest[key]])
+      )
+    );
+    assert.equal(artifact.APP_SHA, 'new-classroompath-sha');
+    assert.equal(artifact.OPENPATH_VERSION, '4.1.1');
+    assert.equal(artifact.OPENPATH_LINUX_AGENT_VERSION, '4.1.1');
+    assert.equal(artifact.OPENPATH_LINUX_AGENT_APT_SUITE, 'unstable');
+
+    const previousWithoutPin = Object.fromEntries(
+      Object.entries(previousManifest).filter(([key]) => !key.startsWith('windows_'))
+    );
+    assert.throws(
+      () =>
+        buildManifestOnlyReleaseCandidateArtifact({
+          appSha: 'new-classroompath-sha',
+          previousManifest: previousWithoutPin,
+          openpathVersion: '4.1.1',
+          linuxAgentVersion: '4.1.1',
+          linuxAgentAptSuite: 'unstable',
+        }),
       /complete Windows offline installer pin/
     );
   });

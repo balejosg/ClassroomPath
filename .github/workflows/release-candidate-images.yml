@@ -109,6 +109,11 @@ jobs:
           OPENPATH_TEMPLATE_COMMIT: ${{ steps.linux-agent.outputs.openpath_promotion_contract_sha }}
         run: |
           set -euo pipefail
+          if [ -z "$OPENPATH_TEMPLATE_COMMIT" ]; then
+            echo "OpenPath promotion contract unavailable; the Windows pin resolver will reuse the previous complete pin."
+            exit 0
+          fi
+
           # The Windows template is published by OpenPath's installation-scripts
           # release and is versioned by VERSION at the published promotion
           # contract commit.
@@ -134,6 +139,10 @@ jobs:
           OPENPATH_VERSION: ${{ steps.openpath-template.outputs.version }}
           OPENPATH_SHA: ${{ steps.linux-agent.outputs.openpath_promotion_contract_sha }}
           OPENPATH_SHORT_SHA: ${{ steps.openpath-template.outputs.short_sha }}
+          PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_version }}
+          PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_commit }}
+          PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_release_tag }}
+          PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_sha256 }}
         run: node scripts/resolve-windows-offline-installer-template-pin.mjs >> "$GITHUB_OUTPUT"
 
   verify-openpath-prerelease-apt:
@@ -235,6 +244,10 @@ jobs:
       openpath_version: ${{ steps.export.outputs.openpath_version }}
       openpath_linux_agent_version: ${{ steps.export.outputs.linux_agent_version }}
       openpath_linux_agent_apt_suite: ${{ steps.export.outputs.linux_agent_apt_suite }}
+      windows_offline_installer_template_version: ${{ steps.export.outputs.windows_offline_installer_template_version }}
+      windows_offline_installer_template_commit: ${{ steps.export.outputs.windows_offline_installer_template_commit }}
+      windows_offline_installer_template_release_tag: ${{ steps.export.outputs.windows_offline_installer_template_release_tag }}
+      windows_offline_installer_template_sha256: ${{ steps.export.outputs.windows_offline_installer_template_sha256 }}
       spa_image: ${{ steps.export.outputs.spa_image }}
       verifier_image: ${{ steps.export.outputs.verifier_image }}
 
@@ -672,19 +685,22 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Persist release candidate image manifest
-        run: |
-          cat > release-candidate-images.env <<EOF
-          APP_SHA=${{ github.sha }}
-          CLASSROOMPATH_GATEWAY_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.gateway_image }}
-          CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.migrations_image }}
-          OPENPATH_FIREFOX_ASSETS_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_firefox_assets_image }}
-          OPENPATH_API_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_api_image }}
-          OPENPATH_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_version }}
-          OPENPATH_LINUX_AGENT_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_version }}
-          OPENPATH_LINUX_AGENT_APT_SUITE=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_apt_suite }}
-          CLASSROOMPATH_SPA_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.spa_image }}
-          CLASSROOMPATH_VERIFIER_IMAGE=${{ needs.resolve-previous-release-candidate-manifest.outputs.verifier_image }}
-          EOF
+        env:
+          APP_SHA: ${{ github.sha }}
+          PREVIOUS_CLASSROOMPATH_GATEWAY_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.gateway_image }}
+          PREVIOUS_CLASSROOMPATH_MIGRATIONS_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.migrations_image }}
+          PREVIOUS_OPENPATH_FIREFOX_ASSETS_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_firefox_assets_image }}
+          PREVIOUS_OPENPATH_API_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_api_image }}
+          OPENPATH_VERSION: ${{ needs.derive-release-image-refs.outputs.openpath_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_version }}
+          OPENPATH_LINUX_AGENT_VERSION: ${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_version }}
+          OPENPATH_LINUX_AGENT_APT_SUITE: ${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_apt_suite }}
+          PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_version }}
+          PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_commit }}
+          PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_release_tag }}
+          PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_sha256 }}
+          PREVIOUS_CLASSROOMPATH_SPA_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.spa_image }}
+          PREVIOUS_CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.verifier_image }}
+        run: node scripts/lib/release-manifest.mjs manifest-only > release-candidate-images.env
 
       - name: Upload release candidate image manifest
         uses: actions/upload-artifact@v7

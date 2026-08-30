@@ -7,6 +7,7 @@
  */
 import { listGitHubWorkflowRuns } from './github-actions-artifacts.mjs';
 import { readLatestSuccessfulReleaseCandidateManifest } from './release-candidate.mjs';
+import { validateWindowsOfflineInstallerTemplatePin } from '../resolve-windows-offline-installer-template-pin.mjs';
 
 export function listReleaseCandidateRuns(repo, { cwd } = {}) {
   return listGitHubWorkflowRuns({
@@ -39,7 +40,7 @@ export function resolveLatestVerifierImageData(releaseCandidate) {
 }
 
 export function buildLatestVerifierImageOutputs({ manifest, headSha, runId }) {
-  return {
+  const outputs = {
     gateway_image: manifest.gatewayImage,
     head_sha: headSha,
     openpath_version: manifest.openpathVersion,
@@ -52,6 +53,26 @@ export function buildLatestVerifierImageOutputs({ manifest, headSha, runId }) {
     spa_image: manifest.spaImage,
     verifier_image: manifest.verifierImage,
   };
+
+  const windowsPin = {
+    version: manifest.windowsOfflineInstallerTemplateVersion,
+    commit: manifest.windowsOfflineInstallerTemplateCommit,
+    releaseTag: manifest.windowsOfflineInstallerTemplateReleaseTag,
+    sha256: manifest.windowsOfflineInstallerTemplateSha256,
+  };
+  if (Object.values(windowsPin).some((value) => String(value ?? '').trim())) {
+    const validatedWindowsPin = validateWindowsOfflineInstallerTemplatePin(windowsPin, {
+      context: 'Latest release candidate Windows offline installer pin',
+    });
+    Object.assign(outputs, {
+      windows_offline_installer_template_version: validatedWindowsPin.version,
+      windows_offline_installer_template_commit: validatedWindowsPin.commit,
+      windows_offline_installer_template_release_tag: validatedWindowsPin.releaseTag,
+      windows_offline_installer_template_sha256: validatedWindowsPin.sha256,
+    });
+  }
+
+  return outputs;
 }
 
 export function readLatestReleaseCandidateManifest({ repo, runs, cwd } = {}) {

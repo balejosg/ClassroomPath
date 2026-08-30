@@ -281,6 +281,19 @@ describe('Release candidate workflow contracts', () => {
     );
     assert.ok(workflowText.includes('workflow_dispatch:'));
     assert.ok(jobs['derive-release-image-refs']);
+    const previousManifestJob = jobs['resolve-previous-release-candidate-manifest'];
+    for (const field of [
+      'windows_offline_installer_template_version',
+      'windows_offline_installer_template_commit',
+      'windows_offline_installer_template_release_tag',
+      'windows_offline_installer_template_sha256',
+    ]) {
+      assert.equal(
+        previousManifestJob?.outputs?.[field],
+        `\${{ steps.export.outputs.${field} }}`,
+        `previous RC resolver must expose ${field}`
+      );
+    }
     const deriveOpenPathShaRun =
       jobs['derive-release-image-refs']?.steps?.find((step) => step.name === 'Resolve OpenPath SHA')
         ?.run ?? '';
@@ -299,6 +312,17 @@ describe('Release candidate workflow contracts', () => {
       )
     );
     assert.ok(deriveOpenPathTemplateVersionRun.includes('set -euo pipefail'));
+    const emptyPromotionGuardIndex = deriveOpenPathTemplateVersionRun.indexOf(
+      'if [ -z "$OPENPATH_TEMPLATE_COMMIT" ]'
+    );
+    const gitTemplateLookupIndex = deriveOpenPathTemplateVersionRun.indexOf(
+      'git -C upstream/openpath rev-parse --verify'
+    );
+    assert.ok(emptyPromotionGuardIndex >= 0);
+    assert.ok(
+      emptyPromotionGuardIndex < gitTemplateLookupIndex,
+      'the template lookup must be guarded before interpolating an empty promotion SHA'
+    );
     assert.ok(
       deriveOpenPathTemplateVersionRun.includes(
         'git -C upstream/openpath rev-parse --short "$OPENPATH_TEMPLATE_COMMIT"'
@@ -326,6 +350,30 @@ describe('Release candidate workflow contracts', () => {
       '${{ steps.openpath-template.outputs.short_sha }}',
       'the Windows template pin must use the exact git abbreviation from the published OpenPath release'
     );
+    for (const [envName, outputName] of [
+      [
+        'PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION',
+        'windows_offline_installer_template_version',
+      ],
+      [
+        'PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT',
+        'windows_offline_installer_template_commit',
+      ],
+      [
+        'PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG',
+        'windows_offline_installer_template_release_tag',
+      ],
+      [
+        'PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256',
+        'windows_offline_installer_template_sha256',
+      ],
+    ] as const) {
+      assert.equal(
+        resolveOfflineInstallerStep?.env?.[envName],
+        `\${{ needs.resolve-previous-release-candidate-manifest.outputs.${outputName} }}`,
+        `fallback pin resolution must receive ${outputName}`
+      );
+    }
     assert.notEqual(
       resolveOfflineInstallerStep?.env?.OPENPATH_VERSION,
       '${{ steps.linux-agent.outputs.openpath_version }}'
@@ -722,19 +770,46 @@ describe('Release candidate workflow contracts', () => {
 
     assert.match(
       workflowText,
-      /CLASSROOMPATH_GATEWAY_IMAGE=\$\{\{\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.gateway_image\s*\}\}/
-    );
-    assert.match(
-      workflowText,
-      /OPENPATH_FIREFOX_ASSETS_IMAGE=\$\{\{\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.openpath_firefox_assets_image\s*\}\}/
-    );
-    assert.match(
-      workflowText,
-      /OPENPATH_API_IMAGE=\$\{\{\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.openpath_api_image\s*\}\}/
-    );
-    assert.match(
-      workflowText,
       /OPENPATH_LINUX_AGENT_VERSION=\$\{\{\s*needs\.derive-release-image-refs\.outputs\.openpath_linux_agent_version\s*\|\|\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.openpath_linux_agent_version\s*\}\}/
+    );
+    const fastPersistStep = (fastManifestJob?.steps ?? []).find(
+      (step) => step.name === 'Persist release candidate image manifest'
+    );
+    for (const [envName, outputName] of [
+      ['PREVIOUS_CLASSROOMPATH_GATEWAY_IMAGE', 'gateway_image'],
+      ['PREVIOUS_CLASSROOMPATH_MIGRATIONS_IMAGE', 'migrations_image'],
+      ['PREVIOUS_OPENPATH_FIREFOX_ASSETS_IMAGE', 'openpath_firefox_assets_image'],
+      ['PREVIOUS_OPENPATH_API_IMAGE', 'openpath_api_image'],
+      [
+        'PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION',
+        'windows_offline_installer_template_version',
+      ],
+      [
+        'PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT',
+        'windows_offline_installer_template_commit',
+      ],
+      [
+        'PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG',
+        'windows_offline_installer_template_release_tag',
+      ],
+      [
+        'PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256',
+        'windows_offline_installer_template_sha256',
+      ],
+      ['PREVIOUS_CLASSROOMPATH_SPA_IMAGE', 'spa_image'],
+      ['PREVIOUS_CLASSROOMPATH_VERIFIER_IMAGE', 'verifier_image'],
+    ] as const) {
+      assert.equal(
+        fastPersistStep?.env?.[envName],
+        `\${{ needs.resolve-previous-release-candidate-manifest.outputs.${outputName} }}`,
+        `manifest-only publisher must pass ${outputName} to the transformation helper`
+      );
+    }
+    assert.ok(
+      String(fastPersistStep?.run ?? '').includes(
+        'node scripts/lib/release-manifest.mjs manifest-only'
+      ),
+      'manifest-only publication must use the data transformation helper'
     );
     assert.ok(workflowText.includes('"manifestOnly": true'));
     assert.ok(workflowText.includes('### Manifest-Only Fast Path'));

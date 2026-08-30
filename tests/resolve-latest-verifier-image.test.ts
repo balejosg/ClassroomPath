@@ -35,4 +35,34 @@ describe('resolve latest verifier image', () => {
       verifier_image: 'ghcr.io/balejosg/classroompath-release-verifier@sha256:5',
     });
   });
+
+  test('exposes the complete previous Windows offline-installer pin without changing it', () => {
+    const windowsPin = {
+      windows_offline_installer_template_version: '4.1.0',
+      windows_offline_installer_template_commit: '0123456789abcdef0123456789abcdef01234567',
+      windows_offline_installer_template_release_tag: 'scripts-v4.1.0-0123456',
+      windows_offline_installer_template_sha256:
+        'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
+    };
+    const releaseCandidate = resolveLatestSuccessfulReleaseCandidateManifest({
+      repository: 'balejosg/ClassroomPath',
+      manifestContent: `${buildReleaseManifestScenario().replaceAll('target-sha', 'newer-sha')}${Object.entries(
+        windowsPin
+      )
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n')}\n`,
+      runs: buildReleaseFixtureScenario('latest-success'),
+    });
+
+    const outputs = buildLatestVerifierImageOutputs(
+      resolveLatestVerifierImageData(releaseCandidate)
+    );
+
+    assert.deepEqual(
+      Object.fromEntries(
+        Object.keys(windowsPin).map((key) => [key, outputs[key as keyof typeof outputs]])
+      ),
+      windowsPin
+    );
+  });
 });

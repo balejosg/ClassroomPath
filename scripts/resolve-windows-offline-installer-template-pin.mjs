@@ -8,6 +8,7 @@ const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/;
 const SHORT_COMMIT_SHA = /^[0-9a-f]{7,40}$/;
 const HEX_SHA256 = /^[0-9a-f]{64}$/;
 const SAFE_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const WINDOWS_OFFLINE_INSTALLER_TEMPLATE_PIN_FIELDS = ['version', 'commit', 'releaseTag', 'sha256'];
 
 export const WINDOWS_OFFLINE_INSTALLER_TEMPLATE_ASSET = 'OpenPath-Windows-Setup-Template.exe';
 
@@ -15,6 +16,58 @@ function required(value, name) {
   const normalized = String(value ?? '').trim();
   if (!normalized) throw new Error(`${name} is required`);
   return normalized;
+}
+
+function hasPinValues(pin = {}) {
+  return WINDOWS_OFFLINE_INSTALLER_TEMPLATE_PIN_FIELDS.some((field) => {
+    return String(pin?.[field] ?? '').trim() !== '';
+  });
+}
+
+export function validateWindowsOfflineInstallerTemplatePin(
+  pin = {},
+  { context = 'Windows offline installer pin' } = {}
+) {
+  const values = {
+    version: String(pin?.version ?? '').trim(),
+    commit: String(pin?.commit ?? '').trim(),
+    releaseTag: String(pin?.releaseTag ?? '').trim(),
+    sha256: String(pin?.sha256 ?? '').trim(),
+  };
+  const present = Object.values(values).filter(Boolean).length;
+
+  if (present !== WINDOWS_OFFLINE_INSTALLER_TEMPLATE_PIN_FIELDS.length) {
+    throw new Error(`${context} must contain the complete Windows offline installer pin`);
+  }
+  if (!SAFE_VERSION.test(values.version)) {
+    throw new Error(`${context} version is invalid`);
+  }
+  if (!FULL_COMMIT_SHA.test(values.commit)) {
+    throw new Error(`${context} commit must be a full lowercase SHA`);
+  }
+
+  const releaseTagMatch = values.releaseTag.match(/^scripts-v(.+)-([0-9a-f]{7,40})$/);
+  if (
+    !releaseTagMatch ||
+    releaseTagMatch[1] !== values.version ||
+    !values.commit.startsWith(releaseTagMatch[2])
+  ) {
+    throw new Error(`${context} release tag is invalid`);
+  }
+  if (!HEX_SHA256.test(values.sha256)) {
+    throw new Error(`${context} sha256 is invalid`);
+  }
+
+  return values;
+}
+
+export function selectWindowsOfflineInstallerTemplatePin({ newPin = {}, previousPin = {} } = {}) {
+  const hasNewPin = hasPinValues(newPin);
+  return validateWindowsOfflineInstallerTemplatePin(hasNewPin ? newPin : previousPin, {
+    context: hasNewPin
+      ? 'New Windows offline installer pin'
+      : 'Previous Windows offline installer pin',
+  });
 }
 
 export function deriveWindowsOfflineInstallerTemplateRelease({
@@ -84,18 +137,24 @@ export async function resolveWindowsOfflineInstallerTemplatePin({
     throw new Error('OpenPath template sidecar could not be read');
   }
 
+  const sha256 = parseWindowsOfflineInstallerTemplateSidecar(sidecarText);
+  validateWindowsOfflineInstallerTemplatePin(
+    {
+      version: release.version,
+      commit: release.commit,
+      releaseTag: release.releaseTag,
+      sha256,
+    },
+    { context: 'Resolved Windows offline installer pin' }
+  );
+
   return {
     ...release,
-    sha256: parseWindowsOfflineInstallerTemplateSidecar(sidecarText),
+    sha256,
   };
 }
 
-async function main() {
-  const pin = await resolveWindowsOfflineInstallerTemplatePin({
-    version: process.env.OPENPATH_VERSION?.trim(),
-    commit: process.env.OPENPATH_SHA?.trim(),
-    shortCommit: process.env.OPENPATH_SHORT_SHA?.trim(),
-  });
+function writePin(pin) {
   process.stdout.write(
     [
       `template_version=${pin.version}`,
@@ -103,6 +162,31 @@ async function main() {
       `template_release_tag=${pin.releaseTag}`,
       `template_sha256=${pin.sha256}`,
     ].join('\n') + '\n'
+  );
+}
+
+async function main() {
+  const promotionContractCommit = process.env.OPENPATH_SHA?.trim() ?? '';
+  if (promotionContractCommit) {
+    writePin(
+      await resolveWindowsOfflineInstallerTemplatePin({
+        version: process.env.OPENPATH_VERSION?.trim(),
+        commit: promotionContractCommit,
+        shortCommit: process.env.OPENPATH_SHORT_SHA?.trim(),
+      })
+    );
+    return;
+  }
+
+  writePin(
+    selectWindowsOfflineInstallerTemplatePin({
+      previousPin: {
+        version: process.env.PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION,
+        commit: process.env.PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT,
+        releaseTag: process.env.PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG,
+        sha256: process.env.PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256,
+      },
+    })
   );
 }
 
