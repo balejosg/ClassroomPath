@@ -38,17 +38,30 @@ describe('runtime config contract', () => {
     assert.throws(() => configModule.assertRuntimeSecretsConfigured(), /PUBLIC_URL/i);
   });
 
-  it('rejects localhost PUBLIC_URL values in production', async () => {
-    process.env.NODE_ENV = 'production';
-    process.env.JWT_SECRET = 'production-secret-value';
-    process.env.PUBLIC_URL = 'http://localhost:5173/';
+  it('rejects all supported localhost and loopback PUBLIC_URL forms in production', async () => {
+    for (const publicUrl of [
+      'http://localhost',
+      'http://localhost:5173/',
+      'http://localhost.',
+      'http://127.0.0.1',
+      'http://127.0.0.2',
+      'http://127.255.255.255',
+      'http://[::1]',
+      'http://[0:0:0:0:0:0:0:1]',
+      'http://[::ffff:127.0.0.1]',
+      'http://[::ffff:7f00:1]',
+    ]) {
+      process.env.NODE_ENV = 'production';
+      process.env.JWT_SECRET = 'production-secret-value';
+      process.env.PUBLIC_URL = publicUrl;
 
-    const tag = `runtime-config-production-localhost-url-${Date.now()}-${Math.random()
-      .toString(16)
-      .slice(2)}`;
-    const configModule = await import(`../src/config.ts?${tag}`);
+      const tag = `runtime-config-production-localhost-url-${Date.now()}-${Math.random()
+        .toString(16)
+        .slice(2)}`;
+      const configModule = await import(`../src/config.ts?${tag}`);
 
-    assert.throws(() => configModule.resolveRuntimeConfig(), /PUBLIC_URL/i);
+      assert.throws(() => configModule.resolveRuntimeConfig(), /PUBLIC_URL/i, publicUrl);
+    }
   });
 
   it('disables self-service organization creation by default in production while keeping the directory hidden', async () => {

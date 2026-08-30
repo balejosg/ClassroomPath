@@ -76,4 +76,18 @@ describe('runtime environment policy', () => {
       /VAPID_PRIVATE_KEY must be set for push notifications/
     );
   });
+
+  it('validates PUBLIC_URL even when push contact is configured explicitly', async () => {
+    const policyModule = await import('../src/config/runtime-environment-policy.ts');
+
+    assert.throws(
+      () =>
+        policyModule.resolvePushRuntimePolicy({
+          NODE_ENV: 'production',
+          PUBLIC_URL: ' https://classroompath.example.invalid',
+          VAPID_CONTACT: 'mailto:ops@classroompath.example.invalid',
+        }),
+      /PUBLIC_URL must be a bare http\(s\) origin/
+    );
+  });
 });

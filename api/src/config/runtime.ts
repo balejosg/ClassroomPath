@@ -10,7 +10,7 @@ import {
   resolvePushRuntimePolicy,
   resolveRuntimeEnvironmentPolicy,
 } from './runtime-environment-policy.js';
-import { DEFAULT_JWT_SECRET, isLocalDevelopment, trimToNull, type RuntimeEnv } from './shared.js';
+import { DEFAULT_JWT_SECRET, isLocalDevelopment, type RuntimeEnv } from './shared.js';
 
 export { resolveEmailDeliveryMode, resolveMockEmailDelivery };
 
@@ -63,7 +63,9 @@ function normalizePublicUrl(value: string, env: RuntimeEnv): string {
 }
 
 export function resolvePublicUrl(env: RuntimeEnv = process.env): string {
-  const publicUrl = trimToNull(env.PUBLIC_URL);
+  // Keep the raw configured value for the strict origin parser. Trimming here
+  // would turn malformed configuration into a different, valid origin.
+  const publicUrl = env.PUBLIC_URL;
   if (publicUrl) {
     return normalizePublicUrl(publicUrl, env);
   }

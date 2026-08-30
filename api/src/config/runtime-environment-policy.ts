@@ -17,7 +17,7 @@
 import { readFileSync } from 'node:fs';
 
 import { parseBooleanEnv, trimToNull, type RuntimeEnv } from './shared.js';
-import { resolveBareHttpOrigin } from '../lib/public-origin.js';
+import { isLoopbackHostname, resolveBareHttpOrigin } from '../lib/public-origin.js';
 
 export type { RuntimeEnv } from './shared.js';
 
@@ -104,10 +104,7 @@ export function normalizeRuntimePublicUrl(value: string, env: RuntimeEnv): strin
   const normalizedOrigin = resolveBareHttpOrigin(value, 'PUBLIC_URL must be a bare http(s) origin');
   const url = new URL(normalizedOrigin);
 
-  if (
-    env.NODE_ENV === 'production' &&
-    ['localhost', '127.0.0.1', '::1'].includes(url.hostname.toLowerCase())
-  ) {
+  if (env.NODE_ENV === 'production' && isLoopbackHostname(url.hostname)) {
     throw new Error('PUBLIC_URL must not point to localhost in production');
   }
 
@@ -206,13 +203,13 @@ export function resolveEmailRuntimePolicy(env: RuntimeEnv = process.env): EmailR
 export function resolvePushRuntimePolicy(env: RuntimeEnv = process.env): PushRuntimePolicy {
   const publicKey = trimToNull(env.VAPID_PUBLIC_KEY) ?? '';
   const privateKey = trimToNull(env.VAPID_PRIVATE_KEY) ?? '';
-  const publicUrl = trimToNull(env.PUBLIC_URL);
+  const normalizedPublicOrigin = env.PUBLIC_URL
+    ? normalizeRuntimePublicUrl(env.PUBLIC_URL, env)
+    : null;
   const contact =
     trimToNull(env.VAPID_CONTACT) ??
     trimToNull(env.VAPID_SUBJECT) ??
-    (publicUrl
-      ? `mailto:admin@${new URL(normalizeRuntimePublicUrl(publicUrl, env)).hostname}`
-      : '');
+    (normalizedPublicOrigin ? `mailto:admin@${new URL(normalizedPublicOrigin).hostname}` : '');
 
   return {
     enabled: Boolean(publicKey && privateKey && contact),

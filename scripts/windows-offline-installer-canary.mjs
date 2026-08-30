@@ -19,7 +19,18 @@ function required(value, name) {
 }
 
 function normalizeBaseUrl(value) {
-  const rawValue = required(value, 'WINDOWS_OFFLINE_INSTALLER_CANARY_BASE_URL');
+  const rawValue = String(value ?? '');
+  if (!rawValue) {
+    throw new Error('WINDOWS_OFFLINE_INSTALLER_CANARY_BASE_URL is required');
+  }
+  if (
+    rawValue !== rawValue.trim() ||
+    /[\u0000-\u001f\u007f]/u.test(rawValue) ||
+    rawValue.includes('\\')
+  ) {
+    throw new Error('WINDOWS_OFFLINE_INSTALLER_CANARY_BASE_URL must be a bare http(s) origin');
+  }
+
   let parsed;
   try {
     parsed = new URL(rawValue);
@@ -33,6 +44,10 @@ function normalizeBaseUrl(value) {
   const suffixOffset = remainder.search(/[/?#]/u);
   const authority = suffixOffset === -1 ? remainder : remainder.slice(0, suffixOffset);
   const suffix = suffixOffset === -1 ? '' : remainder.slice(suffixOffset);
+  const defaultPort = parsed.protocol === 'http:' ? ':80' : ':443';
+  const authorityWithoutDefaultPort = authority.toLowerCase().endsWith(defaultPort)
+    ? authority.slice(0, -defaultPort.length).toLowerCase()
+    : authority.toLowerCase();
 
   if (
     (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
@@ -42,7 +57,10 @@ function normalizeBaseUrl(value) {
     authority.includes('@') ||
     suffix.includes('?') ||
     suffix.includes('#') ||
-    (suffix !== '' && suffix !== '/')
+    (suffix !== '' && suffix !== '/') ||
+    // Match the runtime origin parser: only case and an explicit default
+    // port may normalize the raw authority.
+    authorityWithoutDefaultPort !== parsed.host.toLowerCase()
   ) {
     throw new Error('WINDOWS_OFFLINE_INSTALLER_CANARY_BASE_URL must be a bare http(s) origin');
   }

@@ -80,6 +80,34 @@ await describe('gateway config', async () => {
     );
   });
 
+  await test('rejects localhost and loopback PUBLIC_URL values in the gateway boundary', () => {
+    for (const publicUrl of [
+      'http://localhost',
+      'http://localhost.',
+      'http://127.0.0.1',
+      'http://127.0.0.2',
+      'http://127.255.255.255',
+      'http://[::1]',
+      'http://[0:0:0:0:0:0:0:1]',
+      'http://[::ffff:127.0.0.1]',
+      'http://[::ffff:7f00:1]',
+    ]) {
+      assert.throws(
+        () =>
+          resolveGatewayConfig(
+            {},
+            {
+              NODE_ENV: 'production',
+              PUBLIC_URL: publicUrl,
+              CORS_ORIGINS: 'https://classroompath.test',
+            }
+          ),
+        /PUBLIC_URL|localhost/u,
+        publicUrl
+      );
+    }
+  });
+
   await test('rejects localhost CORS origins in production', () => {
     assert.throws(
       () =>
@@ -95,6 +123,29 @@ await describe('gateway config', async () => {
     );
   });
 
+  await test('uses the strict bare-origin contract for CORS origins', () => {
+    for (const corsOrigin of [
+      'https://classroompath.test/app',
+      'https://classroompath.test\\gateway',
+      'https://classroompath.test?',
+      'https://classroompath.test#fragment',
+    ]) {
+      assert.throws(
+        () =>
+          resolveGatewayConfig(
+            {},
+            {
+              NODE_ENV: 'production',
+              PUBLIC_URL: 'https://classroompath.test',
+              CORS_ORIGINS: corsOrigin,
+            }
+          ),
+        /CORS origins|bare.*origin/u,
+        corsOrigin
+      );
+    }
+  });
+
   await test('rejects a missing or non-origin PUBLIC_URL in the gateway boundary', () => {
     const invalidPublicUrls = [
       undefined,
@@ -107,6 +158,8 @@ await describe('gateway config', async () => {
       'https://classroompath.test?',
       'https://classroompath.test#fragment',
       'https://classroompath.test#',
+      ' https://classroompath.test',
+      'https://classroompath.test ',
     ];
 
     for (const publicUrl of invalidPublicUrls) {

@@ -152,6 +152,15 @@ describe('ClassroomPath Windows offline installer canary', () => {
       'https://staging.classroompath.example.invalid?',
       'https://staging.classroompath.example.invalid#fragment',
       'https://staging.classroompath.example.invalid#',
+      'https://staging.classroompath.example.invalid\\foo',
+      'https://staging.classroompath.example.invalid\\',
+      ' https://staging.classroompath.example.invalid',
+      'https://staging.classroompath.example.invalid ',
+      'https://staging.classroompath.example.invalid\n',
+      'https://staging.classroompath.example.invalid\u200bfoo',
+      'https://staging.classroompath.example.invalid\ufefffoo',
+      'https://%73taging.classroompath.example.invalid',
+      'https://[0:0:0:0:0:0:0:1]',
     ]) {
       await assert.rejects(
         runWindowsOfflineInstallerCanary({

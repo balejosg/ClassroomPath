@@ -1,4 +1,4 @@
-import { resolveBareHttpOrigin } from './public-origin.js';
+import { isLoopbackHostname, resolveBareHttpOrigin } from './public-origin.js';
 
 export interface GatewayAppOptions {
   agentDeliveryRateLimitMax?: number;
@@ -40,12 +40,7 @@ function parseIntegerEnv(value: string | undefined, fallback: number): number {
 }
 
 function normalizeOrigin(value: string): string {
-  const parsed = new URL(value);
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error('CORS origins must use http:// or https://');
-  }
-
-  return parsed.origin;
+  return resolveBareHttpOrigin(value, 'CORS origins must be bare http(s) origins');
 }
 
 function parseCorsOrigins(
@@ -67,7 +62,7 @@ function parseCorsOrigins(
       throw new Error('CORS_ORIGINS must be set in production');
     }
 
-    if (origins.some((origin) => origin === '*' || /localhost|127\.0\.0\.1/i.test(origin))) {
+    if (origins.some((origin) => origin === '*' || isLoopbackHostname(new URL(origin).hostname))) {
       throw new Error('CORS_ORIGINS must contain explicit non-localhost origins in production');
     }
   }
@@ -76,7 +71,10 @@ function parseCorsOrigins(
 }
 
 function resolvePublicOrigin(env: Record<string, string | undefined>): string {
-  const publicUrl = env.PUBLIC_URL?.trim();
+  // Preserve the raw value until the strict origin parser validates it. A
+  // configured value with surrounding whitespace is invalid, not a missing
+  // value that should silently fall back to localhost.
+  const publicUrl = env.PUBLIC_URL;
   if (!publicUrl) {
     if (env.NODE_ENV === 'production') {
       throw new Error('PUBLIC_URL must be set outside local development/test mode');
@@ -85,7 +83,16 @@ function resolvePublicOrigin(env: Record<string, string | undefined>): string {
     return 'http://localhost:5173';
   }
 
-  return resolveBareHttpOrigin(publicUrl, 'PUBLIC_URL must be a bare http(s) origin');
+  const normalizedOrigin = resolveBareHttpOrigin(
+    publicUrl,
+    'PUBLIC_URL must be a bare http(s) origin'
+  );
+
+  if (env.NODE_ENV === 'production' && isLoopbackHostname(new URL(normalizedOrigin).hostname)) {
+    throw new Error('PUBLIC_URL must not point to localhost in production');
+  }
+
+  return normalizedOrigin;
 }
 
 export function resolveGatewayConfig(

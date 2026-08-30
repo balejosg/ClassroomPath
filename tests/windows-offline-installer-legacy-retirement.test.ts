@@ -31,7 +31,9 @@ function success(stdout = ''): DockerCommandResult {
   return { status: 0, stdout, stderr: '' };
 }
 
-function failure(stderr = 'not found'): DockerCommandResult {
+function failure(
+  stderr = `Error response from daemon: get ${legacyVolumeName}: no such volume`
+): DockerCommandResult {
   return { status: 1, stdout: '', stderr };
 }
 
@@ -184,6 +186,90 @@ describe('legacy Windows offline installer storage retirement', () => {
     assert.equal(
       calls.some((args) => args[0] === 'volume' && args[1] === 'rm'),
       false
+    );
+  });
+
+  it('does not treat a Docker daemon outage as an absent volume', async () => {
+    const { runDocker } = runnerFor({
+      inspect: failure('Cannot connect to the Docker daemon at unix:///var/run/docker.sock'),
+      listedNames: [],
+    });
+
+    await assert.rejects(
+      retireLegacyWindowsOfflineInstallerStorage({
+        projectName,
+        confirmedByCli: true,
+        runDocker,
+      }),
+      /Docker|resolve|inspect/u
+    );
+  });
+
+  it('does not treat Docker permission errors as an absent volume', async () => {
+    const { runDocker } = runnerFor({
+      inspect: failure('permission denied while trying to connect to the Docker daemon socket'),
+      listedNames: [],
+    });
+
+    await assert.rejects(
+      retireLegacyWindowsOfflineInstallerStorage({
+        projectName,
+        confirmedByCli: true,
+        runDocker,
+      }),
+      /Docker|resolve|inspect/u
+    );
+  });
+
+  it('does not treat an unrelated error containing the missing-volume phrase as absence', async () => {
+    const { runDocker } = runnerFor({
+      inspect: failure('unexpected backend failure: no such volume was reported elsewhere'),
+      listedNames: [],
+    });
+
+    await assert.rejects(
+      retireLegacyWindowsOfflineInstallerStorage({
+        projectName,
+        confirmedByCli: true,
+        runDocker,
+      }),
+      /Docker|resolve|inspect/u
+    );
+  });
+
+  it('does not treat a missing-volume phrase in stdout plus a Docker error in stderr as absence', async () => {
+    const { runDocker } = runnerFor({
+      inspect: {
+        status: 1,
+        stdout: `Error response from daemon: get ${legacyVolumeName}: no such volume`,
+        stderr: 'Cannot connect to the Docker daemon',
+      },
+      listedNames: [],
+    });
+
+    await assert.rejects(
+      retireLegacyWindowsOfflineInstallerStorage({
+        projectName,
+        confirmedByCli: true,
+        runDocker,
+      }),
+      /Docker|resolve|inspect/u
+    );
+  });
+
+  it('fails when the exact legacy volume disappears after label lookup', async () => {
+    const { runDocker } = runnerFor({
+      inspect: failure(),
+      listedNames: [legacyVolumeName],
+    });
+
+    await assert.rejects(
+      retireLegacyWindowsOfflineInstallerStorage({
+        projectName,
+        confirmedByCli: true,
+        runDocker,
+      }),
+      /disappeared|verification/u
     );
   });
 

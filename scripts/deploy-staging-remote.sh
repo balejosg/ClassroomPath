@@ -137,12 +137,19 @@ RESOLVED_OPENPATH_VERSION=""
 RESOLVED_OPENPATH_LINUX_AGENT_VERSION=""
 RESOLVED_SPA_IMAGE="classroompath-spa:local"
 PREVIOUS_APP_SHA=""
+# These values are consumed by the sourced release-execution/state helpers.
+# shellcheck disable=SC2034
 MIGRATION_RISK_LEVEL="safe"
+# shellcheck disable=SC2034
 MIGRATION_CHANGED_FILES=""
+# shellcheck disable=SC2034
 MIGRATION_DESTRUCTIVE_FILES=""
+# shellcheck disable=SC2034
 DB_MIGRATED=0
 FAILURE_STAGE="preflight"
+# shellcheck disable=SC2034
 ROLLBACK_ATTEMPTED=0
+# shellcheck disable=SC2034
 ROLLBACK_RESULT="not_attempted"
 STAGING_DEPLOY_PAYLOAD_FILE=""
 STAGING_RELEASE_MANIFEST_FILE=""
@@ -198,65 +205,6 @@ resolve_pulled_digest() {
 
 classify_migration_risk() {
   release_execution_classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "${STAGING_RELEASE_SHA:-origin/main}"
-}
-
-restore_previous_release_state() {
-  if [ ! -f "$PREVIOUS_STATE_FILE" ]; then
-    log_warn "No previous release metadata available; cannot restore previous release"
-    ROLLBACK_RESULT="unavailable"
-    write_deploy_context
-    return 1
-  fi
-
-  log_warn "Attempting to restore previous staging release state..."
-  ROLLBACK_ATTEMPTED=1
-  write_deploy_context
-
-  set -a
-  . "$PREVIOUS_STATE_FILE"
-  set +a
-
-  # Never restore a pre-canonical ClassroomPath release. The complete
-  # OpenPath installer pin is the compatibility boundary for both source and
-  # release-candidate rollback paths.
-  require_windows_offline_installer_runtime_pin || return 1
-
-  git checkout --detach "$APP_SHA"
-  git reset --hard "$APP_SHA"
-  git submodule sync --recursive
-  git submodule update --init --recursive --force
-
-  cd "$APP_DIR/docker"
-  export COMPOSE_PROJECT_NAME=classroompath-staging
-
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256 "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}"
-
-  if [ "${IMAGE_SOURCE:-source-build}" = "release-candidate" ]; then
-    export CLASSROOMPATH_GATEWAY_IMAGE
-    export CLASSROOMPATH_MIGRATIONS_IMAGE
-    export OPENPATH_API_IMAGE
-    export CLASSROOMPATH_SPA_IMAGE
-    upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
-    upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
-    upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
-    docker compose pull gateway api windows-offline-installer-provision spa
-    compose_up_force_recreate_no_build
-  else
-    remove_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION
-    remove_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION
-    remove_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE
-    unset CLASSROOMPATH_GATEWAY_IMAGE OPENPATH_API_IMAGE CLASSROOMPATH_SPA_IMAGE
-    docker compose build
-    docker compose up -d --force-recreate
-  fi
-
-  cp "$PREVIOUS_STATE_FILE" "$CURRENT_STATE_FILE"
-  ROLLBACK_RESULT="success"
-  write_deploy_context
-  return 0
 }
 
 fail_after_migrations() {
@@ -543,6 +491,18 @@ load_deploy_container_platform_helper() {
   source "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH"
 }
 
+load_staging_rollback_helper() {
+  STAGING_ROLLBACK_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/staging-rollback.sh")"
+
+  if [ ! -f "$STAGING_ROLLBACK_HELPER_PATH" ]; then
+    log_error "Staging rollback helper not found after checkout: $STAGING_ROLLBACK_HELPER_PATH"
+    return 1
+  fi
+
+  # shellcheck source=lib/staging-rollback.sh
+  source "$STAGING_ROLLBACK_HELPER_PATH"
+}
+
 prepare_staging_checkout() {
   cd "$APP_DIR"
 
@@ -564,6 +524,7 @@ prepare_staging_checkout() {
     log_error "Checked-out release-execution helper does not meet the minimum contract"
     exit 1
   fi
+  load_staging_rollback_helper || exit 1
   release_execution_init_context "$DEPLOY_CONTEXT_FILE"
   load_deploy_host_preflight_helper
   load_deploy_container_platform_helper
@@ -635,6 +596,7 @@ run_staging_database_migrations() {
     bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE" || exit 1
   fi
 
+  # shellcheck disable=SC2034 # consumed by release execution/state helpers
   DB_MIGRATED=1
   release_execution_mark_stage startup
 }

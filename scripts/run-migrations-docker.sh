@@ -122,12 +122,10 @@ if [ ! -f "$ENV_FILE" ]; then
   die "Env file not found: $ENV_FILE" 1
 fi
 
-# Docker env files are allowed to contain stale operator state. Override the
-# destructive DB gate explicitly so only this invocation's CLI flag can set it.
+# Docker env files are allowed to contain stale operator state. Always pass a
+# neutral value; the migration entrypoint receives authorization only through
+# its invocation-scoped CLI argument.
 migration_confirmation_env_args=(-e "CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=0")
-if [ "$CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT" = "1" ]; then
-  migration_confirmation_env_args=(-e "CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1")
-fi
 
 run_prebuilt_runner_image() {
   log_info "[MIGRATIONS] Using prebuilt migration runner image: $RUNNER_IMAGE"
@@ -169,6 +167,11 @@ run_cp_migrations() {
   local log
   log=$(mktemp)
 
+  local migration_command='npm run db:migrate -w @classroompath/api'
+  if [ "$CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT" = "1" ]; then
+    migration_command+=' -- --confirm-windows-offline-installer-legacy-retirement'
+  fi
+
   if docker run --rm \
     -v "$APP_DIR:/app" \
     -v "$ENV_FILE:/app/.env:ro" \
@@ -176,7 +179,7 @@ run_cp_migrations() {
     --env-file "$ENV_FILE" \
     "${migration_confirmation_env_args[@]}" \
     "$NODE_IMAGE" \
-    sh -c "npm ci --silent -w @classroompath/api && node --import tsx api/scripts/cleanup-cp-schema.ts && node --import tsx api/scripts/baseline-cp-migrations.ts && npm run db:migrate -w @classroompath/api" \
+    sh -c "npm ci --silent -w @classroompath/api && node --import tsx api/scripts/cleanup-cp-schema.ts && node --import tsx api/scripts/baseline-cp-migrations.ts && $migration_command" \
     >"$log" 2>&1; then
     tail -5 "$log"
   else

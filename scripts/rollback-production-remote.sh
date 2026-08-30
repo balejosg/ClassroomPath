@@ -54,6 +54,19 @@ fi
 # shellcheck source=lib/common.sh
 source "$COMMON_SH_PATH"
 
+load_rollback_readiness_helper() {
+  ROLLBACK_READINESS_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/rollback-readiness.sh")"
+  if [ ! -f "$ROLLBACK_READINESS_HELPER_PATH" ]; then
+    log_error "Rollback readiness helper not found: $ROLLBACK_READINESS_HELPER_PATH"
+    return 1
+  fi
+
+  # shellcheck source=lib/rollback-readiness.sh
+  source "$ROLLBACK_READINESS_HELPER_PATH"
+}
+
+load_rollback_readiness_helper || exit 1
+
 DEPLOY_CONTAINER_PLATFORM_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-container-platform.sh")"
 if [ ! -f "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH" ]; then
   printf 'Deploy container platform helper not found: %s\n' "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH" >&2
@@ -106,6 +119,7 @@ refresh_rollback_checked_out_helpers() {
 
   # shellcheck source=lib/release-runtime.sh
   source "$RELEASE_RUNTIME_HELPER_PATH"
+  load_rollback_readiness_helper || exit 1
 }
 
 DEPLOY_DIR="$CLASSROOMPATH_DEPLOY_ROOT"
@@ -149,49 +163,113 @@ if [ -n "${MIGRATION_RISK_LEVEL:-}" ] || [ -n "${DB_MIGRATED:-}" ] || [ -n "${PR
 fi
 
 cd "$APP_DIR"
-git fetch origin --tags --prune
-git fetch origin main --prune
-git checkout --detach "$APP_SHA"
-git reset --hard "$APP_SHA"
-git submodule deinit -f --all || true
-git submodule update --init --recursive --force
-refresh_rollback_checked_out_helpers
-require_windows_offline_installer_runtime_pin || exit 1
+if ! git fetch origin --tags --prune; then
+  log_error "Unable to fetch release tags for production rollback"
+  exit 1
+fi
+if ! git fetch origin main --prune; then
+  log_error "Unable to fetch origin/main for production rollback"
+  exit 1
+fi
+if ! git checkout --detach "$APP_SHA"; then
+  log_error "Unable to check out the previous production release"
+  exit 1
+fi
+if ! git reset --hard "$APP_SHA"; then
+  log_error "Unable to reset the production checkout to the previous release"
+  exit 1
+fi
+if ! git submodule deinit -f --all; then
+  log_error "Unable to clear the production OpenPath checkout before rollback"
+  exit 1
+fi
+if ! git submodule update --init --recursive --force; then
+  log_error "Unable to restore the production OpenPath checkout"
+  exit 1
+fi
+if ! refresh_rollback_checked_out_helpers; then
+  log_error "Unable to load the previous production release helpers"
+  exit 1
+fi
+if ! require_windows_offline_installer_runtime_pin; then
+  log_error "Previous production release does not meet the canonical installer contract"
+  exit 1
+fi
 
-echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+if ! echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin; then
+  log_error "Unable to authenticate to the production container registry"
+  exit 1
+fi
 trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
 
 cd "$APP_DIR/docker"
 export COMPOSE_PROJECT_NAME=classroompath-production
-configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/arm64}"
-verify_deploy_container_platform
-upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
-upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
-upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}"
-upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}"
-upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}"
-upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256 "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}"
-upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
+if ! configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/arm64}"; then
+  log_error "Unable to configure the production rollback container platform"
+  exit 1
+fi
+if ! verify_deploy_container_platform; then
+  log_error "Production rollback container platform verification failed"
+  exit 1
+fi
+if ! upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"; then
+  log_error "Unable to restore OPENPATH_VERSION for production rollback"
+  exit 1
+fi
+if ! upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"; then
+  log_error "Unable to restore OPENPATH_LINUX_AGENT_VERSION for production rollback"
+  exit 1
+fi
+if ! upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}"; then
+  log_error "Unable to restore the OpenPath installer template version for production rollback"
+  exit 1
+fi
+if ! upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}"; then
+  log_error "Unable to restore the OpenPath installer template commit for production rollback"
+  exit 1
+fi
+if ! upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}"; then
+  log_error "Unable to restore the OpenPath installer template release tag for production rollback"
+  exit 1
+fi
+if ! upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256 "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}"; then
+  log_error "Unable to restore the OpenPath installer template hash for production rollback"
+  exit 1
+fi
+if ! upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release; then
+  log_error "Unable to restore the OpenPath Firefox release root for production rollback"
+  exit 1
+fi
 
 log_info "Pulling previous immutable images for rollback..."
-prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "$APP_SHA"
-docker compose pull gateway api windows-offline-installer-provision spa
+if ! prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "$APP_SHA"; then
+  log_error "Unable to restore OpenPath Firefox assets for production rollback"
+  exit 1
+fi
+if ! docker compose pull gateway api windows-offline-installer-provision spa; then
+  log_error "Unable to pull previous production rollback images"
+  exit 1
+fi
 log_info "Recreating containers from previous release state..."
-docker compose up -d --force-recreate --no-build
+if ! docker compose up -d --force-recreate --no-build; then
+  log_error "Unable to recreate the previous production release"
+  exit 1
+fi
 
-deployment_state_activate_previous_release
+if ! rollback_wait_for_health_and_readiness \
+  "${PRODUCTION_ROLLBACK_PUBLIC_URL:-http://localhost:3001}" \
+  "${PRODUCTION_ROLLBACK_READINESS_ATTEMPTS:-12}" \
+  "${PRODUCTION_ROLLBACK_READINESS_DELAY_SECONDS:-5}" \
+  "${PRODUCTION_ROLLBACK_CURL_TIMEOUT_SECONDS:-10}"; then
+  log_error "Rollback health/readiness contract failed"
+  docker logs classroompath-gateway --tail 50 || true
+  exit 1
+fi
 
-for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-  if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1 &&
-    curl -sf http://localhost:3001/cp/ready > /dev/null 2>&1; then
-    log_success "Rollback health and readiness checks passed"
-    exit 0
-  fi
+if ! deployment_state_activate_previous_release; then
+  log_error "Rollback passed health/readiness, but the previous release state could not be activated"
+  exit 1
+fi
 
-  log_warn "Rollback health check attempt $i failed, retrying..."
-  sleep 5
-done
-
-log_error "Rollback health check failed"
-docker logs classroompath-gateway --tail 50
-exit 1
+log_success "Rollback health and readiness checks passed"
+exit 0

@@ -78,6 +78,26 @@ function parseVolumeNames(stdout) {
 }
 
 /**
+ * Docker's volume-inspect missing-object response is stable and explicit:
+ * `Error response from daemon: get <name>: no such volume`. Do not collapse
+ * daemon, socket, or permission failures into an idempotent absent result.
+ * @param {DockerCommandResult} result
+ * @param {string} expectedName
+ * @returns {boolean}
+ */
+function isMissingVolumeInspection(result, expectedName) {
+  if (result.status === 0) {
+    return false;
+  }
+
+  const escapedName = expectedName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return new RegExp(
+    `Error response from daemon:\\s*get\\s+${escapedName}:\\s*no such volume(?:\\r?\\n|$)`,
+    'iu'
+  ).test(result.stderr);
+}
+
+/**
  * @param {string} stdout
  * @param {string} expectedName
  * @param {string} expectedProjectName
@@ -183,7 +203,10 @@ export async function retireLegacyWindowsOfflineInstallerStorage({
     if (candidateNames.length > 0) {
       throw new Error('legacy installer volume disappeared during identity verification');
     }
-    return { status: 'absent', volumeName: legacyVolumeName };
+    if (isMissingVolumeInspection(inspected, legacyVolumeName)) {
+      return { status: 'absent', volumeName: legacyVolumeName };
+    }
+    throw new Error('Docker volume inspect failed while resolving the legacy installer volume');
   }
 
   if (candidateNames.length !== 1 || candidateNames[0] !== legacyVolumeName) {

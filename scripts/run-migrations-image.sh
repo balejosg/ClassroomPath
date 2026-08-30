@@ -65,10 +65,6 @@ if [ "$CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT" = "1" ] && [ "$RUN_C
   exit 1
 fi
 
-if [ "$CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT" = "1" ]; then
-  export CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1
-fi
-
 cd /app
 eval "$(node scripts/derive-openpath-db-env.mjs)"
 
@@ -76,7 +72,11 @@ if [ "$RUN_CP" = "1" ]; then
   echo "[MIGRATIONS] - ClassroomPath API schema..."
   node --import tsx api/scripts/cleanup-cp-schema.ts
   node --import tsx api/scripts/baseline-cp-migrations.ts
-  npm run db:migrate -w @classroompath/api
+  if [ "$CONFIRM_WINDOWS_OFFLINE_INSTALLER_LEGACY_RETIREMENT" = "1" ]; then
+    npm run db:migrate -w @classroompath/api -- --confirm-windows-offline-installer-legacy-retirement
+  else
+    npm run db:migrate -w @classroompath/api
+  fi
 fi
 
 if [ "$RUN_OPENPATH" = "1" ]; then

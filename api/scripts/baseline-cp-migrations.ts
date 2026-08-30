@@ -14,6 +14,8 @@ export type MigrationLedgerEntry = {
 export type SchemaMarkers = Record<string, string[]>;
 
 export const LEGACY_WINDOWS_OFFLINE_RETIREMENT_TAG = '0011_retire_windows_offline_installer_refs';
+export const LEGACY_WINDOWS_OFFLINE_RETIREMENT_FLAG =
+  '--confirm-windows-offline-installer-legacy-retirement';
 export const LEGACY_WINDOWS_OFFLINE_RETIREMENT_CONFIRMATION_ENV =
   'CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED';
 
@@ -71,10 +73,8 @@ export function readMigrationLedgerEntries(
   });
 }
 
-export function shouldApplyLegacyWindowsOfflineRetirement(
-  env: Record<string, string | undefined> = process.env
-): boolean {
-  return env[LEGACY_WINDOWS_OFFLINE_RETIREMENT_CONFIRMATION_ENV] === '1';
+export function shouldApplyLegacyWindowsOfflineRetirement(args: readonly string[] = []): boolean {
+  return args.includes(LEGACY_WINDOWS_OFFLINE_RETIREMENT_FLAG);
 }
 
 export function readMigrationLedgerEntriesForBaseline(

@@ -7,6 +7,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 
 import { closeConnection, db } from '../src/db/index.js';
 import {
+  LEGACY_WINDOWS_OFFLINE_RETIREMENT_FLAG,
   LEGACY_WINDOWS_OFFLINE_RETIREMENT_TAG,
   shouldApplyLegacyWindowsOfflineRetirement,
 } from './baseline-cp-migrations.js';
@@ -31,9 +32,19 @@ function createMigrationFolderWithoutDeferredRetirement(): string {
 }
 
 export function resolveClassroomPathMigrationsFolder(
-  env: Record<string, string | undefined> = process.env
+  // Kept as an explicit parameter for callers that already pass runtime env;
+  // destructive authorization intentionally never reads it.
+  _env: Record<string, string | undefined> = process.env,
+  args: readonly string[] = []
 ): { folder: string; temporary: boolean } {
-  if (shouldApplyLegacyWindowsOfflineRetirement(env)) {
+  const unknownArguments = args.filter(
+    (argument) => argument !== LEGACY_WINDOWS_OFFLINE_RETIREMENT_FLAG
+  );
+  if (unknownArguments.length > 0) {
+    throw new Error(`Unknown ClassroomPath migration argument: ${unknownArguments.join(', ')}`);
+  }
+
+  if (shouldApplyLegacyWindowsOfflineRetirement(args)) {
     return { folder: sourceMigrationsDir, temporary: false };
   }
 
@@ -44,9 +55,10 @@ export function resolveClassroomPathMigrationsFolder(
 }
 
 export async function migrateClassroomPath(
-  env: Record<string, string | undefined> = process.env
+  env: Record<string, string | undefined> = process.env,
+  args: readonly string[] = []
 ): Promise<void> {
-  const migrationFolder = resolveClassroomPathMigrationsFolder(env);
+  const migrationFolder = resolveClassroomPathMigrationsFolder(env, args);
 
   try {
     if (migrationFolder.temporary) {
@@ -64,5 +76,5 @@ export async function migrateClassroomPath(
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  await migrateClassroomPath();
+  await migrateClassroomPath(process.env, process.argv.slice(2));
 }

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -81,10 +81,19 @@ describe('Deployment foundation contracts', () => {
       ['run-migrations.sh', hostContent],
     ] as const) {
       assert.ok(content.includes(repairStep), `${scriptName} should clean the schema`);
-      assert.ok(
-        content.indexOf(repairStep) < content.indexOf(migrateStep),
-        `${scriptName} should clean the schema before db:migrate`
-      );
+      if (scriptName === 'run-migrations-docker.sh') {
+        assert.ok(
+          content.includes(
+            `${repairStep} && node --import tsx api/scripts/baseline-cp-migrations.ts && $migration_command`
+          ),
+          `${scriptName} should clean the schema before db:migrate`
+        );
+      } else {
+        assert.ok(
+          content.indexOf(repairStep) < content.indexOf(migrateStep),
+          `${scriptName} should clean the schema before db:migrate`
+        );
+      }
     }
     assert.ok(
       dockerContent.includes('--confirm-windows-offline-installer-legacy-retirement'),
@@ -105,22 +114,91 @@ describe('Deployment foundation contracts', () => {
     assert.ok(
       hostContent.includes(`unset ${confirmationEnv}`) &&
         hostContent.includes(confirmationFlag) &&
-        hostContent.includes(`export ${confirmationEnv}=1`),
-      'host migrations must discard a persisted DB confirmation and restore it only for the explicit CLI flag'
+        hostContent.includes('MIGRATION_CLI_ARGS') &&
+        !hostContent.includes(`export ${confirmationEnv}=1`),
+      'host migrations must discard persisted confirmation and pass only the explicit CLI flag'
     );
     assert.ok(
       dockerContent.includes('migration_confirmation_env_args=') &&
         dockerContent.includes(`"${confirmationEnv}=0"`) &&
-        dockerContent.includes(`"${confirmationEnv}=1"`) &&
+        !dockerContent.includes(`"${confirmationEnv}=1"`) &&
+        dockerContent.includes('migration_command+=') &&
         dockerContent.includes('"${migration_confirmation_env_args[@]}"'),
-      'Docker migrations must override a persisted DB confirmation and pass 1 only for the explicit CLI flag'
+      'Docker migrations must neutralize persisted confirmation and pass only the explicit CLI flag'
     );
     assert.ok(
       imageContent.includes(`unset ${confirmationEnv}`) &&
         imageContent.includes(confirmationFlag) &&
-        imageContent.includes(`export ${confirmationEnv}=1`),
+        !imageContent.includes(`export ${confirmationEnv}=1`),
       'the prebuilt migration image must not authorize 0011 from inherited environment state'
     );
+  });
+
+  test('Docker migration wrapper reaches the real entrypoint with invocation-scoped confirmation', () => {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'classroompath-migration-wrapper-'));
+    const fakeDockerPath = resolve(tempDir, 'docker');
+    const envFilePath = resolve(tempDir, '.env');
+    const callsPath = resolve(tempDir, 'docker-calls.log');
+    const baseEnv = {
+      ...process.env,
+      PATH: `${tempDir}:${process.env.PATH ?? ''}`,
+      FAKE_DOCKER_CALLS: callsPath,
+      CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED: '1',
+    };
+
+    writeFileSync(envFilePath, 'CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1\n');
+    writeFileSync(
+      fakeDockerPath,
+      '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$FAKE_DOCKER_CALLS"\nexit 0\n'
+    );
+    chmodSync(fakeDockerPath, 0o755);
+
+    try {
+      for (const usePrebuiltRunner of [false, true]) {
+        for (const confirmationArgs of [
+          [],
+          ['--confirm-windows-offline-installer-legacy-retirement'],
+        ]) {
+          writeFileSync(callsPath, '');
+          const runnerArgs = usePrebuiltRunner
+            ? ['--runner-image', 'classroompath-migrations:test']
+            : [];
+          const result = spawnSync(
+            'bash',
+            [
+              migrationsScriptPath,
+              '--cp',
+              '--app-dir',
+              tempDir,
+              '--env-file',
+              envFilePath,
+              ...runnerArgs,
+              ...confirmationArgs,
+            ],
+            { cwd: projectRoot, encoding: 'utf-8', env: baseEnv }
+          );
+
+          assert.equal(result.status, 0, result.stderr);
+          const dockerCalls = readFileSync(callsPath, 'utf-8');
+          assert.match(dockerCalls, /CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=0/u);
+          if (confirmationArgs.length > 0) {
+            assert.match(
+              dockerCalls,
+              /--confirm-windows-offline-installer-legacy-retirement/u,
+              'the explicit CLI flag must reach the migration entrypoint'
+            );
+          } else {
+            assert.doesNotMatch(
+              dockerCalls,
+              /--confirm-windows-offline-installer-legacy-retirement/u,
+              'a normal migration run must not reach the entrypoint with destructive authorization'
+            );
+          }
+        }
+      }
+    } finally {
+      rmSync(tempDir, { force: true, recursive: true });
+    }
   });
 
   test('staging deploy validates the gateway runtime contract before migrations', () => {

@@ -41,10 +41,20 @@ The helper also requires the effective Compose project name. It never guesses a
 project from a volume name and never uses a name-only prefix match.
 
 The DB migration confirmation and the physical storage confirmation are separate
-authorizations. The migration environment variable
-`CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1` is scoped to the
-deferred DB migration only; it never authorizes this helper and must not be used
-as a persistent runtime setting.
+authorizations. Both are invocation-scoped CLI confirmations. A persisted
+`CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1` environment value
+never authorizes either destructive operation.
+
+Apply the deferred DB migration only after the drain evidence is complete:
+
+```sh
+npm run db:migrate -w @classroompath/api -- \
+  --confirm-windows-offline-installer-legacy-retirement
+```
+
+The standard migration wrappers propagate that CLI flag to the ClassroomPath
+migration entrypoint; without it, migration `0011` remains excluded even if a
+stale environment file contains the old variable.
 
 ## Explicit command
 
@@ -58,9 +68,9 @@ COMPOSE_PROJECT_NAME=<effective-project-name> \
   --confirm-windows-offline-installer-legacy-retirement
 ```
 
-The command fails closed unless the confirmation flag is present in that exact
-invocation. The DB migration environment variable is ignored by this storage
-helper, even when it is set to `1`. It first looks up the exact old Compose
+The command fails closed unless the storage confirmation flag is present in that
+exact invocation. The DB migration environment variable is ignored by this
+storage helper, even when it is set to `1`. It first looks up the exact old Compose
 volume using both labels:
 
 ```text

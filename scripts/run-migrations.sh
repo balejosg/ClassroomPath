@@ -40,11 +40,11 @@ fi
 
 cd "$PROJECT_ROOT"
 
+MIGRATION_CLI_ARGS=()
 for migration_arg in "$@"; do
   case "$migration_arg" in
     --confirm-windows-offline-installer-legacy-retirement)
-      # Re-enable the guard only for this explicit CLI invocation.
-      export CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1
+      MIGRATION_CLI_ARGS+=("$migration_arg")
       ;;
     *)
       die "Unknown migration argument: $migration_arg" 2
@@ -64,6 +64,10 @@ log_info "Reconciling ClassroomPath migration ledger..."
 node --import tsx api/scripts/baseline-cp-migrations.ts
 
 log_info "Running versioned migrations..."
-npm run db:migrate -w @classroompath/api
+if [ "${#MIGRATION_CLI_ARGS[@]}" -gt 0 ]; then
+  npm run db:migrate -w @classroompath/api -- "${MIGRATION_CLI_ARGS[@]}"
+else
+  npm run db:migrate -w @classroompath/api
+fi
 
 log_success "Migrations completed successfully."

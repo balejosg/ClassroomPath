@@ -33,7 +33,8 @@ Dockerized stack.
 - `JWT_SECRET`: JWT signing secret
 - `JWT_ACCESS_EXPIRY`: access token lifetime; ClassroomPath defaults to `24h`
 - `JWT_REFRESH_EXPIRY`: refresh token lifetime; ClassroomPath defaults to `30d` for installed app sessions
-- `CORS_ORIGINS`: comma-separated browser origins; deployed environments must include the `PUBLIC_URL` origin
+- `CORS_ORIGINS`: comma-separated bare `http(s)` browser origins (no path, credentials, query,
+  fragment, or backslash); deployed environments must include the `PUBLIC_URL` origin
 
 Staging uses the HTTPS public origin from `config/deploy-targets.json`
 (`https://staging.classroompath.example.invalid`). Production remains HTTPS-only. Hosted verifiers reach
@@ -152,9 +153,11 @@ authorization header.
 The forward migration that retires the historical ClassroomPath download-ref
 table is intentionally deferred by normal migration runs. Apply it only after
 the deployed canonical path and legacy drain are evidenced, using the explicit
-`--confirm-windows-offline-installer-legacy-retirement` migration command; this
-confirmation is not a runtime feature switch. The old personalized-artifact
-volume is retired separately through the manual one-shot
+invocation-scoped command
+`npm run db:migrate -w @classroompath/api -- --confirm-windows-offline-installer-legacy-retirement`;
+this confirmation is not a runtime feature switch. A persisted
+`CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED=1` never authorizes
+the migration. The old personalized-artifact volume is retired separately through the manual one-shot
 `ops:retire-windows-offline-installer-legacy-storage` command documented in
 [`docs/runbooks/windows-offline-installer-legacy-retirement.md`](../runbooks/windows-offline-installer-legacy-retirement.md).
 That helper requires the same-looking confirmation as a CLI flag in its own

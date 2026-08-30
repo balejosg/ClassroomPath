@@ -28,6 +28,8 @@ void describe('runtime config', () => {
       'https://classroompath.test?',
       'https://classroompath.test#fragment',
       'https://classroompath.test#',
+      ' https://classroompath.test',
+      'https://classroompath.test ',
     ]) {
       assert.throws(
         () => resolvePublicUrl({ NODE_ENV: 'production', PUBLIC_URL: publicUrl }),

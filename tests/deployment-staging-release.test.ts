@@ -1,7 +1,15 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,6 +74,289 @@ describe('Deployment staging and promotion contracts', () => {
     projectRoot,
     'scripts/lib/deploy-production-runtime.sh'
   );
+  const stagingRollbackHelperPath = resolve(projectRoot, 'scripts/lib/staging-rollback.sh');
+  const rollbackReadinessHelperPath = resolve(projectRoot, 'scripts/lib/rollback-readiness.sh');
+
+  function runRollbackReadinessHarness({
+    healthHttpStatus = 200,
+    readyHttpStatus = 200,
+    healthCurlStatus = 0,
+    readyCurlStatus = 0,
+    readyResponse = '{"ready":true}',
+  }: {
+    healthHttpStatus?: number;
+    readyHttpStatus?: number;
+    healthCurlStatus?: number;
+    readyCurlStatus?: number;
+    readyResponse?: string;
+  }) {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'classroompath-rollback-readiness-'));
+
+    try {
+      return spawnSync(
+        'bash',
+        [
+          '-c',
+          String.raw`set -u
+source "$1"
+HEALTH_HTTP_STATUS="$2"
+READY_HTTP_STATUS="$3"
+HEALTH_CURL_STATUS="$4"
+READY_CURL_STATUS="$5"
+READY_RESPONSE="$6"
+ROLLBACK_STATE=inactive
+log_error() { :; }
+sleep() { :; }
+curl() {
+  local output_file=""
+  local url=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -o)
+        output_file="$2"
+        shift 2
+        ;;
+      -w)
+        shift 2
+        ;;
+      *)
+        url="$1"
+        shift
+        ;;
+    esac
+  done
+  if [[ "$url" == *"/cp/health"* ]]; then
+    if [ "$HEALTH_CURL_STATUS" -ne 0 ]; then
+      return "$HEALTH_CURL_STATUS"
+    fi
+    printf '%s' "$HEALTH_HTTP_STATUS"
+    return 0
+  fi
+  if [[ "$url" == *"/cp/ready"* ]]; then
+    if [ "$READY_CURL_STATUS" -ne 0 ]; then
+      return "$READY_CURL_STATUS"
+    fi
+    printf '%s' "$READY_RESPONSE" >"$output_file"
+    printf '%s' "$READY_HTTP_STATUS"
+    return 0
+  fi
+  return 1
+}
+if rollback_wait_for_health_and_readiness http://localhost:3001 1 0; then
+  ROLLBACK_STATE=active
+fi
+printf 'state=%s\n' "$ROLLBACK_STATE"
+`,
+          'rollback-readiness-test',
+          rollbackReadinessHelperPath,
+          String(healthHttpStatus),
+          String(readyHttpStatus),
+          String(healthCurlStatus),
+          String(readyCurlStatus),
+          readyResponse,
+        ],
+        { cwd: projectRoot, encoding: 'utf-8' }
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  function runRollbackHarness(mode: string) {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'classroompath-staging-rollback-'));
+    const previousStatePath = resolve(tempDir, 'state/previous-images.env');
+    const imageSource = mode.startsWith('release-') ? 'release-candidate' : 'source-build';
+
+    mkdirSync(resolve(tempDir, 'state'), { recursive: true });
+    writeFileSync(
+      previousStatePath,
+      [
+        'APP_SHA=previous-sha',
+        `IMAGE_SOURCE=${imageSource}`,
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION=4.1.0',
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT=template-commit',
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG=scripts-v4.1.0',
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        'CLASSROOMPATH_GATEWAY_IMAGE=gateway:previous',
+        'CLASSROOMPATH_MIGRATIONS_IMAGE=migrations:previous',
+        'OPENPATH_API_IMAGE=openpath-api:previous',
+        'CLASSROOMPATH_SPA_IMAGE=spa:previous',
+        '',
+      ].join('\n')
+    );
+
+    try {
+      return spawnSync(
+        'bash',
+        [
+          '-c',
+          String.raw`set -uo pipefail
+source "$1"
+APP_DIR="$2/app"
+STATE_DIR="$2/state"
+PREVIOUS_STATE_FILE="$2/state/previous-images.env"
+CURRENT_STATE_FILE="$2/state/current-images.env"
+DEPLOY_CONTEXT_FILE="$2/state/deploy-context.env"
+CALLS_FILE="$2/docker-calls.log"
+ROLLBACK_MODE="$3"
+mkdir -p "$APP_DIR/docker" "$STATE_DIR"
+ROLLBACK_RESULT=not_attempted
+ROLLBACK_ATTEMPTED=0
+STAGING_ROLLBACK_READINESS_ATTEMPTS=1
+STAGING_ROLLBACK_READINESS_DELAY_SECONDS=0
+write_deploy_context() { :; }
+require_windows_offline_installer_runtime_pin() { return 0; }
+upsert_env_file_var() { return 0; }
+remove_env_file_var() { return 0; }
+compose_up_force_recreate_no_build() { docker compose up -d --force-recreate --no-build; }
+git() {
+  printf 'git %s\n' "$*" >>"$CALLS_FILE"
+  if [ "$ROLLBACK_MODE" = git ] && [ "$1" = checkout ]; then
+    return 1
+  fi
+  return 0
+}
+docker() {
+  printf 'docker %s\n' "$*" >>"$CALLS_FILE"
+  if [ "$1" = compose ]; then
+    case "$2" in
+      pull) [ "$ROLLBACK_MODE" = release-pull ] && return 1 ;;
+      build) [ "$ROLLBACK_MODE" = build ] && return 1 ;;
+      up) [ "$ROLLBACK_MODE" = release-up ] || [ "$ROLLBACK_MODE" = up ] && return 1 ;;
+    esac
+  fi
+  return 0
+}
+curl() {
+  local output_file=""
+  local url=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -o)
+        output_file="$2"
+        shift 2
+        ;;
+      -w)
+        shift 2
+        ;;
+      *)
+        url="$1"
+        shift
+        ;;
+    esac
+  done
+  if [[ "$url" == *"/cp/ready"* ]]; then
+    if [ "$ROLLBACK_MODE" = ready ]; then
+      printf '%s\n' '{"ready":false}' >"$output_file"
+    else
+      printf '%s\n' '{"ready":true}' >"$output_file"
+    fi
+  fi
+  printf '200'
+  return 0
+}
+sleep() { :; }
+restore_previous_release_state
+status=$?
+if [ -f "$CURRENT_STATE_FILE" ]; then
+  current=present
+else
+  current=absent
+fi
+printf 'status=%s result=%s current=%s\n' "$status" "$ROLLBACK_RESULT" "$current"
+`,
+          'staging-rollback-test',
+          stagingRollbackHelperPath,
+          tempDir,
+          mode,
+        ],
+        { cwd: projectRoot, encoding: 'utf-8' }
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  test('staging rollback fails closed on compose pull/build/up failures', () => {
+    for (const mode of ['release-pull', 'release-up', 'build', 'up']) {
+      const result = runRollbackHarness(mode);
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /status=1 result=(?:failed|not_attempted) current=absent/u, mode);
+      assert.doesNotMatch(result.stdout, /result=success/u, mode);
+    }
+  });
+
+  test('staging rollback requires both health and readiness before success', () => {
+    const result = runRollbackHarness('ready');
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /status=1 result=(?:failed|not_attempted) current=absent/u);
+    assert.doesNotMatch(result.stdout, /result=success/u);
+  });
+
+  test('staging rollback activates the previous state after valid health and readiness', () => {
+    const result = runRollbackHarness('success');
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /status=0 result=success current=present\n/u);
+  });
+
+  test('shared rollback readiness gate activates only after valid health and ready:true JSON', () => {
+    for (const scenario of [
+      { name: 'valid readiness', expectedState: 'active', readyResponse: '{"ready":true}' },
+      { name: 'ready false', expectedState: 'inactive', readyResponse: '{"ready":false}' },
+      { name: 'invalid JSON', expectedState: 'inactive', readyResponse: 'not-json' },
+      {
+        name: 'JSON-looking trailing garbage',
+        expectedState: 'inactive',
+        readyResponse: '{"ready":true} trailing',
+      },
+      {
+        name: 'string ready value',
+        expectedState: 'inactive',
+        readyResponse: '{"ready":"true"}',
+      },
+    ]) {
+      const result = runRollbackReadinessHarness({ readyResponse: scenario.readyResponse });
+      assert.equal(result.status, 0, `${scenario.name}: ${result.stderr}`);
+      assert.match(
+        result.stdout,
+        new RegExp(`state=${scenario.expectedState}\\n`, 'u'),
+        scenario.name
+      );
+    }
+
+    for (const scenario of [
+      { name: 'health HTTP failure', healthHttpStatus: 503 },
+      { name: 'readiness HTTP failure', readyHttpStatus: 503 },
+      { name: 'health curl failure', healthCurlStatus: 22 },
+      { name: 'readiness curl failure', readyCurlStatus: 22 },
+    ]) {
+      const result = runRollbackReadinessHarness(scenario);
+      assert.equal(result.status, 0, `${scenario.name}: ${result.stderr}`);
+      assert.match(result.stdout, /state=inactive\n/u, scenario.name);
+    }
+  });
+
+  test('staging and production rollback consume the same readiness gate before activation', () => {
+    const stagingContent = readFileSync(stagingRollbackHelperPath, 'utf-8');
+    const productionContent = readFileSync(
+      resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
+      'utf-8'
+    );
+    const readinessContent = readFileSync(rollbackReadinessHelperPath, 'utf-8');
+
+    assert.ok(readinessContent.includes('JSON.parse'));
+    assert.ok(readinessContent.includes('parsed.ready === true'));
+    assert.ok(stagingContent.includes('rollback_wait_for_health_and_readiness'));
+    assert.ok(productionContent.includes('rollback_wait_for_health_and_readiness'));
+    assert.ok(
+      productionContent.indexOf('rollback_wait_for_health_and_readiness') <
+        productionContent.indexOf('deployment_state_activate_previous_release'),
+      'production must activate the state only after the shared readiness gate'
+    );
+  });
 
   test('staging deploy requires a successful release-candidate manifest for origin main', () => {
     const localContent = readFileSync(stagingDeployScriptPath, 'utf-8');
@@ -514,19 +805,52 @@ warn_if_other_release_candidate_run_in_progress target-sha
         rollbackRemoteScript.includes(
           'docker compose pull gateway api windows-offline-installer-provision spa'
         ) &&
-        rollbackRemoteScript.includes('http://localhost:3001/cp/ready')
+        rollbackRemoteScript.includes('lib/rollback-readiness.sh') &&
+        rollbackRemoteScript.includes('rollback_wait_for_health_and_readiness')
     );
     assert.ok(!rollbackRemoteScript.includes('upsert_env_file_var() {'));
   });
 
+  test('production rollback activates the previous state only after health and readiness pass', () => {
+    const rollbackRemoteScript = readFileSync(
+      resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
+      'utf-8'
+    );
+    const activationIndex = rollbackRemoteScript.indexOf(
+      'deployment_state_activate_previous_release'
+    );
+    const readinessGateIndex = rollbackRemoteScript.indexOf(
+      'if ! rollback_wait_for_health_and_readiness'
+    );
+    const readinessSuccessIndex = rollbackRemoteScript.indexOf(
+      'log_success "Rollback health and readiness checks passed"'
+    );
+
+    assert.ok(activationIndex >= 0, 'production rollback must activate a verified state');
+    assert.ok(readinessGateIndex >= 0, 'production rollback must verify readiness');
+    assert.ok(readinessSuccessIndex >= 0, 'production rollback must verify health and readiness');
+    assert.ok(
+      readinessGateIndex < activationIndex && activationIndex < readinessSuccessIndex,
+      'a failed readiness check must not activate the previous release state'
+    );
+  });
+
   test('staging rollback restores the canonical OpenPath installer contract for release candidates and source builds', () => {
     const stagingRuntime = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
-    const restoreStart = stagingRuntime.indexOf('restore_previous_release_state()');
-    const restoreEnd = stagingRuntime.indexOf('fail_after_migrations()', restoreStart);
-    const restoreSection = stagingRuntime.slice(restoreStart, restoreEnd);
+    const rollbackHelper = readFileSync(stagingRollbackHelperPath, 'utf-8');
 
-    assert.ok(restoreStart >= 0 && restoreEnd > restoreStart);
-    assert.ok(restoreSection.includes('require_windows_offline_installer_runtime_pin'));
+    assert.ok(
+      stagingRuntime.includes('load_staging_rollback_helper') &&
+        stagingRuntime.includes('source "$STAGING_ROLLBACK_HELPER_PATH"') &&
+        rollbackHelper.includes('restore_previous_release_state()')
+    );
+    assert.ok(
+      rollbackHelper.includes('source "$STAGING_ROLLBACK_READINESS_HELPER_PATH"') &&
+        readFileSync(rollbackReadinessHelperPath, 'utf-8').includes(
+          'rollback_wait_for_health_and_readiness'
+        )
+    );
+    assert.ok(rollbackHelper.includes('require_windows_offline_installer_runtime_pin'));
     for (const field of [
       'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION',
       'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT',
@@ -534,13 +858,18 @@ warn_if_other_release_candidate_run_in_progress target-sha
       'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256',
     ]) {
       assert.ok(
-        restoreSection.includes(`upsert_env_file_var "$APP_DIR/config/.env" ${field}`),
+        rollbackHelper.includes(`upsert_env_file_var "$app_dir/config/.env" ${field}`),
         `staging rollback must restore ${field} before rebuilding or starting the previous release`
       );
     }
     assert.ok(
-      restoreSection.includes('windows-offline-installer-provision'),
+      rollbackHelper.includes('windows-offline-installer-provision'),
       'staging release-candidate rollback must restore the OpenPath provisioner service'
+    );
+    assert.ok(
+      rollbackHelper.includes('staging_rollback_wait_for_health_and_readiness') &&
+        rollbackHelper.includes('ROLLBACK_RESULT="success"'),
+      'rollback success must be gated by both health and readiness'
     );
   });
 
