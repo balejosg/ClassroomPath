@@ -125,9 +125,24 @@ refresh_rollback_checked_out_helpers() {
 DEPLOY_DIR="$CLASSROOMPATH_DEPLOY_ROOT"
 STATE_DIR="$DEPLOY_DIR/release-state"
 deployment_state_init_paths "$STATE_DIR"
+
+if ! release_state_require_snapshot_fields "$DEPLOYMENT_STATE_PREVIOUS_FILE" current-runtime; then
+  log_error "Previous production release snapshot is incompatible with the current runtime contract"
+  exit 1
+fi
+
+PREVIOUS_IMAGE_SOURCE="$(release_state_snapshot_value "$DEPLOYMENT_STATE_PREVIOUS_FILE" IMAGE_SOURCE)" || {
+  log_error "Previous production release snapshot does not declare IMAGE_SOURCE"
+  exit 1
+}
+if [ "$PREVIOUS_IMAGE_SOURCE" != "release-candidate" ]; then
+  log_error "Production rollback supports only release-candidate snapshots (IMAGE_SOURCE=$PREVIOUS_IMAGE_SOURCE)"
+  exit 1
+fi
+
 deployment_state_load_previous_release
 
-if [ -z "${APP_SHA:-}" ] || [ -z "${IMAGE_SOURCE:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}" ]; then
+if [ -z "${APP_SHA:-}" ] || [ -z "${IMAGE_SOURCE:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ] || [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}" ]; then
   log_error "Previous release metadata is incomplete for the canonical OpenPath installer lifecycle"
   exit 1
 fi
@@ -139,10 +154,8 @@ case "$IMAGE_SOURCE" in
       exit 1
     fi
     ;;
-  source-build)
-    ;;
   *)
-    log_error "Previous release image source is not rollback-compatible: $IMAGE_SOURCE"
+    log_error "Production rollback supports only release-candidate snapshots (IMAGE_SOURCE=$IMAGE_SOURCE)"
     exit 1
     ;;
 esac
@@ -150,6 +163,7 @@ esac
 # Evaluate this before checkout or Docker mutation. An old ClassroomPath
 # release without the canonical OpenPath installer pins is not eligible for
 # automatic rollback, including after legacy DB/storage retirement.
+require_openpath_linux_agent_runtime_pin || exit 1
 require_windows_offline_installer_runtime_pin || exit 1
 
 ROLLBACK_RELEASE_APP_SHA="$APP_SHA"
@@ -218,6 +232,10 @@ if ! upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VER
 fi
 if ! upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"; then
   log_error "Unable to restore OPENPATH_LINUX_AGENT_VERSION for production rollback"
+  exit 1
+fi
+if ! upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"; then
+  log_error "Unable to restore OPENPATH_LINUX_AGENT_APT_SUITE for production rollback"
   exit 1
 fi
 if ! upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}"; then

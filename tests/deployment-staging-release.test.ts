@@ -76,6 +76,10 @@ describe('Deployment staging and promotion contracts', () => {
   );
   const stagingRollbackHelperPath = resolve(projectRoot, 'scripts/lib/staging-rollback.sh');
   const rollbackReadinessHelperPath = resolve(projectRoot, 'scripts/lib/rollback-readiness.sh');
+  const productionRollbackScriptPath = resolve(
+    projectRoot,
+    'scripts/rollback-production-remote.sh'
+  );
 
   function runRollbackReadinessHarness({
     healthHttpStatus = 200,
@@ -173,6 +177,10 @@ printf 'state=%s\n' "$ROLLBACK_STATE"
       [
         'APP_SHA=previous-sha',
         `IMAGE_SOURCE=${imageSource}`,
+        'OPENPATH_FIREFOX_ASSETS_IMAGE=firefox-assets:previous',
+        'OPENPATH_VERSION=4.1.0',
+        'OPENPATH_LINUX_AGENT_VERSION=4.1.0',
+        'OPENPATH_LINUX_AGENT_APT_SUITE=stable',
         'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION=4.1.0',
         'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT=template-commit',
         'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG=scripts-v4.1.0',
@@ -191,6 +199,8 @@ printf 'state=%s\n' "$ROLLBACK_STATE"
         [
           '-c',
           String.raw`set -uo pipefail
+source "$4"
+source "$5"
 source "$1"
 APP_DIR="$2/app"
 STATE_DIR="$2/state"
@@ -269,6 +279,8 @@ printf 'status=%s result=%s current=%s\n' "$status" "$ROLLBACK_RESULT" "$current
           stagingRollbackHelperPath,
           tempDir,
           mode,
+          resolve(projectRoot, 'scripts/lib/release-state.sh'),
+          resolve(projectRoot, 'scripts/lib/release-runtime.sh'),
         ],
         { cwd: projectRoot, encoding: 'utf-8' }
       );
@@ -276,6 +288,251 @@ printf 'status=%s result=%s current=%s\n' "$status" "$ROLLBACK_RESULT" "$current
       rmSync(tempDir, { recursive: true, force: true });
     }
   }
+
+  function runProductionRollbackPreflightHarness({
+    imageSource,
+    includeAptSuite,
+    staleAptSuite = 'unstable',
+  }: {
+    imageSource: 'release-candidate' | 'source-build';
+    includeAptSuite: boolean;
+    staleAptSuite?: string;
+  }) {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'classroompath-production-rollback-'));
+    const appDir = resolve(tempDir, 'app');
+    const stateDir = resolve(tempDir, 'release-state');
+    const envPath = resolve(appDir, 'config/.env');
+    const callsPath = resolve(tempDir, 'mutations.log');
+    const previousStatePath = resolve(stateDir, 'previous-images.env');
+    const currentStatePath = resolve(stateDir, 'current-images.env');
+    const apiImage = `openpath-api@sha256:${'a'.repeat(64)}`;
+
+    mkdirSync(resolve(appDir, 'config'), { recursive: true });
+    mkdirSync(resolve(appDir, 'docker'), { recursive: true });
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(envPath, 'SENTINEL=unchanged\n', 'utf-8');
+    writeFileSync(
+      previousStatePath,
+      [
+        'APP_SHA=previous-sha',
+        `IMAGE_SOURCE=${imageSource}`,
+        'CLASSROOMPATH_GATEWAY_IMAGE=gateway:previous',
+        'CLASSROOMPATH_MIGRATIONS_IMAGE=migrations:previous',
+        'OPENPATH_FIREFOX_ASSETS_IMAGE=firefox-assets:previous',
+        `OPENPATH_API_IMAGE=${apiImage}`,
+        'OPENPATH_VERSION=4.1.19',
+        'OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+        ...(includeAptSuite ? ['OPENPATH_LINUX_AGENT_APT_SUITE=stable'] : []),
+        'CLASSROOMPATH_SPA_IMAGE=spa:previous',
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION=4.1.0',
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT=template-commit',
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG=scripts-v4.1.0',
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        '',
+      ].join('\n'),
+      'utf-8'
+    );
+
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        String.raw`set -u
+export CLASSROOMPATH_DEPLOY_ROOT="$1"
+export APP_DIR="$1/app"
+export OPENPATH_LINUX_AGENT_APT_SUITE="$2"
+export CALLS_FILE="$1/mutations.log"
+git() { printf 'git %s\n' "$*" >>"$CALLS_FILE"; return 97; }
+docker() { printf 'docker %s\n' "$*" >>"$CALLS_FILE"; return 97; }
+curl() { printf 'curl %s\n' "$*" >>"$CALLS_FILE"; return 97; }
+export -f git docker curl
+bash "$3"
+`,
+        'production-rollback-preflight-test',
+        tempDir,
+        staleAptSuite,
+        productionRollbackScriptPath,
+      ],
+      { cwd: projectRoot, encoding: 'utf-8' }
+    );
+
+    const calls = existsSync(callsPath) ? readFileSync(callsPath, 'utf-8') : '';
+    const envText = readFileSync(envPath, 'utf-8');
+    const currentStateExists = existsSync(currentStatePath);
+    rmSync(tempDir, { recursive: true, force: true });
+
+    return { result, calls, envText, currentStateExists };
+  }
+
+  function runProductionRollbackSuccessHarness() {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'classroompath-production-rollback-success-'));
+    const appDir = resolve(tempDir, 'app');
+    const stateDir = resolve(tempDir, 'release-state');
+    const envPath = resolve(appDir, 'config/.env');
+    const callsPath = resolve(tempDir, 'mutations.log');
+    const previousStatePath = resolve(stateDir, 'previous-images.env');
+    const currentStatePath = resolve(stateDir, 'current-images.env');
+    const apiImage = `openpath-api@sha256:${'a'.repeat(64)}`;
+
+    mkdirSync(resolve(appDir, 'config'), { recursive: true });
+    mkdirSync(resolve(appDir, 'docker'), { recursive: true });
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(
+      envPath,
+      [
+        'OPENPATH_VERSION=stale',
+        'OPENPATH_LINUX_AGENT_VERSION=stale',
+        'OPENPATH_LINUX_AGENT_APT_SUITE=unstable',
+        '',
+      ].join('\n'),
+      'utf-8'
+    );
+    writeFileSync(
+      previousStatePath,
+      [
+        'APP_SHA=previous-sha',
+        'IMAGE_SOURCE=release-candidate',
+        'CLASSROOMPATH_GATEWAY_IMAGE=gateway:previous',
+        'CLASSROOMPATH_MIGRATIONS_IMAGE=migrations:previous',
+        'OPENPATH_FIREFOX_ASSETS_IMAGE=firefox-assets:previous',
+        `OPENPATH_API_IMAGE=${apiImage}`,
+        'OPENPATH_VERSION=4.1.19',
+        'OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+        'OPENPATH_LINUX_AGENT_APT_SUITE=stable',
+        'CLASSROOMPATH_SPA_IMAGE=spa:previous',
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION=4.1.0',
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT=template-commit',
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG=scripts-v4.1.0',
+        'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        '',
+      ].join('\n'),
+      'utf-8'
+    );
+
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        String.raw`set -u
+export CLASSROOMPATH_DEPLOY_ROOT="$1"
+export APP_DIR="$1/app"
+export GHCR_USERNAME=test-user
+export GHCR_TOKEN=test-token
+export OPENPATH_FIREFOX_RELEASE_HOST_ROOT="$1/firefox-release"
+export PRODUCTION_CONTAINER_PLATFORM=linux/amd64
+export PRODUCTION_ROLLBACK_PUBLIC_URL=http://localhost:3001
+export PRODUCTION_ROLLBACK_READINESS_ATTEMPTS=1
+export PRODUCTION_ROLLBACK_READINESS_DELAY_SECONDS=0
+export PRODUCTION_ROLLBACK_CURL_TIMEOUT_SECONDS=1
+export NODE_BIN="$3"
+export CALLS_FILE="$1/mutations.log"
+git() { printf 'git %s\n' "$*" >>"$CALLS_FILE"; return 0; }
+docker() {
+  printf 'docker %s\n' "$*" >>"$CALLS_FILE"
+  case "$1" in
+    create)
+      printf 'fake-container\n'
+      ;;
+    cp)
+      local destination="\${!#}"
+      mkdir -p "$(dirname "$destination")"
+      case "$destination" in
+        *metadata.json) printf '%s\n' '{"version":"4.1.0"}' >"$destination" ;;
+        *openpath-firefox-extension.xpi) printf '%s\n' 'fake-xpi' >"$destination" ;;
+      esac
+      ;;
+  esac
+  return 0
+}
+curl() {
+  local output_file="/dev/null"
+  local url=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -o) output_file="$2"; shift 2 ;;
+      -w|--max-time) shift 2 ;;
+      -fsS) shift ;;
+      *) url="$1"; shift ;;
+    esac
+  done
+  if [[ "$url" == *"/cp/ready"* ]]; then
+    printf '%s\n' '{"ready":true}' >"$output_file"
+    printf '200'
+    return 0
+  fi
+  if [[ "$url" == *"/cp/health"* ]]; then
+    printf '200'
+    return 0
+  fi
+  return 22
+}
+export -f git docker curl
+bash "$2"
+`,
+        'production-rollback-success-test',
+        tempDir,
+        productionRollbackScriptPath,
+        process.execPath,
+      ],
+      { cwd: projectRoot, encoding: 'utf-8' }
+    );
+
+    const calls = existsSync(callsPath) ? readFileSync(callsPath, 'utf-8') : '';
+    const envText = readFileSync(envPath, 'utf-8');
+    const currentState = existsSync(currentStatePath)
+      ? readFileSync(currentStatePath, 'utf-8')
+      : '';
+    rmSync(tempDir, { recursive: true, force: true });
+
+    return { result, calls, envText, currentState };
+  }
+
+  test('production rollback rejects source-build before checkout or Docker mutation', () => {
+    const outcome = runProductionRollbackPreflightHarness({
+      imageSource: 'source-build',
+      includeAptSuite: true,
+    });
+
+    assert.notEqual(outcome.result.status, 0, outcome.result.stdout);
+    assert.match(`${outcome.result.stdout}\n${outcome.result.stderr}`, /source-build/);
+    assert.equal(outcome.calls, '');
+    assert.equal(outcome.envText, 'SENTINEL=unchanged\n');
+    assert.equal(outcome.currentStateExists, false);
+  });
+
+  test('production rollback rejects a release-candidate snapshot without APT suite before stale host state can leak', () => {
+    const outcome = runProductionRollbackPreflightHarness({
+      imageSource: 'release-candidate',
+      includeAptSuite: false,
+      staleAptSuite: 'unstable',
+    });
+
+    assert.notEqual(outcome.result.status, 0, outcome.result.stdout);
+    assert.match(
+      `${outcome.result.stdout}\n${outcome.result.stderr}`,
+      /OPENPATH_LINUX_AGENT_APT_SUITE/
+    );
+    assert.equal(outcome.calls, '');
+    assert.equal(outcome.envText, 'SENTINEL=unchanged\n');
+    assert.equal(outcome.currentStateExists, false);
+  });
+
+  test('production release-candidate rollback restores the Linux agent version and APT suite together', () => {
+    const outcome = runProductionRollbackSuccessHarness();
+
+    assert.equal(outcome.result.status, 0, outcome.result.stderr);
+    assert.match(outcome.calls, /git checkout --detach previous-sha/u);
+    assert.match(
+      outcome.calls,
+      /docker compose pull gateway api windows-offline-installer-provision spa/u
+    );
+    assert.match(outcome.calls, /docker compose up -d --force-recreate --no-build/u);
+    assert.match(outcome.envText, /^OPENPATH_VERSION=4\.1\.19$/mu);
+    assert.match(outcome.envText, /^OPENPATH_LINUX_AGENT_VERSION=4\.1\.19$/mu);
+    assert.match(outcome.envText, /^OPENPATH_LINUX_AGENT_APT_SUITE=stable$/mu);
+    assert.match(outcome.currentState, /^OPENPATH_LINUX_AGENT_APT_SUITE=stable$/mu);
+    assert.doesNotMatch(outcome.envText, /^OPENPATH_LINUX_AGENT_APT_SUITE=unstable$/mu);
+  });
 
   test('staging rollback fails closed on compose pull/build/up failures', () => {
     for (const mode of ['release-pull', 'release-up', 'build', 'up']) {
@@ -782,8 +1039,13 @@ warn_if_other_release_candidate_run_in_progress target-sha
       rollbackRemoteScript.includes('OPENPATH_FIREFOX_ASSETS_IMAGE') &&
         rollbackRemoteScript.includes('release_runtime_helper_supports_runtime_contract') &&
         rollbackRemoteScript.includes('source "$RELEASE_RUNTIME_HELPER_PATH"') &&
+        rollbackRemoteScript.includes('release_state_require_snapshot_fields') &&
+        rollbackRemoteScript.includes('require_openpath_linux_agent_runtime_pin') &&
         rollbackRemoteScript.includes('require_windows_offline_installer_runtime_pin') &&
         rollbackRemoteScript.includes('IMAGE_SOURCE') &&
+        rollbackRemoteScript.includes(
+          'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE'
+        ) &&
         rollbackRemoteScript.includes(
           'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release'
         ) &&
@@ -811,6 +1073,30 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(!rollbackRemoteScript.includes('upsert_env_file_var() {'));
   });
 
+  test('production rollback is release-candidate-only and validates metadata before mutations', () => {
+    const rollbackRemoteScript = readFileSync(
+      resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
+      'utf-8'
+    );
+    const snapshotPreflightIndex = rollbackRemoteScript.indexOf(
+      'release_state_require_snapshot_fields'
+    );
+    const previousLoadIndex = rollbackRemoteScript.indexOf(
+      'deployment_state_load_previous_release'
+    );
+    const checkoutIndex = rollbackRemoteScript.indexOf('git checkout --detach');
+
+    assert.ok(snapshotPreflightIndex >= 0, 'production rollback must validate snapshot keys');
+    assert.ok(previousLoadIndex >= 0, 'production rollback must load the previous state');
+    assert.ok(checkoutIndex >= 0, 'production rollback must retain the checkout step');
+    assert.ok(
+      snapshotPreflightIndex < previousLoadIndex && previousLoadIndex < checkoutIndex,
+      'snapshot and source policy checks must precede loading and checkout'
+    );
+    assert.match(rollbackRemoteScript, /source-build.*not supported|only.*release-candidate/u);
+    assert.doesNotMatch(rollbackRemoteScript, /source-build\)\s*;;/u);
+  });
+
   test('production rollback activates the previous state only after health and readiness pass', () => {
     const rollbackRemoteScript = readFileSync(
       resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
@@ -835,7 +1121,7 @@ warn_if_other_release_candidate_run_in_progress target-sha
     );
   });
 
-  test('staging rollback restores the canonical OpenPath installer contract for release candidates and source builds', () => {
+  test('staging rollback restores the canonical OpenPath installer contract while keeping source-build staging-only', () => {
     const stagingRuntime = readFileSync(stagingDeployRemoteScriptPath, 'utf-8');
     const rollbackHelper = readFileSync(stagingRollbackHelperPath, 'utf-8');
 
@@ -851,7 +1137,10 @@ warn_if_other_release_candidate_run_in_progress target-sha
         )
     );
     assert.ok(rollbackHelper.includes('require_windows_offline_installer_runtime_pin'));
+    assert.ok(rollbackHelper.includes('require_openpath_linux_agent_runtime_pin'));
     for (const field of [
+      'OPENPATH_LINUX_AGENT_VERSION',
+      'OPENPATH_LINUX_AGENT_APT_SUITE',
       'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION',
       'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT',
       'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG',

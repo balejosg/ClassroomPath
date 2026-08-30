@@ -41,6 +41,7 @@ ensure_production_release_candidate_runtime_env() {
     return 1
   fi
 
+  require_openpath_linux_agent_runtime_pin || return 1
   require_windows_offline_installer_runtime_pin || return 1
 
   return 0
@@ -98,6 +99,7 @@ apply_production_runtime_deploy_impl() {
     "$OPENPATH_API_IMAGE" \
     "${OPENPATH_VERSION:-}" \
     "${OPENPATH_LINUX_AGENT_VERSION:-}" \
+    "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" \
     "$CLASSROOMPATH_SPA_IMAGE" \
     "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION" \
     "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT" \

@@ -135,6 +135,7 @@ RESOLVED_OPENPATH_FIREFOX_ASSETS_IMAGE=""
 RESOLVED_OPENPATH_API_IMAGE="classroompath-api:local"
 RESOLVED_OPENPATH_VERSION=""
 RESOLVED_OPENPATH_LINUX_AGENT_VERSION=""
+RESOLVED_OPENPATH_LINUX_AGENT_APT_SUITE=""
 RESOLVED_SPA_IMAGE="classroompath-spa:local"
 PREVIOUS_APP_SHA=""
 # These values are consumed by the sourced release-execution/state helpers.
@@ -179,6 +180,7 @@ write_release_state() {
     "$RESOLVED_OPENPATH_API_IMAGE" \
     "$RESOLVED_OPENPATH_VERSION" \
     "$RESOLVED_OPENPATH_LINUX_AGENT_VERSION" \
+    "$RESOLVED_OPENPATH_LINUX_AGENT_APT_SUITE" \
     "$RESOLVED_SPA_IMAGE" \
     "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}" \
     "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}" \
@@ -298,6 +300,7 @@ deploy_with_release_candidates() {
   RESOLVED_OPENPATH_API_IMAGE="$(resolve_pulled_digest "$OPENPATH_API_IMAGE")"
   RESOLVED_OPENPATH_VERSION="${OPENPATH_VERSION:-}"
   RESOLVED_OPENPATH_LINUX_AGENT_VERSION="${OPENPATH_LINUX_AGENT_VERSION:-}"
+  RESOLVED_OPENPATH_LINUX_AGENT_APT_SUITE="${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
   RESOLVED_SPA_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_SPA_IMAGE")"
   write_release_state
   return 0
@@ -325,6 +328,7 @@ ensure_staging_release_candidate_runtime_env() {
     return 1
   fi
 
+  require_openpath_linux_agent_runtime_pin || return 1
   require_windows_offline_installer_runtime_pin || return 1
 
   return 0
@@ -339,6 +343,7 @@ deploy_from_source() {
   remove_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE
   RESOLVED_OPENPATH_VERSION=""
   RESOLVED_OPENPATH_LINUX_AGENT_VERSION=""
+  RESOLVED_OPENPATH_LINUX_AGENT_APT_SUITE=""
 
   docker compose down --remove-orphans 2>/dev/null || true
   docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true

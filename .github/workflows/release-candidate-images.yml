@@ -110,11 +110,12 @@ jobs:
         run: |
           set -euo pipefail
           # The Windows template is published by OpenPath's installation-scripts
-          # release and is versioned by the checked-out OpenPath VERSION file.
+          # release and is versioned by VERSION at the published promotion
+          # contract commit.
           # Keep this separate from the Linux agent package version: they are
           # different public release contracts.
           git -C upstream/openpath rev-parse --verify "${OPENPATH_TEMPLATE_COMMIT}^{commit}" >/dev/null
-          template_version="$(git -C upstream/openpath show HEAD:VERSION)"
+          template_version="$(git -C upstream/openpath show "${OPENPATH_TEMPLATE_COMMIT}:VERSION")"
           template_short_sha="$(git -C upstream/openpath rev-parse --short "$OPENPATH_TEMPLATE_COMMIT")"
           if [[ ! "$template_version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
             echo "OpenPath template VERSION is missing or invalid" >&2

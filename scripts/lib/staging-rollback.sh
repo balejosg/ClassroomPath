@@ -32,6 +32,21 @@ restore_previous_release_state() {
   local previous_state_file="${PREVIOUS_STATE_FILE:-}"
   local current_state_file="${CURRENT_STATE_FILE:-}"
   local app_dir="${APP_DIR:-}"
+  local snapshot_image_source=""
+  local -a required_snapshot_fields=(
+    APP_SHA
+    IMAGE_SOURCE
+    CLASSROOMPATH_GATEWAY_IMAGE
+    CLASSROOMPATH_MIGRATIONS_IMAGE
+    OPENPATH_FIREFOX_ASSETS_IMAGE
+    OPENPATH_API_IMAGE
+    OPENPATH_VERSION
+    CLASSROOMPATH_SPA_IMAGE
+    OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION
+    OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT
+    OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG
+    OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256
+  )
 
   if [ ! -f "$previous_state_file" ]; then
     log_warn "No previous release metadata available; cannot restore previous release"
@@ -39,6 +54,36 @@ restore_previous_release_state() {
     if ! write_deploy_context; then
       log_error "Unable to persist unavailable staging rollback state"
     fi
+    return 1
+  fi
+
+  if ! snapshot_image_source="$(release_state_snapshot_value "$previous_state_file" IMAGE_SOURCE)"; then
+    log_error "Previous staging release metadata does not declare IMAGE_SOURCE"
+    ROLLBACK_RESULT="unavailable"
+    return 1
+  fi
+
+  case "$snapshot_image_source" in
+    release-candidate)
+      required_snapshot_fields+=(
+        OPENPATH_LINUX_AGENT_VERSION
+        OPENPATH_LINUX_AGENT_APT_SUITE
+      )
+      ;;
+    source-build)
+      ;;
+    *)
+      log_error "Previous staging release image source is not rollback-compatible: $snapshot_image_source"
+      ROLLBACK_RESULT="unavailable"
+      return 1
+      ;;
+  esac
+
+  if ! release_state_require_snapshot_fields \
+    "$previous_state_file" \
+    current-runtime \
+    "${required_snapshot_fields[@]}"; then
+    ROLLBACK_RESULT="unavailable"
     return 1
   fi
 
@@ -62,6 +107,11 @@ restore_previous_release_state() {
   # OpenPath installer pin is the compatibility boundary for both source and
   # release-candidate rollback paths.
   if ! require_windows_offline_installer_runtime_pin; then
+    staging_rollback_mark_failed || return 1
+  fi
+
+  if [ "${IMAGE_SOURCE:-}" = "release-candidate" ] &&
+    ! require_openpath_linux_agent_runtime_pin; then
     staging_rollback_mark_failed || return 1
   fi
 
@@ -117,6 +167,7 @@ restore_previous_release_state() {
       staging_rollback_mark_failed || return 1
     fi
   else
+    unset OPENPATH_LINUX_AGENT_APT_SUITE
     if ! remove_env_file_var "$app_dir/config/.env" OPENPATH_VERSION; then
       staging_rollback_mark_failed || return 1
     fi

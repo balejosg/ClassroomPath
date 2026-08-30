@@ -55,6 +55,7 @@ function writePromotionEligibleCurrentState(path: string) {
       'OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
       'OPENPATH_VERSION=4.1.19',
       'OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+      'OPENPATH_LINUX_AGENT_APT_SUITE=stable',
       'CLASSROOMPATH_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
       '',
     ].join('\n'),
@@ -76,6 +77,7 @@ function writeHighRiskVerificationState(path: string, overrides: string[] = []) 
       'STAGING_VERIFIED_OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
       'STAGING_VERIFIED_OPENPATH_VERSION=4.1.19',
       'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+      'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE=stable',
       'STAGING_VERIFIED_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
       'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present',
       'STAGING_SMOKE_RESULT=success',
@@ -130,6 +132,7 @@ function runVerifyStaging(currentStatePath: string, verificationStatePath: strin
         EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
         EXPECTED_OPENPATH_VERSION: '4.1.19',
         EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+        EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
         EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
       },
     }
@@ -152,6 +155,7 @@ test('release-state CLI writes shell-compatible snapshots through the typed cont
       OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
       OPENPATH_VERSION: '4.1.19',
       OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+      OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
       CLASSROOMPATH_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
       OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION: '4.1.0',
       OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT: '0123456789abcdef0123456789abcdef01234567',
@@ -185,6 +189,7 @@ test('release-state CLI writes shell-compatible snapshots through the typed cont
 test('release-runtime helper persists and restores the complete offline-installer pin', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'release-runtime-offline-pin-'));
   const snapshotPath = join(tempDir, 'current-images.env');
+  const previousSnapshotPath = join(tempDir, 'previous-images.env');
   const commit = 'c'.repeat(40);
   const sha256 = 'd'.repeat(64);
 
@@ -196,7 +201,8 @@ test('release-runtime helper persists and restores the complete offline-installe
         'source scripts/lib/common.sh',
         'source scripts/lib/release-state.sh',
         'source scripts/lib/release-runtime.sh',
-        `write_release_runtime_state ${snapshotPath} app-sha release-candidate gateway migrations firefox-assets openpath-api 4.1.0 4.1.0 spa 4.1.0 ${commit} scripts-v4.1.0-ccccccc ${sha256}`,
+        'source scripts/lib/deployment-state.sh',
+        `write_release_runtime_state ${snapshotPath} app-sha release-candidate gateway migrations firefox-assets openpath-api 4.1.0 4.1.0 stable spa 4.1.0 ${commit} scripts-v4.1.0-ccccccc ${sha256}`,
       ].join('; '),
     ],
     { ...process.env }
@@ -204,6 +210,7 @@ test('release-runtime helper persists and restores the complete offline-installe
 
   const snapshot = readReleaseStateSnapshot(snapshotPath);
   assert.equal(snapshot.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION, '4.1.0');
+  assert.equal(snapshot.OPENPATH_LINUX_AGENT_APT_SUITE, 'stable');
   assert.equal(snapshot.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT, commit);
   assert.equal(snapshot.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG, 'scripts-v4.1.0-ccccccc');
   assert.equal(snapshot.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256, sha256);
@@ -215,13 +222,50 @@ test('release-runtime helper persists and restores the complete offline-installe
       [
         'source scripts/lib/common.sh',
         'source scripts/lib/release-state.sh',
-        `load_release_state_env ${snapshotPath}`,
-        'printf "%s,%s,%s,%s\\n" "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION" "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT" "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG" "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256"',
+        'source scripts/lib/deployment-state.sh',
+        `deployment_state_init_paths ${tempDir}`,
+        'deployment_state_capture_previous_release',
+        `load_release_state_env ${previousSnapshotPath}`,
+        'printf "%s,%s,%s,%s,%s\\n" "$OPENPATH_LINUX_AGENT_APT_SUITE" "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION" "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT" "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG" "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256"',
       ].join('; '),
     ],
     { ...process.env }
   );
-  assert.equal(restored.trim(), `4.1.0,${commit},scripts-v4.1.0-ccccccc,${sha256}`);
+  assert.equal(restored.trim(), `stable,4.1.0,${commit},scripts-v4.1.0-ccccccc,${sha256}`);
+});
+
+test('promotion evidence rejects an OpenPath Linux agent APT suite drift', () => {
+  const report = validateReleaseStatePromotionEvidence({
+    deploymentMode: 'debug',
+    imageSource: 'release-candidate',
+    currentState: {
+      IMAGE_SOURCE: 'release-candidate',
+      APP_SHA: 'abc123',
+      CLASSROOMPATH_GATEWAY_IMAGE: 'gateway',
+      CLASSROOMPATH_MIGRATIONS_IMAGE: 'migrations',
+      OPENPATH_FIREFOX_ASSETS_IMAGE: 'firefox-assets',
+      OPENPATH_API_IMAGE: 'openpath-api',
+      OPENPATH_VERSION: '4.1.0',
+      OPENPATH_LINUX_AGENT_VERSION: '4.1.0',
+      OPENPATH_LINUX_AGENT_APT_SUITE: 'unstable',
+      CLASSROOMPATH_SPA_IMAGE: 'spa',
+    },
+    verificationState: {},
+    expectedRuntime: {
+      EXPECTED_APP_SHA: 'abc123',
+      EXPECTED_GATEWAY_IMAGE: 'gateway',
+      EXPECTED_MIGRATIONS_IMAGE: 'migrations',
+      EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE: 'firefox-assets',
+      EXPECTED_OPENPATH_API_IMAGE: 'openpath-api',
+      EXPECTED_OPENPATH_VERSION: '4.1.0',
+      EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.0',
+      EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
+      EXPECTED_SPA_IMAGE: 'spa',
+    },
+  });
+
+  assert.equal(report.checks.currentRuntime.status, 'fail');
+  assert.match(report.checks.currentRuntime.errors.join('\n'), /APT suite mismatch/);
 });
 
 test('promotion evidence detects a runtime offline-installer pin drift', () => {
@@ -281,6 +325,7 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
       'OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
       'OPENPATH_VERSION=4.1.19',
       'OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+      'OPENPATH_LINUX_AGENT_APT_SUITE=stable',
       'CLASSROOMPATH_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
       '',
     ].join('\n'),
@@ -300,6 +345,7 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
       'STAGING_VERIFIED_OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
       'STAGING_VERIFIED_OPENPATH_VERSION=4.1.19',
       'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+      'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE=stable',
       'STAGING_VERIFIED_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
       'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present',
       'STAGING_EMAIL_PREFLIGHT_MODE=required',
@@ -363,6 +409,7 @@ test('release-state CLI verifies staging evidence and emits workflow outputs', (
       EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
       EXPECTED_OPENPATH_VERSION: '4.1.19',
       EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+      EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
       EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
     }
   );
@@ -410,6 +457,7 @@ test('release-state contract owns promotion-evidence validation policy', () => {
       OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
       OPENPATH_VERSION: '4.1.19',
       OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+      OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
       CLASSROOMPATH_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
     },
     verificationState: {
@@ -420,6 +468,7 @@ test('release-state contract owns promotion-evidence validation policy', () => {
       STAGING_VERIFIED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
       STAGING_VERIFIED_OPENPATH_VERSION: '4.1.19',
       STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+      STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
       STAGING_VERIFIED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
       STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS: 'present',
       STAGING_SMOKE_RESULT: 'success',
@@ -443,6 +492,7 @@ test('release-state contract owns promotion-evidence validation policy', () => {
       EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
       EXPECTED_OPENPATH_VERSION: '4.1.19',
       EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+      EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
       EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
     },
     highRisk: false,
@@ -490,6 +540,7 @@ test('verify-promotion-ready rejects staging evidence without signed Firefox rel
         EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
         EXPECTED_OPENPATH_VERSION: '4.1.19',
         EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+        EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
         EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
       },
     }
@@ -542,6 +593,7 @@ test('verify-promotion-ready rejects staging evidence without enrollment downloa
         EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
         EXPECTED_OPENPATH_VERSION: '4.1.19',
         EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+        EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
         EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
       },
     }
@@ -590,6 +642,7 @@ test('release-state CLI rejects high-risk promotion without Linux staging bootst
       'STAGING_VERIFIED_OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
       'STAGING_VERIFIED_OPENPATH_VERSION=4.1.19',
       'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+      'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE=stable',
       'STAGING_VERIFIED_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
       'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present',
       'STAGING_SMOKE_RESULT=success',
@@ -638,6 +691,7 @@ test('release-state CLI rejects high-risk promotion without Linux staging bootst
         EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
         EXPECTED_OPENPATH_VERSION: '4.1.19',
         EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+        EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
         EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
       },
     }
@@ -860,6 +914,8 @@ test('promotion evidence CLI rejects unknown options through the shared parser',
 test('release-state CLI lists canonical snapshot fields for shell consumers', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'release-state-cli-fields-'));
   const outputPath = join(tempDir, 'fields.txt');
+  const currentOutputPath = join(tempDir, 'current-fields.txt');
+  const verificationOutputPath = join(tempDir, 'verification-fields.txt');
 
   runCommand(
     'bash',
@@ -870,6 +926,29 @@ test('release-state CLI lists canonical snapshot fields for shell consumers', ()
     { ...process.env }
   );
   const output = readFileSync(outputPath, 'utf-8');
+
+  runCommand(
+    'bash',
+    [
+      '-lc',
+      `node "${cliPath}" list-fields --snapshot-type current-runtime > "${currentOutputPath}"`,
+    ],
+    { ...process.env }
+  );
+  runCommand(
+    'bash',
+    [
+      '-lc',
+      `node "${cliPath}" list-fields --snapshot-type staging-verification > "${verificationOutputPath}"`,
+    ],
+    { ...process.env }
+  );
+  assert.ok(readFileSync(currentOutputPath, 'utf-8').includes('OPENPATH_LINUX_AGENT_APT_SUITE\n'));
+  assert.ok(
+    readFileSync(verificationOutputPath, 'utf-8').includes(
+      'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE\n'
+    )
+  );
 
   assert.deepEqual(output.trim().split('\n'), [
     'SMOKE_TARGET_URL',
@@ -933,6 +1012,7 @@ test('canonical shell release-state helper serializes snapshots through the type
         'STAGING_VERIFIED_OPENPATH_API_IMAGE=ghcr.io/balejosg/openpath-api:abc123',
         'STAGING_VERIFIED_OPENPATH_VERSION=4.1.19',
         'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION=4.1.19',
+        'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE=stable',
         'STAGING_VERIFIED_SPA_IMAGE=ghcr.io/balejosg/classroompath-spa:abc123',
         'STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS=present',
         'STAGING_EMAIL_PREFLIGHT_MODE=skip',
@@ -974,6 +1054,7 @@ test('canonical shell release-state helper serializes snapshots through the type
   assert.equal(snapshot.STAGING_EMAIL_PREFLIGHT_RESULT, 'skipped-low-risk');
   assert.equal(snapshot.STAGING_WINDOWS_FIREFOX_HIGH_RISK, 'true');
   assert.equal(snapshot.STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION, '4.1.19');
+  assert.equal(snapshot.STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE, 'stable');
   assert.equal(snapshot.STAGING_FIREFOX_SIGNATURE_SOURCE, 'amo');
   assert.equal(snapshot.STAGING_FIREFOX_SIGNATURE_STATE, 'signed');
   assert.equal(snapshot.STAGING_FIREFOX_XPI_SHA256, 'xpi123');
@@ -1005,6 +1086,7 @@ test('canonical shell release-state helper serializes pending staging verificati
   assert.equal(snapshot.STAGING_EXPECTED_IMAGE_SOURCE, 'release-candidate');
   assert.match(snapshot.STAGING_VERIFICATION_STARTED_AT ?? '', /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(snapshot.STAGING_VERIFIED_APP_SHA, '');
+  assert.equal(snapshot.STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE, '');
   assert.equal(snapshot.STAGING_SMOKE_RESULT, 'pending');
   assert.equal(snapshot.STAGING_RELEASE_GATE_RESULT, 'pending');
   assert.equal(snapshot.STAGING_ENROLLMENT_DOWNLOAD_RESULT, 'pending');

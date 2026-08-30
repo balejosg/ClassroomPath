@@ -199,6 +199,7 @@ describe('Deployment runtime contracts', () => {
     assert.ok(content.includes('docker/Dockerfile.release-verifier'));
     assert.ok(content.includes('CLASSROOMPATH_VERIFIER_IMAGE='));
     assert.ok(content.includes('OPENPATH_LINUX_AGENT_VERSION='));
+    assert.ok(content.includes('OPENPATH_LINUX_AGENT_APT_SUITE='));
     assert.ok(content.includes('OPENPATH_VERSION='));
     assert.ok(content.includes('windows_offline_installer_template_version='));
     assert.ok(content.includes('windows_offline_installer_template_commit='));
@@ -251,6 +252,7 @@ describe('Deployment runtime contracts', () => {
     assert.ok(manifestHelper.includes('release_manifest_validate_contract()'));
     assert.ok(manifestHelper.includes('release_manifest_is_canonical_contract()'));
     for (const pinName of [
+      'OPENPATH_LINUX_AGENT_APT_SUITE',
       'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION',
       'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT',
       'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG',
@@ -519,7 +521,8 @@ describe('Deployment runtime contracts', () => {
     assert.ok(
       releaseRuntimeHelper.includes('RELEASE_RUNTIME_HELPER_CONTRACT_VERSION=') &&
         releaseRuntimeHelper.includes('load_release_manifest_runtime()') &&
-        releaseRuntimeHelper.includes('write_release_runtime_state()')
+        releaseRuntimeHelper.includes('write_release_runtime_state()') &&
+        releaseRuntimeHelper.includes('require_openpath_linux_agent_runtime_pin()')
     );
     assert.ok(
       githubActionsRemoteHelper.includes('github_actions_remote_write_resolved_host_outputs()') &&

@@ -28,6 +28,28 @@ require_windows_offline_installer_runtime_pin() {
   done
 }
 
+require_openpath_linux_agent_runtime_pin() {
+  local name=""
+  local apt_suite="${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
+
+  for name in OPENPATH_LINUX_AGENT_VERSION OPENPATH_LINUX_AGENT_APT_SUITE; do
+    if [ -z "${!name:-}" ]; then
+      log_error "OpenPath Linux agent runtime pin is missing: $name"
+      return 1
+    fi
+    export "${name?}"
+  done
+
+  case "$apt_suite" in
+    stable|unstable)
+      ;;
+    *)
+      log_error "OpenPath Linux agent APT suite is invalid: $apt_suite"
+      return 1
+      ;;
+  esac
+}
+
 write_release_runtime_state() {
   local state_path="$1"
   local app_sha="$2"
@@ -38,11 +60,12 @@ write_release_runtime_state() {
   local openpath_api_image="$7"
   local openpath_version="$8"
   local openpath_linux_agent_version="$9"
-  local spa_image="${10}"
-  local template_version="${11:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}}"
-  local template_commit="${12:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}}"
-  local template_release_tag="${13:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}}"
-  local template_sha256="${14:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}}"
+  local openpath_linux_agent_apt_suite="${10}"
+  local spa_image="${11}"
+  local template_version="${12:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}}"
+  local template_commit="${13:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}}"
+  local template_release_tag="${14:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}}"
+  local template_sha256="${15:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}}"
 
   APP_SHA="$app_sha" \
   IMAGE_SOURCE="$image_source" \
@@ -52,6 +75,7 @@ write_release_runtime_state() {
   OPENPATH_API_IMAGE="$openpath_api_image" \
   OPENPATH_VERSION="$openpath_version" \
   OPENPATH_LINUX_AGENT_VERSION="$openpath_linux_agent_version" \
+  OPENPATH_LINUX_AGENT_APT_SUITE="$openpath_linux_agent_apt_suite" \
   CLASSROOMPATH_SPA_IMAGE="$spa_image" \
   OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION="$template_version" \
   OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT="$template_commit" \

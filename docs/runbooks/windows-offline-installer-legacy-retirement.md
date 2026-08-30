@@ -103,8 +103,11 @@ Applying `0011_retire_windows_offline_installer_refs` and removing the legacy
 artifact volume are the point of no return for the pre-OpenPath installer
 lifecycle. Neither operation is part of a normal deploy or automatic rollback.
 Automatic rollback accepts only release state with the complete OpenPath
-installer pin and restores that pin before starting the provisioner/API pair;
-it refuses an older state that cannot prove canonical compatibility. Once the
-DB drain and storage retirement are complete, restore a compatible OpenPath
-release manually if required; do not roll back to a release that expects the
-old table or volume.
+installer pin and the matching OpenPath Linux agent version/APT suite. It
+restores that complete runtime tuple before starting the provisioner/API pair;
+it refuses an older or incomplete state that cannot prove canonical
+compatibility. Production automatic rollback accepts release-candidate state
+only; `source-build` remains a staging recovery/debug mode. Once the DB drain
+and storage retirement are complete, restore a compatible OpenPath release
+manually if required; do not roll back to a release that expects the old table
+or volume.

@@ -35,6 +35,74 @@ load_release_state_env() {
   set +a
 }
 
+release_state_snapshot_field_present() {
+  local state_path="$1"
+  local field_name="$2"
+
+  [ -f "$state_path" ] || return 1
+
+  awk -F= -v expected_field="$field_name" '
+    $1 == expected_field {
+      found = 1
+      exit
+    }
+    END {
+      exit(found ? 0 : 1)
+    }
+  ' "$state_path"
+}
+
+release_state_snapshot_value() {
+  local state_path="$1"
+  local field_name="$2"
+
+  [ -f "$state_path" ] || return 1
+
+  awk -F= -v expected_field="$field_name" '
+    $1 == expected_field {
+      print substr($0, index($0, "=") + 1)
+      found = 1
+      exit
+    }
+    END {
+      if (!found) {
+        exit 1
+      }
+    }
+  ' "$state_path"
+}
+
+release_state_require_snapshot_fields() {
+  local state_path="$1"
+  local snapshot_type="$2"
+  shift 2
+  local field_name=""
+  local fields_output=""
+  local -a required_fields=("$@")
+
+  if [ ! -f "$state_path" ]; then
+    log_error "Release state file not found: $state_path"
+    return 1
+  fi
+
+  if [ "${#required_fields[@]}" -eq 0 ]; then
+    if ! fields_output="$(release_state_list_fields "$snapshot_type")"; then
+      log_error "Unable to list release-state fields for snapshot type: $snapshot_type"
+      return 1
+    fi
+    while IFS= read -r field_name; do
+      [ -n "$field_name" ] && required_fields+=("$field_name")
+    done <<< "$fields_output"
+  fi
+
+  for field_name in "${required_fields[@]}"; do
+    if ! release_state_snapshot_field_present "$state_path" "$field_name"; then
+      log_error "Release state snapshot is incompatible; missing field: $field_name"
+      return 1
+    fi
+  done
+}
+
 release_state_list_fields() {
   local snapshot_type="$1"
 
@@ -54,6 +122,7 @@ OPENPATH_FIREFOX_ASSETS_IMAGE
 OPENPATH_API_IMAGE
 OPENPATH_VERSION
 OPENPATH_LINUX_AGENT_VERSION
+OPENPATH_LINUX_AGENT_APT_SUITE
 CLASSROOMPATH_SPA_IMAGE
 OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION
 OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT
@@ -98,6 +167,7 @@ STAGING_VERIFIED_OPENPATH_FIREFOX_ASSETS_IMAGE
 STAGING_VERIFIED_OPENPATH_API_IMAGE
 STAGING_VERIFIED_OPENPATH_VERSION
 STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION
+STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE
 STAGING_VERIFIED_SPA_IMAGE
 STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS
 STAGING_WINDOWS_FIREFOX_HIGH_RISK
@@ -239,6 +309,7 @@ write_staging_verification_pending_state() {
   STAGING_VERIFIED_OPENPATH_API_IMAGE="" \
   STAGING_VERIFIED_OPENPATH_VERSION="" \
   STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION="" \
+  STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE="" \
   STAGING_VERIFIED_SPA_IMAGE="" \
   STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS="" \
   STAGING_EMAIL_PREFLIGHT_MODE="" \
@@ -319,6 +390,10 @@ verify_current_release_state_matches_expected() {
     "$EXPECTED_OPENPATH_LINUX_AGENT_VERSION" \
     "${OPENPATH_LINUX_AGENT_VERSION:-}" || return 1
   release_state_assert_equal \
+    "OpenPath Linux agent APT suite" \
+    "$EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE" \
+    "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" || return 1
+  release_state_assert_equal \
     "OpenPath Windows template version" \
     "$EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION" \
     "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}" || return 1
@@ -391,6 +466,10 @@ verify_staging_release_evidence_matches_expected() {
     "Verified OpenPath Linux agent version" \
     "$EXPECTED_OPENPATH_LINUX_AGENT_VERSION" \
     "${STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION:-}" || return 1
+  release_state_assert_equal \
+    "Verified OpenPath Linux agent APT suite" \
+    "$EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE" \
+    "${STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE:-}" || return 1
 }
 
 verify_high_risk_staging_release_evidence() {

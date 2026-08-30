@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
@@ -45,6 +47,70 @@ function normalizeNeeds(needs: WorkflowJob['needs']): string[] {
 }
 
 describe('Release candidate workflow contracts', () => {
+  test('Windows template tag uses VERSION and short SHA from the same published commit', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'release-candidate-template-pin-'));
+    const versionPath = join(tempDir, 'VERSION');
+    const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
+    const templateStep = workflow.jobs?.['derive-release-image-refs']?.steps?.find(
+      (step) => step.name === 'Resolve OpenPath installer template version'
+    );
+    const templateRun = templateStep?.run ?? '';
+
+    assert.ok(
+      templateRun.includes('git -C upstream/openpath show "${OPENPATH_TEMPLATE_COMMIT}:VERSION"'),
+      'the template VERSION must be read from the published promotion contract commit'
+    );
+    assert.ok(
+      templateRun.includes(
+        'git -C upstream/openpath rev-parse --short "$OPENPATH_TEMPLATE_COMMIT"'
+      ),
+      'the template short SHA must be derived from the published promotion contract commit'
+    );
+
+    try {
+      execFileSync('git', ['init', '--quiet', tempDir]);
+      execFileSync('git', ['-C', tempDir, 'config', 'user.email', 'test@example.invalid']);
+      execFileSync('git', ['-C', tempDir, 'config', 'user.name', 'Test User']);
+
+      writeFileSync(versionPath, '4.1.0\n', 'utf-8');
+      execFileSync('git', ['-C', tempDir, 'add', 'VERSION']);
+      execFileSync('git', ['-C', tempDir, 'commit', '--quiet', '-m', 'published template']);
+      const publishedCommit = execFileSync('git', ['-C', tempDir, 'rev-parse', 'HEAD'], {
+        encoding: 'utf-8',
+      }).trim();
+
+      writeFileSync(versionPath, '4.2.0\n', 'utf-8');
+      execFileSync('git', ['-C', tempDir, 'commit', '--quiet', '-am', 'unpublished bump']);
+
+      const headVersion = execFileSync('git', ['-C', tempDir, 'show', 'HEAD:VERSION'], {
+        encoding: 'utf-8',
+      }).trim();
+      const publishedVersion = execFileSync(
+        'git',
+        ['-C', tempDir, 'show', `${publishedCommit}:VERSION`],
+        { encoding: 'utf-8' }
+      ).trim();
+      const publishedShortSha = execFileSync(
+        'git',
+        ['-C', tempDir, 'rev-parse', '--short', publishedCommit],
+        { encoding: 'utf-8' }
+      ).trim();
+
+      assert.equal(headVersion, '4.2.0');
+      assert.equal(publishedVersion, '4.1.0');
+      assert.equal(
+        `scripts-v${publishedVersion}-${publishedShortSha}`,
+        `scripts-v4.1.0-${publishedShortSha}`
+      );
+      assert.notEqual(
+        `scripts-v${headVersion}-${publishedShortSha}`,
+        `scripts-v${publishedVersion}-${publishedShortSha}`
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   test('release candidate detector classifies OpenPath gitlink changes through the shared component mapper', () => {
     const detectScriptPath = resolve(projectRoot, 'scripts/detect-release-candidate-components.sh');
     const detectScript = readFileSync(detectScriptPath, 'utf-8');
@@ -228,7 +294,9 @@ describe('Release candidate workflow contracts', () => {
       'RC workflow must resolve the published OpenPath template version separately from the Linux agent package version'
     );
     assert.ok(
-      deriveOpenPathTemplateVersionRun.includes('git -C upstream/openpath show HEAD:VERSION')
+      deriveOpenPathTemplateVersionRun.includes(
+        'git -C upstream/openpath show "${OPENPATH_TEMPLATE_COMMIT}:VERSION"'
+      )
     );
     assert.ok(deriveOpenPathTemplateVersionRun.includes('set -euo pipefail'));
     assert.ok(
@@ -262,6 +330,7 @@ describe('Release candidate workflow contracts', () => {
       resolveOfflineInstallerStep?.env?.OPENPATH_VERSION,
       '${{ steps.linux-agent.outputs.openpath_version }}'
     );
+
     const deriveLinuxAgentVersionRun =
       jobs['derive-release-image-refs']?.steps?.find(
         (step) => step.name === 'Resolve OpenPath Linux agent version'

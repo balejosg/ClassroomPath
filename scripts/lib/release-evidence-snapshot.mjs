@@ -92,6 +92,11 @@ export function validateCurrentReleaseState(snapshot, expected) {
       expected.EXPECTED_OPENPATH_LINUX_AGENT_VERSION,
       snapshot.OPENPATH_LINUX_AGENT_VERSION,
     ],
+    [
+      'OpenPath Linux agent APT suite',
+      expected.EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE,
+      snapshot.OPENPATH_LINUX_AGENT_APT_SUITE,
+    ],
   ];
 
   for (const [label, expectedKey, actualKey] of [
@@ -219,6 +224,11 @@ export function validateStagingVerification(snapshot, expected) {
       'Verified OpenPath Linux agent version',
       expected.EXPECTED_OPENPATH_LINUX_AGENT_VERSION,
       snapshot.STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION,
+    ],
+    [
+      'Verified OpenPath Linux agent APT suite',
+      expected.EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE,
+      snapshot.STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE,
     ],
   ];
 

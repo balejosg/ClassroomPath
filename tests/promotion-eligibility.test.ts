@@ -13,6 +13,7 @@ const expectedRuntime = {
   EXPECTED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
   EXPECTED_OPENPATH_VERSION: '4.1.19',
   EXPECTED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+  EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
   EXPECTED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
 };
 
@@ -24,6 +25,7 @@ const currentState = {
   OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
   OPENPATH_VERSION: '4.1.19',
   OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+  OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
   CLASSROOMPATH_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
 };
 
@@ -36,6 +38,7 @@ const verificationState = {
   STAGING_VERIFIED_OPENPATH_API_IMAGE: 'ghcr.io/balejosg/openpath-api:abc123',
   STAGING_VERIFIED_OPENPATH_VERSION: '4.1.19',
   STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION: '4.1.19',
+  STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
   STAGING_VERIFIED_SPA_IMAGE: 'ghcr.io/balejosg/classroompath-spa:abc123',
   STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS: 'present',
   STAGING_SMOKE_RESULT: 'success',

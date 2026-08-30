@@ -90,6 +90,7 @@ Runtime mode summary:
 - `PORT`
 - `GOOGLE_CLIENT_ID`
 - `OPENPATH_LINUX_AGENT_VERSION`
+- `OPENPATH_LINUX_AGENT_APT_SUITE`
 - `VAPID_PUBLIC_KEY`
 - `VAPID_PRIVATE_KEY`
 - `VAPID_CONTACT`
@@ -138,7 +139,9 @@ The OpenPath API/provisioner owns these runtime variables:
 The release manifest carries the four neutral
 `windows_offline_installer_template_*` pin fields. Deployment maps them to the
 OpenPath runtime variables and stores the same values in release state, so a
-rollback restores a coherent ClassroomPath/OpenPath pair. The one-shot
+rollback restores a coherent ClassroomPath/OpenPath pair. The OpenPath Linux
+agent version and APT suite are persisted in the same runtime snapshot and
+must be restored together. The one-shot
 `windows-offline-installer-provision` Compose service and OpenPath API own the
 template/artifact volumes; the ClassroomPath gateway has neither mount.
 
@@ -199,3 +202,6 @@ Rules:
 - `.env.local` is for the local staging deploy workflow only.
 - normal staging deploys should stay on `STAGING_IMAGE_MODE=release-candidate`
 - use `source-build` only as an explicit recovery/debug exception
+- production automatic rollback accepts only `release-candidate` snapshots;
+  `source-build` is a staging-only recovery path and is rejected before
+  checkout or Docker mutation
