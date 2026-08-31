@@ -515,6 +515,47 @@ export function assertReleaseEvidenceBundleCompleteness(bundle) {
   const failures = [];
   failures.push(...validateReleaseEvidenceChecklist(bundle).failures);
 
+  const releaseId = valueOrNull(bundle?.release?.releaseId);
+  if (releaseId) {
+    const releaseBundle = bundle?.releaseBundle;
+    if (!releaseBundle || typeof releaseBundle !== 'object') {
+      failures.push('exact Release Bundle proof is required');
+    } else {
+      for (const [label, actual, expected] of [
+        ['releaseId', releaseBundle.releaseId, releaseId],
+        [
+          'classroomPathSha',
+          releaseBundle.classroomPathSha,
+          valueOrNull(bundle?.release?.classroomPathSha),
+        ],
+        ['openpathSha', releaseBundle.openpathSha, valueOrNull(bundle?.release?.openPathSha)],
+        [
+          'contractSha256',
+          releaseBundle.contractSha256,
+          valueOrNull(bundle?.release?.openPathContractSha256),
+        ],
+      ]) {
+        if (!expected || String(actual ?? '') !== expected) {
+          failures.push(`exact Release Bundle proof ${label} mismatch`);
+        }
+      }
+      if (!valueOrNull(releaseBundle.rcRunId)) {
+        failures.push('exact Release Bundle proof rcRunId missing');
+      } else if (
+        valueOrNull(bundle?.release?.rcRunId) &&
+        releaseBundle.rcRunId !== valueOrNull(bundle?.release?.rcRunId)
+      ) {
+        failures.push('exact Release Bundle proof rcRunId mismatch');
+      }
+      if (!valueOrNull(releaseBundle.bundlePath)) {
+        failures.push('exact Release Bundle proof bundlePath missing');
+      }
+      if (!valueOrNull(releaseBundle.contractPath)) {
+        failures.push('exact Release Bundle proof contractPath missing');
+      }
+    }
+  }
+
   if (bundle.production?.health?.status === undefined) {
     failures.push('production.health.status missing');
   }

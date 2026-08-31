@@ -45,6 +45,7 @@ remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"
 : "${RELEASE_EXECUTION_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-execution.sh")}"
 : "${REMOTE_HELPER_CONTRACTS_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")}"
 : "${DEPLOY_CONTAINER_PLATFORM_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-container-platform.sh")}"
+: "${DEPLOYMENT_STATE_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")}"
 
 if [ ! -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
   printf 'Remote helper contract helper not found: %s\n' "$REMOTE_HELPER_CONTRACTS_PATH" >&2
@@ -122,9 +123,19 @@ else
   exit 1
 fi
 
+if deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"; then
+  # shellcheck source=lib/deployment-state.sh
+  source "$DEPLOYMENT_STATE_HELPER_PATH"
+else
+  log_error "Remote deployment-state helper does not meet the minimum contract"
+  exit 1
+fi
+
 STATE_DIR="/srv/classroompath/release-state"
-CURRENT_STATE_FILE="$STATE_DIR/current-images.env"
-PREVIOUS_STATE_FILE="$STATE_DIR/previous-images.env"
+deployment_state_init_paths "$STATE_DIR"
+CURRENT_STATE_FILE="$DEPLOYMENT_STATE_CURRENT_FILE"
+PREVIOUS_STATE_FILE="$DEPLOYMENT_STATE_PREVIOUS_FILE"
+PENDING_STATE_FILE="$DEPLOYMENT_STATE_PENDING_FILE"
 DEPLOY_CONTEXT_FILE="$STATE_DIR/staging-deploy-context.env"
 mkdir -p "$STATE_DIR"
 
@@ -154,9 +165,18 @@ ROLLBACK_ATTEMPTED=0
 ROLLBACK_RESULT="not_attempted"
 STAGING_DEPLOY_PAYLOAD_FILE=""
 STAGING_RELEASE_MANIFEST_FILE=""
+STAGING_RELEASE_BUNDLE_FILE=""
+STAGING_OPENPATH_CONTRACT_FILE=""
+STAGING_RELEASE_BUNDLE_RUNTIME_FILE=""
 
 cleanup_staging_release_manifest() {
-  rm -f "${STAGING_RELEASE_MANIFEST_FILE:-}" "${STAGING_DEPLOY_PAYLOAD_FILE:-}"
+  rm -f \
+    "${STAGING_RELEASE_MANIFEST_FILE:-}" \
+    "${STAGING_RELEASE_BUNDLE_FILE:-}" \
+    "${STAGING_OPENPATH_CONTRACT_FILE:-}" \
+    "${STAGING_RELEASE_BUNDLE_RUNTIME_FILE:-}" \
+    "${STAGING_DEPLOY_PAYLOAD_FILE:-}" \
+    "${PENDING_STATE_FILE:-}"
 }
 
 trap cleanup_staging_release_manifest EXIT
@@ -166,12 +186,22 @@ copy_release_state() {
     cp "$CURRENT_STATE_FILE" "$PREVIOUS_STATE_FILE"
     PREVIOUS_APP_SHA="$(grep '^APP_SHA=' "$CURRENT_STATE_FILE" | cut -d= -f2- || true)"
   fi
+
+  if [ "${IMAGE_SOURCE:-source-build}" = "release-candidate" ] &&
+    deployment_state_v2_pointer_present current; then
+    deployment_state_capture_previous_release || return 1
+  fi
 }
 
 write_release_state() {
+  local state_output_file="$CURRENT_STATE_FILE"
+
   copy_release_state
+  if [ "$IMAGE_SOURCE" = "release-candidate" ]; then
+    state_output_file="$PENDING_STATE_FILE"
+  fi
   write_release_runtime_state \
-    "$CURRENT_STATE_FILE" \
+    "$state_output_file" \
     "${STAGING_RELEASE_SHA:-origin-main}" \
     "$IMAGE_SOURCE" \
     "$RESOLVED_GATEWAY_IMAGE" \
@@ -185,7 +215,34 @@ write_release_state() {
     "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}" \
     "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}" \
     "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}" \
-    "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}"
+    "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}" \
+    "${RELEASE_ID:-}" \
+    "${OPENPATH_SHA:-}" \
+    "${OPENPATH_CONTRACT_SHA256:-}" \
+    "${RESOLVED_VERIFIER_IMAGE:-}" \
+    "${STAGING_RELEASE_RUN_ID:-}"
+
+  if [ "$IMAGE_SOURCE" = "release-candidate" ]; then
+    node "$APP_DIR/scripts/lib/release-bundle-state.mjs" persist \
+      --state-root "$STATE_DIR" \
+      --bundle-file "$STAGING_RELEASE_BUNDLE_FILE" \
+      --contract-file "$STAGING_OPENPATH_CONTRACT_FILE" \
+      --release-id "$RELEASE_ID" \
+      --rc-run-id "${STAGING_RELEASE_RUN_ID:-}" >/dev/null
+  else
+    return 0
+  fi
+}
+
+activate_release_bundle_state() {
+  if [ "${IMAGE_SOURCE:-}" != "release-candidate" ]; then
+    return 0
+  fi
+
+  node "$APP_DIR/scripts/lib/release-bundle-state.mjs" activate \
+    --state-root "$STATE_DIR" \
+    --release-id "$RELEASE_ID" >/dev/null
+  mv -f "$PENDING_STATE_FILE" "$CURRENT_STATE_FILE"
 }
 
 write_deploy_context() {
@@ -261,8 +318,8 @@ deploy_with_release_candidates() {
 
   ensure_staging_release_candidate_runtime_env || return 1
 
-  if [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ] || [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ]; then
-    log_error "Release candidate manifest is incomplete"
+  if [ -z "${RELEASE_ID:-}" ] || [ -z "${STAGING_RELEASE_RUN_ID:-}" ] || [ -z "${OPENPATH_SHA:-}" ] || [ -z "${OPENPATH_CONTRACT_SHA256:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ] || [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ]; then
+    log_error "Verified Release Bundle v2 runtime projection is incomplete"
     return 1
   fi
 
@@ -302,6 +359,7 @@ deploy_with_release_candidates() {
   RESOLVED_OPENPATH_LINUX_AGENT_VERSION="${OPENPATH_LINUX_AGENT_VERSION:-}"
   RESOLVED_OPENPATH_LINUX_AGENT_APT_SUITE="${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
   RESOLVED_SPA_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_SPA_IMAGE")"
+  RESOLVED_VERIFIER_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_VERIFIER_IMAGE")"
   write_release_state
   return 0
 }
@@ -311,12 +369,9 @@ ensure_staging_release_candidate_runtime_env() {
     return 0
   fi
 
-  if [ -n "${STAGING_RELEASE_MANIFEST_FILE:-}" ] && [ -f "$STAGING_RELEASE_MANIFEST_FILE" ]; then
-    load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE" "${STAGING_RELEASE_SHA:-}"
-    STAGING_RELEASE_SHA="${RELEASE_MANIFEST_APP_SHA:-${STAGING_RELEASE_SHA:-}}"
-  fi
-
   if [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] ||
+    [ -z "${STAGING_RELEASE_RUN_ID:-}" ] ||
+    [ -z "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ] ||
     [ -z "${OPENPATH_VERSION:-}" ] ||
     [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] ||
     [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] ||
@@ -366,6 +421,13 @@ deploy_from_source() {
 
 load_staging_release_manifest() {
   local release_manifest_b64=""
+  local release_bundle_b64=""
+  local openpath_contract_b64=""
+  local expected_release_id=""
+  local expected_rc_run_id=""
+  local expected_app_sha=""
+  local expected_openpath_sha=""
+  local expected_contract_sha256=""
   local normalized_manifest_file=""
   local payload_image_source=""
   local payload_deployment_mode=""
@@ -382,6 +444,10 @@ load_staging_release_manifest() {
     else
       STAGING_USE_RELEASE_CANDIDATE=0
     fi
+    expected_release_id="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" release_id || true)"
+    expected_rc_run_id="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" rc_run_id || true)"
+    release_bundle_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" release_bundle_base64 || true)"
+    openpath_contract_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" openpath_contract_base64 || true)"
   fi
 
   if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" != "1" ]; then
@@ -394,20 +460,87 @@ load_staging_release_manifest() {
     release_manifest_b64="$STAGING_RELEASE_MANIFEST_B64"
   fi
 
-  STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
-  decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64" "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null || true
-  decode_release_manifest_base64 "$release_manifest_b64" "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null
-  normalized_manifest_file="$(mktemp)"
-  node "$APP_DIR/scripts/lib/release-manifest.mjs" normalize \
-    --file "$STAGING_RELEASE_MANIFEST_FILE" \
-    --output-file "$normalized_manifest_file" \
-    --sha "${STAGING_RELEASE_SHA:-}" \
-    --repository "${STAGING_RELEASE_REPOSITORY:-}" \
-    --run-id "${STAGING_RELEASE_RUN_ID:-}"
-  mv "$normalized_manifest_file" "$STAGING_RELEASE_MANIFEST_FILE"
-  load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"
+  if [ -z "$release_bundle_b64" ]; then
+    release_bundle_b64="${STAGING_RELEASE_BUNDLE_B64:-}"
+  fi
+  if [ -z "$openpath_contract_b64" ]; then
+    openpath_contract_b64="${STAGING_OPENPATH_CONTRACT_B64:-}"
+  fi
+  if [ -z "$expected_release_id" ]; then
+    expected_release_id="${STAGING_RELEASE_ID:-}"
+  fi
+  if [ -z "${STAGING_RELEASE_RUN_ID:-}" ]; then
+    STAGING_RELEASE_RUN_ID="$expected_rc_run_id"
+  elif [ -n "$expected_rc_run_id" ] && [ "$STAGING_RELEASE_RUN_ID" != "$expected_rc_run_id" ]; then
+    log_error "Release Bundle v2 RC run ID conflicts with deploy intent"
+    return 1
+  fi
 
-  STAGING_RELEASE_SHA="$RELEASE_MANIFEST_APP_SHA"
+  if [ -z "$release_bundle_b64" ] || [ -z "$openpath_contract_b64" ] || [ -z "$expected_release_id" ]; then
+    log_error "Promotion-eligible staging requires an exact Release Bundle v2, contract, and releaseId"
+    return 1
+  fi
+
+  STAGING_RELEASE_BUNDLE_FILE="$(mktemp)"
+  STAGING_OPENPATH_CONTRACT_FILE="$(mktemp)"
+  STAGING_RELEASE_BUNDLE_RUNTIME_FILE="$(mktemp)"
+  printf '%s' "$release_bundle_b64" | base64 --decode > "$STAGING_RELEASE_BUNDLE_FILE"
+  printf '%s' "$openpath_contract_b64" | base64 --decode > "$STAGING_OPENPATH_CONTRACT_FILE"
+  node "$APP_DIR/scripts/release-bundle.mjs" verify \
+    --bundle-file "$STAGING_RELEASE_BUNDLE_FILE" \
+    --contract-file "$STAGING_OPENPATH_CONTRACT_FILE" \
+    --release-id "$expected_release_id" \
+    --classroompath-sha "${STAGING_RELEASE_SHA:-}" \
+    --output-env "$STAGING_RELEASE_BUNDLE_RUNTIME_FILE" >/dev/null
+
+  set -a
+  # shellcheck disable=SC1090
+  . "$STAGING_RELEASE_BUNDLE_RUNTIME_FILE"
+  set +a
+
+  expected_app_sha="${STAGING_RELEASE_SHA:-${APP_SHA:-}}"
+  expected_openpath_sha="${STAGING_OPENPATH_SHA:-}"
+  expected_contract_sha256="${STAGING_OPENPATH_CONTRACT_SHA256:-}"
+  if [ -z "$expected_openpath_sha" ] || [ -z "$expected_contract_sha256" ]; then
+    log_error "Verified Release Bundle v2 did not project OpenPath identity"
+    return 1
+  fi
+  if [ -n "${STAGING_RELEASE_ID:-}" ] && [ "$STAGING_RELEASE_ID" != "$RELEASE_ID" ]; then
+    log_error "Release Bundle v2 releaseId conflicts with deploy intent"
+    return 1
+  fi
+  if [ -n "${STAGING_OPENPATH_SHA:-}" ] && [ "$STAGING_OPENPATH_SHA" != "$OPENPATH_SHA" ]; then
+    log_error "Release Bundle v2 OpenPath SHA conflicts with deploy intent"
+    return 1
+  fi
+  if [ -n "${STAGING_OPENPATH_CONTRACT_SHA256:-}" ] && [ "$STAGING_OPENPATH_CONTRACT_SHA256" != "$OPENPATH_CONTRACT_SHA256" ]; then
+    log_error "Release Bundle v2 contract hash conflicts with deploy intent"
+    return 1
+  fi
+  if [ -n "$expected_app_sha" ] && [ "$APP_SHA" != "$expected_app_sha" ]; then
+    log_error "Release Bundle v2 ClassroomPath SHA does not match staging target"
+    return 1
+  fi
+
+  local gitlink_openpath_sha=""
+  gitlink_openpath_sha="$(git -C "$APP_DIR/upstream/openpath" rev-parse HEAD)"
+  if [ "$gitlink_openpath_sha" != "$OPENPATH_SHA" ]; then
+    log_error "Release Bundle v2 OpenPath SHA does not match the checked-out gitlink"
+    return 1
+  fi
+
+  export RELEASE_ID OPENPATH_SHA OPENPATH_CONTRACT_SHA256
+  STAGING_RELEASE_ID="$RELEASE_ID"
+  STAGING_OPENPATH_SHA="$OPENPATH_SHA"
+  STAGING_OPENPATH_CONTRACT_SHA256="$OPENPATH_CONTRACT_SHA256"
+  STAGING_RELEASE_SHA="$APP_SHA"
+
+  # The legacy manifest is retained only for diagnostics and old tooling. The
+  # verified bundle projection above is the sole runtime authority.
+  if [ -n "$release_manifest_b64" ]; then
+    STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
+    decode_release_manifest_base64 "$release_manifest_b64" "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null
+  fi
 }
 
 login_staging_registry() {
@@ -508,6 +641,22 @@ load_staging_rollback_helper() {
   source "$STAGING_ROLLBACK_HELPER_PATH"
 }
 
+load_staging_deployment_state_helper() {
+  DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")"
+  if [ ! -f "$DEPLOYMENT_STATE_HELPER_PATH" ] ||
+    ! deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"; then
+    log_error "Staging deployment-state helper not found or incompatible after checkout"
+    return 1
+  fi
+
+  # shellcheck source=lib/deployment-state.sh
+  source "$DEPLOYMENT_STATE_HELPER_PATH"
+  deployment_state_init_paths "$STATE_DIR"
+  CURRENT_STATE_FILE="$DEPLOYMENT_STATE_CURRENT_FILE"
+  PREVIOUS_STATE_FILE="$DEPLOYMENT_STATE_PREVIOUS_FILE"
+  PENDING_STATE_FILE="$DEPLOYMENT_STATE_PENDING_FILE"
+}
+
 prepare_staging_checkout() {
   cd "$APP_DIR"
 
@@ -529,6 +678,7 @@ prepare_staging_checkout() {
     log_error "Checked-out release-execution helper does not meet the minimum contract"
     exit 1
   fi
+  load_staging_deployment_state_helper || exit 1
   load_staging_rollback_helper || exit 1
   release_execution_init_context "$DEPLOY_CONTEXT_FILE"
   load_deploy_host_preflight_helper
@@ -538,6 +688,9 @@ prepare_staging_checkout() {
   log_info "Staging checkout is now at $(git rev-parse HEAD)"
 
   load_staging_release_manifest
+  if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ]; then
+    deployment_state_capture_previous_release || exit 1
+  fi
   login_staging_registry
   preflight_staging_release_candidate_images
   classify_migration_risk
@@ -676,6 +829,7 @@ wait_for_staging_runtime_readiness() {
     if echo "$ready_check" | grep -q '"ready":true'; then
       log_success "Application readiness OK"
       release_execution_mark_stage completed
+      activate_release_bundle_state
       return 0
     fi
 

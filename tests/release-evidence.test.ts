@@ -379,6 +379,8 @@ describe('release evidence rendering', () => {
       TAG_NAME: 'v1.2.99',
       APP_SHA: 'cp-sha',
       OPENPATH_SHA: 'op-sha',
+      RELEASE_ID: 'a'.repeat(64),
+      OPENPATH_CONTRACT_SHA256: 'b'.repeat(64),
       VERIFY_STAGING_RESULT: 'success',
       STAGING_SMOKE_RESULT: 'success',
       STAGING_RELEASE_GATE_RESULT: 'success',
@@ -406,6 +408,8 @@ describe('release evidence rendering', () => {
       release_tag_name: 'v1.2.99',
       release_classroompath_sha: 'cp-sha',
       release_openpath_sha: 'op-sha',
+      release_id: 'a'.repeat(64),
+      release_openpath_contract_sha256: 'b'.repeat(64),
       release_promotion_eligibility: 'eligible',
       release_promotion_deployment_mode: 'promotion-eligible',
     });

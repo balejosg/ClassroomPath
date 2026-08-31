@@ -10,6 +10,10 @@
  *   imageSource: 'release-candidate' | 'source-build';
  *   deploymentMode: 'promotion-eligible' | 'debug';
  *   manifestBase64: string;
+ *   releaseId?: string;
+ *   releaseBundleBase64?: string;
+ *   openpathContractBase64?: string;
+ *   rcRunId?: string;
  * }} DeployIntent
  */
 
@@ -21,6 +25,10 @@
  *   imageSource: 'release-candidate' | 'source-build';
  *   deploymentMode: 'promotion-eligible' | 'debug';
  *   manifestBase64?: string;
+ *   releaseId?: string;
+ *   releaseBundleBase64?: string;
+ *   openpathContractBase64?: string;
+ *   rcRunId?: string;
  * }} params
  * @returns {DeployIntent}
  */
@@ -31,6 +39,10 @@ export function buildDeployIntent({
   imageSource,
   deploymentMode,
   manifestBase64,
+  releaseId,
+  releaseBundleBase64,
+  openpathContractBase64,
+  rcRunId,
 }) {
   if (targetEnvironment !== 'staging' && targetEnvironment !== 'production') {
     throw new Error(`Unsupported target environment: ${targetEnvironment}`);
@@ -56,7 +68,28 @@ export function buildDeployIntent({
     throw new Error('promotion-eligible deploy intent requires release-candidate images');
   }
 
-  return {
+  const immutableBundleFields = [releaseId, releaseBundleBase64, openpathContractBase64].filter(
+    (value) => String(value ?? '').trim() !== ''
+  );
+  if (immutableBundleFields.length !== 0 && immutableBundleFields.length !== 3) {
+    throw new Error(
+      'releaseId, releaseBundleBase64, and openpathContractBase64 must be provided together'
+    );
+  }
+  if (deploymentMode === 'promotion-eligible' && immutableBundleFields.length !== 3) {
+    throw new Error(
+      'promotion-eligible deploy intent requires releaseId, releaseBundleBase64, and openpathContractBase64'
+    );
+  }
+  if (releaseId && !/^[0-9a-f]{64}$/.test(releaseId)) {
+    throw new Error('releaseId must be a 64-character lowercase SHA-256 hex string');
+  }
+  if (deploymentMode === 'promotion-eligible' && !/^[0-9]+$/.test(String(rcRunId ?? '').trim())) {
+    throw new Error('promotion-eligible deploy intent requires a numeric rcRunId');
+  }
+
+  /** @type {DeployIntent} */
+  const intent = {
     version: 3,
     targetEnvironment,
     deployRef,
@@ -65,6 +98,15 @@ export function buildDeployIntent({
     deploymentMode,
     manifestBase64: manifestBase64 ?? '',
   };
+
+  if (immutableBundleFields.length === 3) {
+    intent.releaseId = releaseId;
+    intent.releaseBundleBase64 = releaseBundleBase64;
+    intent.openpathContractBase64 = openpathContractBase64;
+    intent.rcRunId = String(rcRunId).trim();
+  }
+
+  return intent;
 }
 
 function serializeDeployIntent(intent) {
@@ -76,6 +118,10 @@ function serializeDeployIntent(intent) {
     `image_source=${intent.imageSource}`,
     `deployment_mode=${intent.deploymentMode}`,
     `manifest_base64=${intent.manifestBase64}`,
+    `release_id=${intent.releaseId ?? ''}`,
+    `release_bundle_base64=${intent.releaseBundleBase64 ?? ''}`,
+    `openpath_contract_base64=${intent.openpathContractBase64 ?? ''}`,
+    `rc_run_id=${intent.rcRunId ?? ''}`,
     '',
   ].join('\n');
 }
@@ -111,6 +157,10 @@ function parseDeployIntentText(text) {
     imageSource: /** @type {'release-candidate' | 'source-build'} */ (entries.image_source),
     deploymentMode: /** @type {'promotion-eligible' | 'debug'} */ (entries.deployment_mode),
     manifestBase64: entries.manifest_base64 ?? '',
+    releaseId: entries.release_id ?? '',
+    releaseBundleBase64: entries.release_bundle_base64 ?? '',
+    openpathContractBase64: entries.openpath_contract_base64 ?? '',
+    rcRunId: entries.rc_run_id ?? '',
   });
 }
 

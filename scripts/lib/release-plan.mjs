@@ -19,6 +19,9 @@ import { deriveStagingDeploymentMode } from './promotion-eligibility.mjs';
  *   linux_agent_apt_suite: string;
  *   spa_image: string;
  *   verifier_image: string;
+ *   release_id?: string;
+ *   openpath_sha?: string;
+ *   openpath_contract_sha256?: string;
  * }} ReleaseManifest
  */
 
@@ -45,6 +48,9 @@ import { deriveStagingDeploymentMode } from './promotion-eligibility.mjs';
  *   linuxAgentAptSuite: string;
  *   spaImage: string;
  *   verifierImage: string;
+ *   releaseId?: string;
+ *   openpathSha?: string;
+ *   openpathContractSha256?: string;
  * }} ReleaseCandidatePlan
  */
 
@@ -124,6 +130,9 @@ export function buildStagingReleasePlan({ imageMode, remoteSha, manifest }) {
         linuxAgentAptSuite: manifest.linux_agent_apt_suite,
         spaImage: manifest.spa_image,
         verifierImage: manifest.verifier_image,
+        releaseId: manifest.release_id,
+        openpathSha: manifest.openpath_sha,
+        openpathContractSha256: manifest.openpath_contract_sha256,
       },
       verification: {
         runSmoke: true,
@@ -163,11 +172,13 @@ function shellQuote(value) {
 
 /**
  * @param {StagingReleasePlan} plan
- * @param {{ manifestBase64?: string }} [options]
+ * @param {{ manifestBase64?: string; bundleBase64?: string; contractBase64?: string }} [options]
  * @returns {string}
  */
 export function formatStagingReleasePlanEnv(plan, options = {}) {
   const manifestBase64 = options.manifestBase64 ?? '';
+  const bundleBase64 = options.bundleBase64 ?? '';
+  const contractBase64 = options.contractBase64 ?? '';
   const envEntries = {
     STAGING_IMAGE_SOURCE: plan.imageSource,
     STAGING_DEPLOYMENT_MODE: plan.deploymentMode,
@@ -176,6 +187,11 @@ export function formatStagingReleasePlanEnv(plan, options = {}) {
     STAGING_RELEASE_RUN_ID: plan.releaseCandidate?.runId ?? '',
     STAGING_RELEASE_REPOSITORY: plan.releaseCandidate?.repository ?? '',
     STAGING_RELEASE_MANIFEST_B64: manifestBase64,
+    STAGING_RELEASE_ID: plan.releaseCandidate?.releaseId ?? '',
+    STAGING_OPENPATH_SHA: plan.releaseCandidate?.openpathSha ?? '',
+    STAGING_OPENPATH_CONTRACT_SHA256: plan.releaseCandidate?.openpathContractSha256 ?? '',
+    STAGING_RELEASE_BUNDLE_B64: bundleBase64,
+    STAGING_OPENPATH_CONTRACT_B64: contractBase64,
     STAGING_REQUIRE_LIVE_WINDOWS_FIREFOX_EVIDENCE: plan.verification
       .requireLiveWindowsFirefoxEvidence
       ? '1'
@@ -189,10 +205,10 @@ export function formatStagingReleasePlanEnv(plan, options = {}) {
 
 /**
  * @param {string[]} args
- * @returns {{ imageMode: 'release-candidate' | 'source-build'; remoteSha: string; manifestFile?: string }}
+ * @returns {{ imageMode: 'release-candidate' | 'source-build'; remoteSha: string; manifestFile?: string; bundleBase64?: string; contractBase64?: string }}
  */
 function parseCliArgs(args) {
-  /** @type {{ imageMode?: 'release-candidate' | 'source-build'; remoteSha?: string; manifestFile?: string }} */
+  /** @type {{ imageMode?: 'release-candidate' | 'source-build'; remoteSha?: string; manifestFile?: string; bundleBase64?: string; contractBase64?: string }} */
   const parsed = {};
 
   for (let index = 0; index < args.length; index += 1) {
@@ -215,6 +231,14 @@ function parseCliArgs(args) {
         parsed.manifestFile = value ?? '';
         index += 1;
         break;
+      case '--bundle-base64':
+        parsed.bundleBase64 = value ?? '';
+        index += 1;
+        break;
+      case '--contract-base64':
+        parsed.contractBase64 = value ?? '';
+        index += 1;
+        break;
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }
@@ -228,7 +252,7 @@ function parseCliArgs(args) {
     throw new Error('--remote-sha is required');
   }
 
-  return /** @type {{ imageMode: 'release-candidate' | 'source-build'; remoteSha: string; manifestFile?: string }} */ (
+  return /** @type {{ imageMode: 'release-candidate' | 'source-build'; remoteSha: string; manifestFile?: string; bundleBase64?: string; contractBase64?: string }} */ (
     parsed
   );
 }
@@ -239,13 +263,15 @@ function runCli() {
     return;
   }
 
-  const { imageMode, remoteSha, manifestFile } = parseCliArgs(args);
+  const { imageMode, remoteSha, manifestFile, bundleBase64, contractBase64 } = parseCliArgs(args);
   const manifestText = manifestFile ? readFileSync(manifestFile, 'utf8') : '';
   const manifest = manifestText ? parseReleaseManifestText(manifestText) : null;
   const plan = buildStagingReleasePlan({ imageMode, remoteSha, manifest });
   const manifestBase64 = manifestText ? Buffer.from(manifestText, 'utf8').toString('base64') : '';
 
-  process.stdout.write(formatStagingReleasePlanEnv(plan, { manifestBase64 }));
+  process.stdout.write(
+    formatStagingReleasePlanEnv(plan, { manifestBase64, bundleBase64, contractBase64 })
+  );
 }
 
 runCli();

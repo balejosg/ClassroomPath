@@ -146,7 +146,7 @@ function assertNightlyStagingCandidateGate(
     '${{ secrets.STAGING_DEPLOY_LAN_PORT || secrets.STAGING_DEPLOY_PORT }}'
   );
   assert.equal(deployStep.env?.STAGING_USER, '${{ secrets.STAGING_DEPLOY_USER }}');
-  assert.ok(workflowText.includes('scripts/wait-for-release-candidate.mjs resolve-manifest'));
+  assert.ok(workflowText.includes('scripts/wait-for-release-candidate.mjs resolve-bundle'));
   assert.match(String(deployStep.run ?? ''), /npm run deploy:staging:assume-yes/);
   assert.equal(
     jobs['windows-staging-bootstrap-canary']?.uses,
@@ -231,7 +231,9 @@ describe('Deploy workflow contracts', () => {
     );
     assert.equal(workflow.permissions?.contents, 'read');
     assert.ok(workflowText.includes('ref: main'));
-    assert.ok(workflowText.includes('scripts/wait-for-release-candidate.mjs resolve-manifest'));
+    assert.ok(workflowText.includes('scripts/wait-for-release-candidate.mjs resolve-bundle'));
+    assert.ok(workflowText.includes('--legacy-manifest-file release-manifest.env'));
+    assert.ok(workflowText.includes('STAGING_RELEASE_ID='));
     assert.ok(workflowText.includes('npm run deploy:staging:assume-yes'));
     assert.ok(workflowText.includes('npm run verify:promotion-ready'));
     assert.ok(workflowText.includes('release-candidate-images.env'));
@@ -264,7 +266,7 @@ describe('Deploy workflow contracts', () => {
     assertGitHubCliAvailableBeforeInstallAndResolve(
       '.github/workflows/nightly-staging-candidate.yml',
       'deploy-current-main-to-staging',
-      'Resolve release-candidate manifest'
+      'Resolve release-candidate bundle'
     );
     assertNightlyStagingCandidateGate(workflow, workflowText);
   });
@@ -432,7 +434,16 @@ describe('Deploy workflow contracts', () => {
     const readProductionReleaseStateScript = String(readProductionReleaseStateStep?.run ?? '');
 
     assert.ok(smokeWorkflowText.includes('./.github/workflows/reusable-smoke-test.yml'));
-    assert.ok(smokeWorkflowText.includes('resolve-latest-verifier-image.mjs'));
+    assert.ok(smokeWorkflowText.includes('resolve-deployed-release-state.mjs'));
+    assert.doesNotMatch(smokeWorkflowText, /resolve-latest-verifier-image\.mjs/);
+    assert.match(smokeWorkflowText, /release_id:/);
+    assert.match(smokeWorkflowText, /openpath_contract_sha256:/);
+    assert.match(smokeWorkflowText, /releases\/\$pointer\/runtime\.env/);
+    assert.match(
+      deployWorkflowText,
+      /Annotated production tag identity ClassroomPath SHA .*does not match tag target/,
+      'deploy must bind the annotated tag identity to the actual tag target SHA'
+    );
     assert.ok(smokeWorkflowText.includes('needs.smoke-test-staging.outputs.failure_boundary_id'));
     assert.ok(
       smokeWorkflowText.includes('needs.smoke-test-production.outputs.failure_boundary_id')
@@ -446,6 +457,8 @@ describe('Deploy workflow contracts', () => {
     );
     assert.ok(reusableSmokeWorkflowText.includes('run-smoke-in-verifier.sh'));
     assert.ok(reusableSmokeWorkflowText.includes('verifier_image:'));
+    assert.ok(reusableSmokeWorkflowText.includes('release_id:'));
+    assert.ok(reusableSmokeWorkflowText.includes('openpath_contract_sha256:'));
     assert.ok(reusableSmokeWorkflowText.includes('wait-for-ready.sh'));
     assert.ok(!reusableSmokeWorkflowText.includes('npm ci'));
     assert.equal(
@@ -1002,7 +1015,7 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       deployWorkflowText,
-      /node scripts\/release-evidence-bundle\.mjs \\\n+\s+--deploy-run "\$\{\{ github\.run_id \}\}" \\\n+\s+--tag "\$\{\{ github\.ref_name \}\}" \\\n+\s+--production-url "\$\{\{ steps\.production-target\.outputs\.public_url \}\}" \\\n+\s+--output-dir release-evidence-bundle/
+      /node scripts\/release-evidence-bundle\.mjs \\\n+\s+--deploy-run "\$\{\{ github\.run_id \}\}" \\\n+\s+--tag "\$\{\{ github\.ref_name \}\}" \\\n+\s+--release-bundle-run "\$\{\{ needs\.resolve-release-images\.outputs\.rc_run_id \}\}" \\\n+\s+--production-url "\$\{\{ steps\.production-target\.outputs\.public_url \}\}" \\\n+\s+--output-dir release-evidence-bundle/
     );
     const uploadReleaseEvidenceStep = findWorkflowStepByName(
       jobs['release-evidence'],

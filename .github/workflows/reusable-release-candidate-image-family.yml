@@ -50,6 +50,14 @@ on:
         required: false
         type: string
         default: ''
+      openpath_source_sha:
+        description: OpenPath source SHA used for OCI provenance labels.
+        required: true
+        type: string
+      openpath_contract_sha256:
+        description: SHA-256 of the exact OpenPath promotion contract bytes.
+        required: true
+        type: string
       artifact_path:
         description: Optional destination path for the downloaded artifact.
         required: false
@@ -163,6 +171,8 @@ jobs:
           cache-scope: ${{ inputs.amd64_cache_scope }}
           artifact-name: ${{ inputs.artifact_name }}
           openpath-sha: ${{ inputs.openpath_sha }}
+          openpath-source-sha: ${{ inputs.openpath_source_sha }}
+          openpath-contract-sha256: ${{ inputs.openpath_contract_sha256 }}
           artifact-path: ${{ inputs.artifact_path }}
           verify-paths: ${{ inputs.verify_paths }}
 
@@ -216,6 +226,8 @@ jobs:
           cache-scope: ${{ inputs.arm64_cache_scope }}
           artifact-name: ${{ inputs.artifact_name }}
           openpath-sha: ${{ inputs.openpath_sha }}
+          openpath-source-sha: ${{ inputs.openpath_source_sha }}
+          openpath-contract-sha256: ${{ inputs.openpath_contract_sha256 }}
           artifact-path: ${{ inputs.artifact_path }}
           verify-paths: ${{ inputs.verify_paths }}
 
@@ -263,6 +275,8 @@ jobs:
           arm64-digest: ${{ needs.build-arm64.outputs.image_digest }}
           previous-image: ${{ inputs.previous_image }}
           output-name: ${{ inputs.output_name }}
+          openpath-source-sha: ${{ inputs.openpath_source_sha }}
+          openpath-contract-sha256: ${{ inputs.openpath_contract_sha256 }}
 
       - name: Record publish duration
         id: record-publish-duration

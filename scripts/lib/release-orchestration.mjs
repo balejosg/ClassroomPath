@@ -75,6 +75,7 @@ export function buildPromotionPlan({
   tag,
   highRiskWindows = false,
   postProductionWindowsCanary = true,
+  transcriptRoot = '.opencode/tmp/release-promote',
 } = {}) {
   if (!tag) {
     throw new Error('tag is required');
@@ -82,6 +83,9 @@ export function buildPromotionPlan({
   if (!/^v\d+(?:\.\d+){2,}$/.test(tag)) {
     throw new Error('tag must look like v<major>.<minor>.<patch>');
   }
+
+  const releaseBundleStateDir = join(transcriptRoot, tag, 'bundle');
+  const releaseBundleStateFile = join(releaseBundleStateDir, 'staging-release.env');
 
   const steps = [
     step(
@@ -97,13 +101,10 @@ export function buildPromotionPlan({
           'test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"',
           'git -C upstream/openpath diff --quiet',
           'git -C upstream/openpath diff --cached --quiet',
-          'git -C upstream/openpath fetch origin main --quiet',
-          'bash scripts/ensure-openpath-submodule-on-main.sh',
-          'test "$(git -C upstream/openpath rev-parse --abbrev-ref HEAD)" = "main"',
-          'test "$(git -C upstream/openpath rev-parse HEAD)" = "$(git -C upstream/openpath rev-parse origin/main)"',
+          'test "$(git -C upstream/openpath rev-parse HEAD)" = "$(git rev-parse HEAD:upstream/openpath)"',
         ].join(' && '),
       ],
-      'Verify ClassroomPath and upstream OpenPath are clean main checkouts matching origin/main.'
+      'Verify ClassroomPath is clean at origin/main and OpenPath is clean at the pinned gitlink.'
     ),
     step(
       'resolve-origin-main',
@@ -115,18 +116,39 @@ export function buildPromotionPlan({
       [
         'bash',
         '-lc',
-        'UPSTREAM_OPENPATH_SHA="$(git -C upstream/openpath rev-parse HEAD)" node scripts/wait-for-release-candidate.mjs resolve-manifest --sha "$(git rev-parse origin/main)"',
+        [
+          `bundle_state_dir=${quoteShellArg(releaseBundleStateDir)}`,
+          'mkdir -p "$bundle_state_dir"',
+          'target_sha="$(git rev-parse origin/main)"',
+          'UPSTREAM_OPENPATH_SHA="$(git -C upstream/openpath rev-parse HEAD)" node scripts/wait-for-release-candidate.mjs resolve-bundle',
+          '  --repo balejosg/ClassroomPath',
+          '  --sha "$target_sha"',
+          '  --output-file "$bundle_state_dir/release-candidate-images.env"',
+          '  --output-dir "$bundle_state_dir/release-bundle"',
+          '  --legacy-manifest-file "$bundle_state_dir/release-manifest.env"',
+          '  > "$bundle_state_dir/outputs.env"',
+          'release_id="$(awk -F= \'$1 == "release_id" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
+          'run_id="$(awk -F= \'$1 == "release_bundle_run_id" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
+          'test -n "$release_id"',
+          'test -n "$run_id"',
+          `printf 'STAGING_RELEASE_ID=%s\\nSTAGING_RELEASE_RUN_ID=%s\\n' "$release_id" "$run_id" > ${quoteShellArg(releaseBundleStateFile)}`,
+        ].join('\n'),
       ],
-      'Wait for the release-candidate manifest for origin/main.'
+      'Resolve and persist the exact Release Bundle identity for origin/main.'
     ),
     step(
       'deploy-staging',
       [
         'bash',
         '-lc',
-        'STAGING_GHCR_USERNAME="${STAGING_GHCR_USERNAME:-balejosg}" STAGING_GHCR_TOKEN="${STAGING_GHCR_TOKEN:-$(gh auth token)}" npm run deploy:staging',
+        [
+          `test -s ${quoteShellArg(releaseBundleStateFile)}`,
+          `set -a && . ${quoteShellArg(releaseBundleStateFile)} && set +a`,
+          'test -n "$STAGING_RELEASE_ID" && test -n "$STAGING_RELEASE_RUN_ID"',
+          'STAGING_GHCR_USERNAME="${STAGING_GHCR_USERNAME:-balejosg}" STAGING_GHCR_TOKEN="${STAGING_GHCR_TOKEN:-$(gh auth token)}" npm run deploy:staging',
+        ].join(' && '),
       ],
-      'Deploy the resolved release candidate to staging.'
+      'Deploy the same exact Release Bundle identity to staging.'
     ),
   ];
 
@@ -217,7 +239,14 @@ export function buildPromotionPlan({
 
   steps.push(step('print-summary', null, 'Print promotion summary.'));
 
-  return { tag, highRiskWindows, postProductionWindowsCanary, steps };
+  return {
+    tag,
+    highRiskWindows,
+    postProductionWindowsCanary,
+    releaseBundleStateDir,
+    releaseBundleStateFile,
+    steps,
+  };
 }
 
 export function formatCommand(command) {
@@ -324,6 +353,8 @@ export function summarizeGitHubRunMonitor(summary) {
 export function writeStepState({
   root = '.opencode/tmp/release-promote',
   tag,
+  releaseId,
+  rcRunId,
   startedAt,
   stepId,
   status,
@@ -339,8 +370,33 @@ export function writeStepState({
     // First write for this tag — start fresh.
   }
 
+  if (existing.tag && existing.tag !== tag) {
+    throw new Error(`Promotion state tag mismatch: ${existing.tag} != ${tag}`);
+  }
+
+  const normalizedReleaseId = normalizeReleaseId(releaseId, 'releaseId');
+  const existingReleaseId = normalizeReleaseId(existing.releaseId, 'persisted releaseId');
+  if (existingReleaseId && normalizedReleaseId && existingReleaseId !== normalizedReleaseId) {
+    throw new Error(
+      `Promotion state is bound to a different Release Bundle releaseId: ${existingReleaseId} != ${normalizedReleaseId}`
+    );
+  }
+
+  const normalizedRcRunId = normalizeRcRunId(rcRunId, 'rcRunId');
+  const existingRcRunId = normalizeRcRunId(existing.rcRunId, 'persisted rcRunId');
+  if (existingRcRunId && normalizedRcRunId && existingRcRunId !== normalizedRcRunId) {
+    throw new Error(
+      `Promotion state is bound to a different Release Bundle rcRunId: ${existingRcRunId} != ${normalizedRcRunId}`
+    );
+  }
+
+  const boundReleaseId = normalizedReleaseId || existingReleaseId;
+  const boundRcRunId = normalizedRcRunId || existingRcRunId;
+
   const updated = {
     tag,
+    ...(boundReleaseId ? { releaseId: boundReleaseId } : {}),
+    ...(boundRcRunId ? { rcRunId: boundRcRunId } : {}),
     startedAt: existing.startedAt ?? startedAt,
     updatedAt: new Date().toISOString(),
     steps: {
@@ -352,6 +408,51 @@ export function writeStepState({
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(statePath, `${JSON.stringify(updated, null, 2)}\n`);
   return updated;
+}
+
+function normalizeReleaseId(value, label) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '';
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new Error(`${label} must be a 64-character lowercase SHA-256 hex string`);
+  }
+  return normalized;
+}
+
+function normalizeRcRunId(value, label) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '';
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error(`${label} must be a numeric GitHub run id`);
+  }
+  return normalized;
+}
+
+export function readReleaseBundleLocatorIdentity(locatorPath) {
+  let text;
+  try {
+    text = readFileSync(locatorPath, 'utf8');
+  } catch {
+    return null;
+  }
+
+  const values = Object.fromEntries(
+    String(text)
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        const separator = line.indexOf('=');
+        return separator === -1
+          ? [line, '']
+          : [line.slice(0, separator), line.slice(separator + 1)];
+      })
+  );
+  const releaseId = normalizeReleaseId(values.STAGING_RELEASE_ID, 'STAGING_RELEASE_ID');
+  const rcRunId = normalizeRcRunId(values.STAGING_RELEASE_RUN_ID, 'STAGING_RELEASE_RUN_ID');
+  if (!releaseId || !rcRunId) {
+    throw new Error(`Exact Release Bundle locator is incomplete: ${locatorPath}`);
+  }
+  return { releaseId, rcRunId };
 }
 
 /**

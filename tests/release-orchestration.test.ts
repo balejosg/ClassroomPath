@@ -94,6 +94,20 @@ describe('release promotion orchestration', () => {
     assert.match(commandsById['report-residual-actions-runs'], /--tag v1\.2\.301/);
   });
 
+  it('persists and reuses the exact Release Bundle identity across the RC wait and staging deploy', () => {
+    const plan = buildPromotionPlan({ tag: 'v1.2.301', highRiskWindows: false });
+    const commandsById = Object.fromEntries(
+      plan.steps.map((step) => [step.id, formatCommand(step.command)])
+    );
+
+    assert.match(commandsById['wait-release-candidate'], /resolve-bundle/u);
+    assert.doesNotMatch(commandsById['wait-release-candidate'], /resolve-manifest/u);
+    assert.match(commandsById['wait-release-candidate'], /release_bundle_run_id/u);
+    assert.match(commandsById['wait-release-candidate'], /RELEASE_ID/u);
+    assert.match(commandsById['deploy-staging'], /STAGING_RELEASE_ID/u);
+    assert.match(commandsById['deploy-staging'], /STAGING_RELEASE_RUN_ID/u);
+  });
+
   it('runs the post-production Windows canary by default before residual reporting', () => {
     const plan = buildPromotionPlan({
       tag: 'v1.2.301',
@@ -140,19 +154,15 @@ describe('release promotion orchestration', () => {
     assert.equal(plan.steps.at(-1)?.id, 'print-summary');
   });
 
-  it('verify-clean-repos includes ensure-openpath-submodule-on-main.sh before the --abbrev-ref assert', () => {
+  it('verify-clean-repos binds the checked-out OpenPath commit to the gitlink without advancing it', () => {
     const plan = buildPromotionPlan({ tag: 'v1.2.3' });
     const verifyStep = plan.steps.find((step) => step.id === 'verify-clean-repos');
     const command = formatCommand(verifyStep?.command);
 
-    assert.match(command, /ensure-openpath-submodule-on-main\.sh/);
-
-    const ensureIdx = command.indexOf('ensure-openpath-submodule-on-main.sh');
-    const abbrevIdx = command.indexOf('--abbrev-ref HEAD');
-    assert.ok(
-      ensureIdx !== -1 && abbrevIdx !== -1 && ensureIdx < abbrevIdx,
-      'ensure-openpath-submodule-on-main.sh must appear before the --abbrev-ref HEAD assert'
-    );
+    assert.match(command, /git rev-parse HEAD:upstream\/openpath/);
+    assert.match(command, /git -C upstream\/openpath rev-parse HEAD/);
+    assert.doesNotMatch(command, /ensure-openpath-submodule-on-main\.sh/);
+    assert.doesNotMatch(command, /upstream\/openpath.*origin\/main/);
   });
 
   it('builds a polling command for the tag-triggered deploy run', () => {

@@ -66,8 +66,16 @@ write_release_runtime_state() {
   local template_commit="${13:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}}"
   local template_release_tag="${14:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}}"
   local template_sha256="${15:-${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}}"
+  local release_id="${16:-${RELEASE_ID:-}}"
+  local openpath_sha="${17:-${OPENPATH_SHA:-}}"
+  local contract_sha256="${18:-${OPENPATH_CONTRACT_SHA256:-}}"
+  local verifier_image="${19:-${CLASSROOMPATH_VERIFIER_IMAGE:-}}"
+  local rc_run_id="${20:-${RC_RUN_ID:-}}"
 
+  RELEASE_ID="$release_id" \
   APP_SHA="$app_sha" \
+  OPENPATH_SHA="$openpath_sha" \
+  OPENPATH_CONTRACT_SHA256="$contract_sha256" \
   IMAGE_SOURCE="$image_source" \
   CLASSROOMPATH_GATEWAY_IMAGE="$gateway_image" \
   CLASSROOMPATH_MIGRATIONS_IMAGE="$migrations_image" \
@@ -81,6 +89,8 @@ write_release_runtime_state() {
   OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT="$template_commit" \
   OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG="$template_release_tag" \
   OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256="$template_sha256" \
+  CLASSROOMPATH_VERIFIER_IMAGE="$verifier_image" \
+  RC_RUN_ID="$rc_run_id" \
     write_current_release_state "$state_path"
 }
 
@@ -91,6 +101,7 @@ prepare_openpath_firefox_assets_from_image() {
   local tmp_dir=""
   local target_dir=""
   local assets_container=""
+  local generation_id=""
 
   if [ -z "$image_ref" ]; then
     log_error "OPENPATH_FIREFOX_ASSETS_IMAGE is missing from release-candidate runtime"
@@ -99,9 +110,16 @@ prepare_openpath_firefox_assets_from_image() {
 
   mkdir -p "$host_root"
   tmp_dir="$(mktemp -d "$host_root/.tmp.XXXXXX")"
-  target_dir="$host_root/$app_sha"
+  generation_id="${RELEASE_ID:-$app_sha}"
+  if [[ ! "$generation_id" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    log_error "OpenPath Firefox release generation id is invalid: $generation_id"
+    rm -rf "$tmp_dir"
+    return 1
+  fi
+  mkdir -p "$host_root/generations"
+  target_dir="$host_root/generations/generation-$generation_id"
 
-  docker pull "$OPENPATH_FIREFOX_ASSETS_IMAGE" || {
+  docker pull "$image_ref" || {
     rm -rf "$tmp_dir"
     return 1
   }
@@ -123,10 +141,20 @@ prepare_openpath_firefox_assets_from_image() {
   chmod 644 "$tmp_dir/openpath-firefox-extension.xpi"
 
   docker rm "$assets_container" >/dev/null 2>&1 || true
-  rm -rf "$target_dir"
-  mv "$tmp_dir" "$target_dir"
+  if [ -e "$target_dir" ]; then
+    if ! cmp -s "$tmp_dir/metadata.json" "$target_dir/metadata.json" ||
+      ! cmp -s "$tmp_dir/openpath-firefox-extension.xpi" "$target_dir/openpath-firefox-extension.xpi"; then
+      log_error "OpenPath Firefox release generation already exists with different bytes: $target_dir"
+      rm -rf "$tmp_dir"
+      return 1
+    fi
+    rm -rf "$tmp_dir"
+  else
+    mv "$tmp_dir" "$target_dir"
+  fi
   ln -sfn "$target_dir" "$host_root/current"
 
   export OPENPATH_FIREFOX_RELEASE_DIR="$host_root/current"
   export OPENPATH_FIREFOX_RELEASE_ROOT=/openpath-firefox-release
+  export OPENPATH_FIREFOX_RELEASE_GENERATION="$target_dir"
 }

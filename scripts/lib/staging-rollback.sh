@@ -33,6 +33,7 @@ restore_previous_release_state() {
   local current_state_file="${CURRENT_STATE_FILE:-}"
   local app_dir="${APP_DIR:-}"
   local snapshot_image_source=""
+  local v2_previous_release=0
   local -a required_snapshot_fields=(
     APP_SHA
     IMAGE_SOURCE
@@ -48,29 +49,65 @@ restore_previous_release_state() {
     OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256
   )
 
-  if [ ! -f "$previous_state_file" ]; then
-    log_warn "No previous release metadata available; cannot restore previous release"
-    ROLLBACK_RESULT="unavailable"
-    if ! write_deploy_context; then
-      log_error "Unable to persist unavailable staging rollback state"
+  # The v2 path delegates to scripts/lib/release-bundle-state.mjs and verifies
+  # the immutable previous pointer before any checkout or Docker mutation.
+  if declare -f deployment_state_v2_pointer_present >/dev/null 2>&1 &&
+    deployment_state_v2_pointer_present previous; then
+    v2_previous_release=1
+    if ! deployment_state_load_previous_release; then
+      log_error "Previous staging Release Bundle v2 state could not be verified"
+      ROLLBACK_RESULT="unavailable"
+      return 1
     fi
-    return 1
-  fi
+    snapshot_image_source="${IMAGE_SOURCE:-}"
+    required_snapshot_fields+=(
+      RELEASE_ID
+      RC_RUN_ID
+      OPENPATH_SHA
+      OPENPATH_CONTRACT_SHA256
+      CLASSROOMPATH_VERIFIER_IMAGE
+      OPENPATH_LINUX_AGENT_VERSION
+      OPENPATH_LINUX_AGENT_APT_SUITE
+    )
+    for field_name in "${required_snapshot_fields[@]}"; do
+      if [ -z "${!field_name:-}" ]; then
+        log_error "Previous staging Release Bundle state is missing $field_name"
+        ROLLBACK_RESULT="unavailable"
+        return 1
+      fi
+    done
+  else
+    if [ ! -f "$previous_state_file" ]; then
+      log_warn "No previous release metadata available; cannot restore previous release"
+      ROLLBACK_RESULT="unavailable"
+      if ! write_deploy_context; then
+        log_error "Unable to persist unavailable staging rollback state"
+      fi
+      return 1
+    fi
 
-  if ! snapshot_image_source="$(release_state_snapshot_value "$previous_state_file" IMAGE_SOURCE)"; then
-    log_error "Previous staging release metadata does not declare IMAGE_SOURCE"
-    ROLLBACK_RESULT="unavailable"
-    return 1
+    if ! snapshot_image_source="$(release_state_snapshot_value "$previous_state_file" IMAGE_SOURCE)"; then
+      log_error "Previous staging release metadata does not declare IMAGE_SOURCE"
+      ROLLBACK_RESULT="unavailable"
+      return 1
+    fi
   fi
 
   case "$snapshot_image_source" in
     release-candidate)
-      required_snapshot_fields+=(
-        OPENPATH_LINUX_AGENT_VERSION
-        OPENPATH_LINUX_AGENT_APT_SUITE
-      )
+      if [ "$v2_previous_release" -eq 0 ]; then
+        required_snapshot_fields+=(
+          OPENPATH_LINUX_AGENT_VERSION
+          OPENPATH_LINUX_AGENT_APT_SUITE
+        )
+      fi
       ;;
     source-build)
+      if [ "$v2_previous_release" -eq 1 ]; then
+        log_error "Release Bundle v2 staging rollback must use release-candidate images"
+        ROLLBACK_RESULT="unavailable"
+        return 1
+      fi
       ;;
     *)
       log_error "Previous staging release image source is not rollback-compatible: $snapshot_image_source"
@@ -79,7 +116,7 @@ restore_previous_release_state() {
       ;;
   esac
 
-  if ! release_state_require_snapshot_fields \
+  if [ "$v2_previous_release" -eq 0 ] && ! release_state_require_snapshot_fields \
     "$previous_state_file" \
     current-runtime \
     "${required_snapshot_fields[@]}"; then
@@ -94,14 +131,16 @@ restore_previous_release_state() {
     staging_rollback_mark_failed || return 1
   fi
 
-  set -a
-  # shellcheck disable=SC1090 # the previous release snapshot is operator state
-  if ! . "$previous_state_file"; then
+  if [ "$v2_previous_release" -eq 0 ]; then
+    set -a
+    # shellcheck disable=SC1090 # the previous release snapshot is operator state
+    if ! . "$previous_state_file"; then
+      set +a
+      log_error "Previous staging release metadata could not be loaded"
+      staging_rollback_mark_failed || return 1
+    fi
     set +a
-    log_error "Previous staging release metadata could not be loaded"
-    staging_rollback_mark_failed || return 1
   fi
-  set +a
 
   # Never restore a pre-canonical ClassroomPath release. The complete
   # OpenPath installer pin is the compatibility boundary for both source and
@@ -126,6 +165,14 @@ restore_previous_release_state() {
   fi
   if ! git submodule update --init --recursive --force; then
     staging_rollback_mark_failed || return 1
+  fi
+  if [ "$v2_previous_release" -eq 1 ]; then
+    local checked_out_openpath_sha=""
+    checked_out_openpath_sha="$(git rev-parse HEAD:upstream/openpath)"
+    if [ "$checked_out_openpath_sha" != "$OPENPATH_SHA" ]; then
+      log_error "Checked-out OpenPath gitlink $checked_out_openpath_sha does not match Release Bundle OpenPath SHA $OPENPATH_SHA"
+      staging_rollback_mark_failed || return 1
+    fi
   fi
 
   if ! cd "$app_dir/docker"; then
@@ -190,7 +237,11 @@ restore_previous_release_state() {
     staging_rollback_mark_failed || return 1
   fi
 
-  if ! cp "$previous_state_file" "$current_state_file"; then
+  if [ "$v2_previous_release" -eq 1 ]; then
+    if ! deployment_state_activate_previous_release; then
+      staging_rollback_mark_failed || return 1
+    fi
+  elif ! cp "$previous_state_file" "$current_state_file"; then
     staging_rollback_mark_failed || return 1
   fi
   ROLLBACK_RESULT="success"

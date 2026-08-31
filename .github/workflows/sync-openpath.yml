@@ -147,21 +147,15 @@ jobs:
         if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
         run: |
           set -euo pipefail
-          linux_agent_env="$(mktemp)"
-          node scripts/resolve-openpath-linux-agent-version.mjs \
-            --openpath-dir upstream/openpath > "$linux_agent_env"
-          cat "$linux_agent_env"
-          # shellcheck disable=SC1090
-          . "$linux_agent_env"
-
-          OPENPATH_LINUX_AGENT_VERSION="$version" \
-          OPENPATH_LINUX_AGENT_APT_SUITE="$apt_suite" \
-            node scripts/resolve-openpath-linux-agent-version.mjs verify-runtime-pin
-
-          OPENPATH_LINUX_AGENT_VERSION="$version" \
-          OPENPATH_LINUX_AGENT_APT_SUITE="$apt_suite" \
-            node scripts/resolve-openpath-linux-agent-version.mjs install-probe-script \
-            | docker run --rm -i ubuntu:24.04 bash
+          contract_file="$(mktemp)"
+          trap 'rm -f "$contract_file"' EXIT
+          node scripts/resolve-openpath-promotion-contract.mjs \
+            --openpath-sha "${{ steps.check.outputs.latest }}" \
+            --contract-output "$contract_file" \
+            --json
+          node scripts/verify-openpath-promotion-contract.mjs \
+            --contract-file "$contract_file" \
+            --openpath-sha "${{ steps.check.outputs.latest }}"
 
       - name: Update submodule
         if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')

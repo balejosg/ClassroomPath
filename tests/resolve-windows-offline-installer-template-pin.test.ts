@@ -8,7 +8,7 @@ import {
   deriveWindowsOfflineInstallerTemplateRelease,
   parseWindowsOfflineInstallerTemplateSidecar,
   resolveWindowsOfflineInstallerTemplatePin,
-  selectWindowsOfflineInstallerTemplatePin,
+  validateWindowsOfflineInstallerTemplatePin,
 } from '../scripts/resolve-windows-offline-installer-template-pin.mjs';
 
 const commit = '0123456789abcdef0123456789abcdef01234567';
@@ -37,7 +37,7 @@ const newPin: WindowsPin = {
 };
 
 describe('Windows offline installer release pin resolver', () => {
-  test('CLI reuses the previous tuple without deriving a new release tag when promotion is absent', () => {
+  test('CLI fails closed when the contract-derived Windows tuple is absent', () => {
     const result = spawnSync(
       process.execPath,
       ['scripts/resolve-windows-offline-installer-template-pin.mjs'],
@@ -46,8 +46,10 @@ describe('Windows offline installer release pin resolver', () => {
         env: {
           ...process.env,
           OPENPATH_SHA: '',
-          OPENPATH_VERSION: '4.2.0',
-          OPENPATH_SHORT_SHA: 'fedcba9',
+          OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION: '',
+          OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT: '',
+          OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG: '',
+          OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256: '',
           PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION: previousPin.version,
           PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT: previousPin.commit,
           PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG: previousPin.releaseTag,
@@ -57,31 +59,22 @@ describe('Windows offline installer release pin resolver', () => {
       }
     );
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(
-      result.stdout,
-      [
-        `template_version=${previousPin.version}`,
-        `template_commit=${previousPin.commit}`,
-        `template_release_tag=${previousPin.releaseTag}`,
-        `template_sha256=${previousPin.sha256}`,
-        '',
-      ].join('\n')
-    );
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /contract-derived Windows offline installer pin/);
   });
 
-  test('reuses the complete previous tuple verbatim when no promotion contract exists', () => {
-    assert.deepEqual(selectWindowsOfflineInstallerTemplatePin({ previousPin }), previousPin);
+  test('validates a complete contract-derived tuple without selecting a release', () => {
+    assert.deepEqual(validateWindowsOfflineInstallerTemplatePin(previousPin), previousPin);
   });
 
-  test('fails closed when neither a new nor a previous complete tuple exists', () => {
+  test('fails closed when the contract-derived tuple is absent', () => {
     assert.throws(
-      () => selectWindowsOfflineInstallerTemplatePin({}),
+      () => validateWindowsOfflineInstallerTemplatePin({}),
       /complete Windows offline installer pin/
     );
   });
 
-  test('fails closed for every partial previous tuple', () => {
+  test('fails closed for every partial contract-derived tuple', () => {
     const fields = Object.keys(previousPin) as Array<keyof WindowsPin>;
     for (let mask = 1; mask < 1 << fields.length; mask += 1) {
       if (mask === (1 << fields.length) - 1) continue;
@@ -90,28 +83,18 @@ describe('Windows offline installer release pin resolver', () => {
         fields.filter((_, index) => mask & (1 << index)).map((field) => [field, previousPin[field]])
       );
       assert.throws(
-        () => selectWindowsOfflineInstallerTemplatePin({ previousPin: partial }),
+        () => validateWindowsOfflineInstallerTemplatePin(partial),
         /complete Windows offline installer pin/,
         `partial mask ${mask} must fail closed`
       );
     }
   });
 
-  test('uses a complete new promotion pin without contamination from the previous tuple', () => {
-    assert.deepEqual(selectWindowsOfflineInstallerTemplatePin({ newPin, previousPin }), newPin);
+  test('validates a complete new tuple explicitly when supplied by the contract', () => {
+    assert.deepEqual(validateWindowsOfflineInstallerTemplatePin(newPin), newPin);
   });
 
-  test('uses a complete new promotion pin even when the previous tuple is partial', () => {
-    assert.deepEqual(
-      selectWindowsOfflineInstallerTemplatePin({
-        newPin,
-        previousPin: { version: previousPin.version },
-      }),
-      newPin
-    );
-  });
-
-  test('fails closed for every partial new tuple instead of falling back to the previous tuple', () => {
+  test('fails closed for every partial explicit tuple', () => {
     const fields = Object.keys(newPin) as Array<keyof WindowsPin>;
     for (let mask = 1; mask < 1 << fields.length; mask += 1) {
       if (mask === (1 << fields.length) - 1) continue;
@@ -120,7 +103,7 @@ describe('Windows offline installer release pin resolver', () => {
         fields.filter((_, index) => mask & (1 << index)).map((field) => [field, newPin[field]])
       );
       assert.throws(
-        () => selectWindowsOfflineInstallerTemplatePin({ newPin: partial, previousPin }),
+        () => validateWindowsOfflineInstallerTemplatePin(partial),
         /complete Windows offline installer pin/,
         `partial new mask ${mask} must fail closed`
       );

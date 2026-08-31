@@ -32,13 +32,15 @@ jobs:
       spa_repo: ${{ steps.image-refs.outputs.spa_repo }}
       verifier_repo: ${{ steps.image-refs.outputs.verifier_repo }}
       openpath_sha: ${{ steps.openpath.outputs.sha }}
-      openpath_version: ${{ steps.linux-agent.outputs.openpath_version }}
-      openpath_linux_agent_version: ${{ steps.linux-agent.outputs.version }}
-      openpath_linux_agent_apt_suite: ${{ steps.linux-agent.outputs.apt_suite }}
-      windows_offline_installer_template_version: ${{ steps.offline-installer.outputs.template_version }}
-      windows_offline_installer_template_commit: ${{ steps.offline-installer.outputs.template_commit }}
-      windows_offline_installer_template_release_tag: ${{ steps.offline-installer.outputs.template_release_tag }}
-      windows_offline_installer_template_sha256: ${{ steps.offline-installer.outputs.template_sha256 }}
+      openpath_contract_sha256: ${{ steps.openpath-contract.outputs.contract_sha256 }}
+      openpath_derived_rebuild_required: ${{ steps.openpath-reuse.outputs.rebuild_required }}
+      openpath_version: ${{ steps.openpath-contract.outputs.openpath_version }}
+      openpath_linux_agent_version: ${{ steps.openpath-contract.outputs.linux_agent_version }}
+      openpath_linux_agent_apt_suite: ${{ steps.openpath-contract.outputs.linux_agent_apt_suite }}
+      windows_offline_installer_template_version: ${{ steps.openpath-contract.outputs.windows_offline_installer_template_version }}
+      windows_offline_installer_template_commit: ${{ steps.openpath-contract.outputs.windows_offline_installer_template_commit }}
+      windows_offline_installer_template_release_tag: ${{ steps.openpath-contract.outputs.windows_offline_installer_template_release_tag }}
+      windows_offline_installer_template_sha256: ${{ steps.openpath-contract.outputs.windows_offline_installer_template_sha256 }}
       gateway_tag: ${{ steps.image-refs.outputs.gateway_tag }}
       migrations_tag: ${{ steps.image-refs.outputs.migrations_tag }}
       openpath_firefox_assets_tag: ${{ steps.image-refs.outputs.openpath_firefox_assets_tag }}
@@ -68,82 +70,35 @@ jobs:
         run: |
           echo "sha=$(git rev-parse HEAD:upstream/openpath)" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve OpenPath Linux agent version
-        id: linux-agent
+      - name: Resolve exact OpenPath v2 promotion contract
+        id: openpath-contract
         env:
-          OPENPATH_LINUX_AGENT_REQUIRED: ${{ needs.detect-release-candidate-components.outputs.openpath_linux_agent_required }}
-          PREVIOUS_OPENPATH_VERSION: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_version }}
-          PREVIOUS_OPENPATH_LINUX_AGENT_VERSION: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_version }}
-          PREVIOUS_OPENPATH_LINUX_AGENT_APT_SUITE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_apt_suite }}
+          OPENPATH_SHA: ${{ steps.openpath.outputs.sha }}
         run: |
           set -euo pipefail
-          if [ "$OPENPATH_LINUX_AGENT_REQUIRED" != 'true' ]; then
-            # OpenPath Linux agent promotion contract not required by the changed-file
-            # classifier (no linux/ or runtime change in this diff). Even so, the pinned
-            # OpenPath SHA's published promotion contract may now advertise a NEWER agent
-            # version than the previously-pinned metadata -- e.g. a stable release was cut
-            # after the last linux-touching change. Reusing the previous metadata blindly is
-            # what froze the managed fleet on a stale pre-rename pin (firefox_registration_missing,
-            # machine max12), so re-resolve from the contract first and only fall back to the
-            # previous PREVIOUS_OPENPATH_LINUX_AGENT_VERSION metadata when no contract resolves.
-            if resolved_linux_agent="$(node scripts/resolve-openpath-linux-agent-version.mjs --openpath-dir upstream/openpath 2>/dev/null)"; then
-              printf '%s\n' "$resolved_linux_agent" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            echo "OpenPath Linux agent promotion contract not required and no contract resolved; reusing previous metadata."
-            {
-              echo "openpath_version=$PREVIOUS_OPENPATH_VERSION"
-              echo "version=$PREVIOUS_OPENPATH_LINUX_AGENT_VERSION"
-              echo "apt_suite=$PREVIOUS_OPENPATH_LINUX_AGENT_APT_SUITE"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          node scripts/resolve-openpath-promotion-contract.mjs \
+            --openpath-sha "$OPENPATH_SHA" \
+            --contract-output openpath-promotion-contract.json >> "$GITHUB_OUTPUT"
 
-          node scripts/resolve-openpath-linux-agent-version.mjs \
-            --openpath-dir upstream/openpath >> "$GITHUB_OUTPUT"
-
-      - name: Resolve OpenPath installer template version
-        id: openpath-template
-        shell: bash
+      - name: Decide OpenPath-derived image reuse
+        id: openpath-reuse
         env:
-          OPENPATH_TEMPLATE_COMMIT: ${{ steps.linux-agent.outputs.openpath_promotion_contract_sha }}
+          CURRENT_CONTRACT_SHA256: ${{ steps.openpath-contract.outputs.contract_sha256 }}
+          PREVIOUS_CONTRACT_SHA256: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_contract_sha256 }}
         run: |
           set -euo pipefail
-          if [ -z "$OPENPATH_TEMPLATE_COMMIT" ]; then
-            echo "OpenPath promotion contract unavailable; the Windows pin resolver will reuse the previous complete pin."
-            exit 0
+          if [ -n "$PREVIOUS_CONTRACT_SHA256" ] && [ "$PREVIOUS_CONTRACT_SHA256" = "$CURRENT_CONTRACT_SHA256" ]; then
+            echo 'rebuild_required=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'rebuild_required=true' >> "$GITHUB_OUTPUT"
           fi
 
-          # The Windows template is published by OpenPath's installation-scripts
-          # release and is versioned by VERSION at the published promotion
-          # contract commit.
-          # Keep this separate from the Linux agent package version: they are
-          # different public release contracts.
-          git -C upstream/openpath rev-parse --verify "${OPENPATH_TEMPLATE_COMMIT}^{commit}" >/dev/null
-          template_version="$(git -C upstream/openpath show "${OPENPATH_TEMPLATE_COMMIT}:VERSION")"
-          template_short_sha="$(git -C upstream/openpath rev-parse --short "$OPENPATH_TEMPLATE_COMMIT")"
-          if [[ ! "$template_version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-            echo "OpenPath template VERSION is missing or invalid" >&2
-            exit 1
-          fi
-          if [[ ! "$template_short_sha" =~ ^[0-9a-f]{7,40}$ || "$OPENPATH_TEMPLATE_COMMIT" != "$template_short_sha"* ]]; then
-            echo "OpenPath template commit abbreviation is invalid" >&2
-            exit 1
-          fi
-          printf 'version=%s\n' "$template_version" >> "$GITHUB_OUTPUT"
-          printf 'short_sha=%s\n' "$template_short_sha" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve Windows offline installer template pin
-        id: offline-installer
-        env:
-          OPENPATH_VERSION: ${{ steps.openpath-template.outputs.version }}
-          OPENPATH_SHA: ${{ steps.linux-agent.outputs.openpath_promotion_contract_sha }}
-          OPENPATH_SHORT_SHA: ${{ steps.openpath-template.outputs.short_sha }}
-          PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_version }}
-          PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_commit }}
-          PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_release_tag }}
-          PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_sha256 }}
-        run: node scripts/resolve-windows-offline-installer-template-pin.mjs >> "$GITHUB_OUTPUT"
+      - name: Upload exact OpenPath promotion contract
+        uses: actions/upload-artifact@v7
+        with:
+          name: openpath-promotion-contract-${{ github.sha }}
+          path: openpath-promotion-contract.json
+          retention-days: 7
 
   verify-openpath-prerelease-apt:
     name: Verify OpenPath Prerelease APT
@@ -168,6 +123,12 @@ jobs:
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
+
+      - name: Download exact OpenPath promotion contract
+        uses: actions/download-artifact@v7
+        with:
+          name: openpath-promotion-contract-${{ github.sha }}
+          path: openpath-promotion-contract-input
 
       - name: Create OpenPath dispatch token
         id: openpath-dispatch-token
@@ -210,27 +171,11 @@ jobs:
             node scripts/openpath-required-checks.mjs wait
 
       - name: Verify OpenPath Linux agent APT installability
-        env:
-          OPENPATH_LINUX_AGENT_VERSION: ${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version }}
-          OPENPATH_LINUX_AGENT_APT_SUITE: ${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite }}
         run: |
           set -euo pipefail
-          if [ "${{ needs.detect-release-candidate-components.outputs.openpath_linux_agent_required }}" != 'true' ]; then
-            echo "OpenPath Linux agent promotion contract not required; skipping installability probe."
-            exit 0
-          fi
-
-          before_sha="${{ github.event.before }}"
-          if [ -n "$before_sha" ] \
-            && [ "$before_sha" != "0000000000000000000000000000000000000000" ] \
-            && git diff --quiet "$before_sha" "${{ github.sha }}" -- upstream/openpath; then
-            echo "OpenPath submodule unchanged; skipping installability probe."
-            exit 0
-          fi
-
-          node scripts/resolve-openpath-linux-agent-version.mjs verify-runtime-pin
-          node scripts/resolve-openpath-linux-agent-version.mjs install-probe-script \
-            | docker run --rm -i ubuntu:24.04 bash
+          node scripts/verify-openpath-promotion-contract.mjs \
+            --contract-file openpath-promotion-contract-input/openpath-promotion-contract.json \
+            --openpath-sha "${{ needs.derive-release-image-refs.outputs.openpath_sha }}"
 
   resolve-previous-release-candidate-manifest:
     name: Resolve Previous Release Candidate Manifest
@@ -241,6 +186,12 @@ jobs:
       migrations_image: ${{ steps.export.outputs.migrations_image }}
       openpath_firefox_assets_image: ${{ steps.export.outputs.openpath_firefox_assets_image }}
       openpath_api_image: ${{ steps.export.outputs.openpath_api_image }}
+      release_id: ${{ steps.export.outputs.release_id }}
+      openpath_sha: ${{ steps.export.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ steps.export.outputs.openpath_contract_sha256 }}
+      previous_run_id: ${{ steps.export.outputs.previous_run_id }}
+      previous_head_sha: ${{ steps.export.outputs.previous_head_sha }}
+      release_bundle_artifact: ${{ steps.export.outputs.release_bundle_artifact }}
       openpath_version: ${{ steps.export.outputs.openpath_version }}
       openpath_linux_agent_version: ${{ steps.export.outputs.linux_agent_version }}
       openpath_linux_agent_apt_suite: ${{ steps.export.outputs.linux_agent_apt_suite }}
@@ -258,13 +209,14 @@ jobs:
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
 
-      - name: Resolve previous release candidate manifest
+      - name: Resolve previous Release Bundle v2
         id: resolve
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: node scripts/resolve-latest-verifier-image.mjs > previous-release-candidate-images.env
+          CLASSROOMPATH_SHA: ${{ github.sha }}
+        run: node scripts/resolve-previous-release-candidate-bundle.mjs > previous-release-candidate-images.env
 
       - name: Export previous release candidate manifest
         id: export
@@ -317,7 +269,7 @@ jobs:
 
   build-gateway-release-candidate:
     name: Build Gateway Release Candidate
-    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' || needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' }}
     uses: ./.github/workflows/reusable-release-candidate-image-family.yml
     needs:
       - derive-release-image-refs
@@ -334,13 +286,15 @@ jobs:
       output_name: gateway_image
       amd64_cache_scope: release-candidate-gateway-amd64
       arm64_cache_scope: release-candidate-gateway-arm64
+      openpath_source_sha: ${{ needs.derive-release-image-refs.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ needs.derive-release-image-refs.outputs.openpath_contract_sha256 }}
       checkout_submodules: true
     secrets:
       ghcr_password: ${{ secrets.GITHUB_TOKEN }}
 
   build-migrations-release-candidate:
     name: Build Migrations Release Candidate
-    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' || needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' }}
     uses: ./.github/workflows/reusable-release-candidate-image-family.yml
     needs:
       - derive-release-image-refs
@@ -357,25 +311,27 @@ jobs:
       output_name: migrations_image
       amd64_cache_scope: release-candidate-migrations-amd64
       arm64_cache_scope: release-candidate-migrations-arm64
+      openpath_source_sha: ${{ needs.derive-release-image-refs.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ needs.derive-release-image-refs.outputs.openpath_contract_sha256 }}
     secrets:
       ghcr_password: ${{ secrets.GITHUB_TOKEN }}
 
   resolve-openpath-firefox-release-assets:
     name: Resolve OpenPath Firefox Release Assets
-    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' || needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' }}
     uses: ./.github/workflows/firefox-release-assets.yml
     needs:
       - derive-release-image-refs
       - resolve-previous-release-candidate-manifest
       - detect-release-candidate-components
     with:
-      build_required: ${{ needs.detect-release-candidate-components.outputs.openpath_firefox_assets_changed == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
+      build_required: ${{ needs.detect-release-candidate-components.outputs.openpath_firefox_assets_changed == 'true' || needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
       artifact_name: openpath-firefox-release-assets-${{ needs.derive-release-image-refs.outputs.openpath_sha }}
     secrets: inherit
 
   build-openpath-firefox-assets-release-candidate:
     name: Build OpenPath Firefox Assets Release Candidate
-    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' || needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' }}
     uses: ./.github/workflows/reusable-release-candidate-image-family.yml
     needs:
       - derive-release-image-refs
@@ -384,7 +340,7 @@ jobs:
       - resolve-openpath-firefox-release-assets
     with:
       display_name: OpenPath Firefox Assets Release Candidate
-      build_required: ${{ needs.detect-release-candidate-components.outputs.openpath_firefox_assets_changed == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
+      build_required: ${{ needs.detect-release-candidate-components.outputs.openpath_firefox_assets_changed == 'true' || needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
       context: .
       file: docker/Dockerfile.openpath-firefox-assets
       image_repo: ${{ needs.derive-release-image-refs.outputs.openpath_firefox_assets_repo }}
@@ -398,13 +354,15 @@ jobs:
       verify_paths: |
         ./upstream/openpath/firefox-extension/build/firefox-release/metadata.json
         ./upstream/openpath/firefox-extension/build/firefox-release/openpath-firefox-extension.xpi
+      openpath_source_sha: ${{ needs.derive-release-image-refs.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ needs.derive-release-image-refs.outputs.openpath_contract_sha256 }}
       checkout_submodules: true
     secrets:
       ghcr_password: ${{ secrets.GITHUB_TOKEN }}
 
   build-openpath-api-release-candidate:
     name: Build OpenPath API Release Candidate
-    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' || needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' }}
     uses: ./.github/workflows/reusable-release-candidate-image-family.yml
     needs:
       - derive-release-image-refs
@@ -412,7 +370,7 @@ jobs:
       - detect-release-candidate-components
     with:
       display_name: OpenPath API Release Candidate
-      build_required: ${{ needs.detect-release-candidate-components.outputs.openpath_api_changed == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
+      build_required: ${{ needs.detect-release-candidate-components.outputs.openpath_api_changed == 'true' || needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
       context: ./upstream/openpath
       file: ./docker/Dockerfile.api
       image_repo: ${{ needs.derive-release-image-refs.outputs.openpath_api_repo }}
@@ -422,13 +380,15 @@ jobs:
       amd64_cache_scope: release-candidate-openpath-api-amd64
       arm64_cache_scope: release-candidate-openpath-api-arm64
       openpath_sha: ${{ needs.derive-release-image-refs.outputs.openpath_sha }}
+      openpath_source_sha: ${{ needs.derive-release-image-refs.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ needs.derive-release-image-refs.outputs.openpath_contract_sha256 }}
       checkout_submodules: true
     secrets:
       ghcr_password: ${{ secrets.GITHUB_TOKEN }}
 
   build-spa-release-candidate:
     name: Build SPA Release Candidate
-    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' || needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' }}
     uses: ./.github/workflows/reusable-release-candidate-image-family.yml
     needs:
       - derive-release-image-refs
@@ -445,12 +405,14 @@ jobs:
       output_name: spa_image
       amd64_cache_scope: release-candidate-spa-amd64
       arm64_cache_scope: release-candidate-spa-arm64
+      openpath_source_sha: ${{ needs.derive-release-image-refs.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ needs.derive-release-image-refs.outputs.openpath_contract_sha256 }}
     secrets:
       ghcr_password: ${{ secrets.GITHUB_TOKEN }}
 
   build-verifier-release-candidate:
     name: Build Release Verifier Candidate
-    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' || needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' }}
     uses: ./.github/workflows/reusable-release-candidate-image-family.yml
     needs:
       - derive-release-image-refs
@@ -467,13 +429,15 @@ jobs:
       output_name: verifier_image
       amd64_cache_scope: release-candidate-verifier-amd64
       arm64_cache_scope: release-candidate-verifier-arm64
+      openpath_source_sha: ${{ needs.derive-release-image-refs.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ needs.derive-release-image-refs.outputs.openpath_contract_sha256 }}
     secrets:
       ghcr_password: ${{ secrets.GITHUB_TOKEN }}
 
   publish-release-candidate-manifest:
     name: Publish Release Candidate Manifest
     runs-on: ubuntu-latest
-    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' }}
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' || needs.detect-release-candidate-components.outputs.manifest_only != 'true' || needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' }}
     needs:
       - derive-release-image-refs
       - verify-openpath-prerelease-apt
@@ -491,24 +455,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Persist release candidate image manifest
+      - name: Download exact OpenPath promotion contract
+        uses: actions/download-artifact@v7
+        with:
+          name: openpath-promotion-contract-${{ github.sha }}
+          path: openpath-promotion-contract-input
+
+      - name: Build and verify Release Bundle v2
+        env:
+          APP_SHA: ${{ github.sha }}
+          CLASSROOMPATH_GATEWAY_IMAGE: ${{ needs.build-gateway-release-candidate.outputs.image }}
+          CLASSROOMPATH_MIGRATIONS_IMAGE: ${{ needs.build-migrations-release-candidate.outputs.image }}
+          OPENPATH_FIREFOX_ASSETS_IMAGE: ${{ needs.build-openpath-firefox-assets-release-candidate.outputs.image }}
+          OPENPATH_API_IMAGE: ${{ needs.build-openpath-api-release-candidate.outputs.image }}
+          CLASSROOMPATH_SPA_IMAGE: ${{ needs.build-spa-release-candidate.outputs.image }}
+          CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.build-verifier-release-candidate.outputs.image }}
         run: |
-          cat > release-candidate-images.env <<EOF
-          APP_SHA=${{ github.sha }}
-          CLASSROOMPATH_GATEWAY_IMAGE=${{ needs.build-gateway-release-candidate.outputs.image }}
-          CLASSROOMPATH_MIGRATIONS_IMAGE=${{ needs.build-migrations-release-candidate.outputs.image }}
-          OPENPATH_FIREFOX_ASSETS_IMAGE=${{ needs.build-openpath-firefox-assets-release-candidate.outputs.image }}
-          OPENPATH_API_IMAGE=${{ needs.build-openpath-api-release-candidate.outputs.image }}
-          OPENPATH_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_version }}
-          OPENPATH_LINUX_AGENT_VERSION=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_version }}
-          OPENPATH_LINUX_AGENT_APT_SUITE=${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_apt_suite }}
-          windows_offline_installer_template_version=${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_version }}
-          windows_offline_installer_template_commit=${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_commit }}
-          windows_offline_installer_template_release_tag=${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_release_tag }}
-          windows_offline_installer_template_sha256=${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_sha256 }}
-          CLASSROOMPATH_SPA_IMAGE=${{ needs.build-spa-release-candidate.outputs.image }}
-          CLASSROOMPATH_VERIFIER_IMAGE=${{ needs.build-verifier-release-candidate.outputs.image }}
-          EOF
+          set -euo pipefail
+          node scripts/release-bundle.mjs build \
+            --contract-file openpath-promotion-contract-input/openpath-promotion-contract.json \
+            --output-dir release-bundle \
+            --json > release-bundle-metadata.json
+          node scripts/release-bundle.mjs verify \
+            --bundle-file release-bundle/classroompath-release-bundle.json \
+            --contract-file release-bundle/openpath-promotion-contract.json \
+            --classroompath-sha "$APP_SHA" \
+            --output-env release-candidate-images.env \
+            --json >> release-bundle-metadata.json
 
       - name: Upload release candidate image manifest
         uses: actions/upload-artifact@v7
@@ -516,6 +489,16 @@ jobs:
           name: release-candidate-images-${{ github.sha }}
           path: release-candidate-images.env
           retention-days: 7
+
+      - name: Upload Release Bundle v2
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-bundle-${{ github.sha }}
+          path: |
+            release-bundle/classroompath-release-bundle.json
+            release-bundle/openpath-promotion-contract.json
+            release-bundle-metadata.json
+          retention-days: 30
 
       - name: Persist release candidate timing summary
         shell: bash
@@ -673,7 +656,7 @@ jobs:
   publish-manifest-only-release-candidate:
     name: Publish Manifest-Only Release Candidate
     runs-on: ubuntu-latest
-    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available == 'true' && needs.detect-release-candidate-components.outputs.manifest_only == 'true' }}
+    if: ${{ needs.resolve-previous-release-candidate-manifest.outputs.available == 'true' && needs.detect-release-candidate-components.outputs.manifest_only == 'true' && needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required != 'true' }}
     needs:
       - derive-release-image-refs
       - verify-openpath-prerelease-apt
@@ -684,27 +667,43 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Persist release candidate image manifest
+      - name: Download exact OpenPath promotion contract
+        uses: actions/download-artifact@v7
+        with:
+          name: openpath-promotion-contract-${{ github.sha }}
+          path: openpath-promotion-contract-input
+
+      - name: Build and verify Release Bundle v2 (manifest-only)
         env:
           APP_SHA: ${{ github.sha }}
-          PREVIOUS_CLASSROOMPATH_GATEWAY_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.gateway_image }}
-          PREVIOUS_CLASSROOMPATH_MIGRATIONS_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.migrations_image }}
-          PREVIOUS_OPENPATH_FIREFOX_ASSETS_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_firefox_assets_image }}
-          PREVIOUS_OPENPATH_API_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_api_image }}
-          OPENPATH_VERSION: ${{ needs.derive-release-image-refs.outputs.openpath_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_version }}
-          OPENPATH_LINUX_AGENT_VERSION: ${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_version || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_version }}
-          OPENPATH_LINUX_AGENT_APT_SUITE: ${{ needs.derive-release-image-refs.outputs.openpath_linux_agent_apt_suite || needs.resolve-previous-release-candidate-manifest.outputs.openpath_linux_agent_apt_suite }}
-          NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION: ${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_version }}
-          NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT: ${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_commit }}
-          NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG: ${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_release_tag }}
-          NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256: ${{ needs.derive-release-image-refs.outputs.windows_offline_installer_template_sha256 }}
-          PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_version }}
-          PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_commit }}
-          PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_release_tag }}
-          PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256: ${{ needs.resolve-previous-release-candidate-manifest.outputs.windows_offline_installer_template_sha256 }}
-          PREVIOUS_CLASSROOMPATH_SPA_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.spa_image }}
-          PREVIOUS_CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.verifier_image }}
-        run: node scripts/lib/release-manifest.mjs manifest-only > release-candidate-images.env
+          CLASSROOMPATH_GATEWAY_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.gateway_image }}
+          CLASSROOMPATH_MIGRATIONS_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.migrations_image }}
+          OPENPATH_FIREFOX_ASSETS_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_firefox_assets_image }}
+          OPENPATH_API_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.openpath_api_image }}
+          CLASSROOMPATH_SPA_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.spa_image }}
+          CLASSROOMPATH_VERIFIER_IMAGE: ${{ needs.resolve-previous-release-candidate-manifest.outputs.verifier_image }}
+        run: |
+          set -euo pipefail
+          node scripts/release-bundle.mjs build \
+            --contract-file openpath-promotion-contract-input/openpath-promotion-contract.json \
+            --output-dir release-bundle \
+            --json > release-bundle-metadata.json
+          node scripts/release-bundle.mjs verify \
+            --bundle-file release-bundle/classroompath-release-bundle.json \
+            --contract-file release-bundle/openpath-promotion-contract.json \
+            --classroompath-sha "$APP_SHA" \
+            --output-env release-candidate-images.env \
+            --json >> release-bundle-metadata.json
+
+      - name: Upload Release Bundle v2
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-bundle-${{ github.sha }}
+          path: |
+            release-bundle/classroompath-release-bundle.json
+            release-bundle/openpath-promotion-contract.json
+            release-bundle-metadata.json
+          retention-days: 30
 
       - name: Upload release candidate image manifest
         uses: actions/upload-artifact@v7

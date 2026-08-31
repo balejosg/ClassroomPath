@@ -5,7 +5,7 @@
  *   node --import tsx --test tests/release-orchestration.test.ts tests/release-execution.test.ts tests/release-promote-resume.test.ts
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -544,6 +544,75 @@ describe('writeStepState / readStepState', () => {
 
     const state = readStepState({ root, tag });
     assert.equal(state.startedAt, startedAt, 'startedAt must be the first write value');
+  });
+
+  it('binds persisted step state to one Release Bundle identity', () => {
+    const root = mkdtempSync(join(tmpdir(), 'release-state-identity-'));
+    const tag = 'v9.0.4';
+    const firstReleaseId = 'a'.repeat(64);
+    const secondReleaseId = 'b'.repeat(64);
+
+    writeStepState({
+      root,
+      tag,
+      releaseId: firstReleaseId,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      stepId: 'wait-release-candidate',
+      status: 'success',
+      seconds: 1,
+    });
+
+    assert.equal(readStepState({ root, tag }).releaseId, firstReleaseId);
+    assert.throws(
+      () =>
+        writeStepState({
+          root,
+          tag,
+          releaseId: secondReleaseId,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          stepId: 'deploy-staging',
+          status: 'success',
+          seconds: 1,
+        }),
+      /different Release Bundle releaseId/
+    );
+  });
+
+  it('rejects resume when the persisted state and exact bundle locator disagree', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'release-state-identity-mismatch-'));
+    const tag = 'v9.0.5';
+    const stateReleaseId = 'a'.repeat(64);
+    const bundleReleaseId = 'b'.repeat(64);
+    writeStepState({
+      root,
+      tag,
+      releaseId: stateReleaseId,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      stepId: 'verify-clean-repos',
+      status: 'success',
+      seconds: 1,
+    });
+    mkdirSync(join(root, tag, 'bundle'), { recursive: true });
+    writeFileSync(
+      join(root, tag, 'bundle', 'staging-release.env'),
+      `STAGING_RELEASE_ID=${bundleReleaseId}\nSTAGING_RELEASE_RUN_ID=123\n`
+    );
+
+    let stderr = '';
+    const result = await runReleasePromoteCommand(
+      ['--tag', tag, '--execute', '--resume'],
+      makeSuccessDeps({
+        transcriptRoot: root,
+        readStepState: ({ root: stateRoot, tag: stateTag }) =>
+          readStepState({ root: stateRoot, tag: stateTag }),
+        stderr: (value: string) => {
+          stderr += value;
+        },
+      })
+    );
+
+    assert.equal(result.status, 2);
+    assert.match(stderr, /different Release Bundle releaseId/);
   });
 
   it('returns null when no state file exists', () => {

@@ -41,6 +41,14 @@ inputs:
     description: 'OpenPath SHA used to resolve versioned Firefox release assets'
     required: false
     default: ''
+  openpath-source-sha:
+    description: 'OpenPath source SHA for OCI provenance labels'
+    required: false
+    default: ''
+  openpath-contract-sha256:
+    description: 'SHA-256 of the exact OpenPath promotion contract bytes'
+    required: false
+    default: ''
   artifact-path:
     description: 'Destination path for the downloaded artifact'
     required: false
@@ -106,6 +114,9 @@ runs:
         context: ${{ inputs.context }}
         file: ${{ inputs.file }}
         platforms: ${{ inputs.platforms }}
+        labels: |
+          org.opencontainers.image.revision=${{ inputs.openpath-source-sha }}
+          eu.classroompath.openpath.contract-sha256=${{ inputs.openpath-contract-sha256 }}
         outputs: ${{ inputs.outputs }}
         cache-from: type=gha,scope=${{ inputs.cache-scope }}
         cache-to: type=gha,mode=max,scope=${{ inputs.cache-scope }}
@@ -118,6 +129,9 @@ runs:
         context: ${{ inputs.context }}
         file: ${{ inputs.file }}
         platforms: ${{ inputs.platforms }}
+        labels: |
+          org.opencontainers.image.revision=${{ inputs.openpath-source-sha }}
+          eu.classroompath.openpath.contract-sha256=${{ inputs.openpath-contract-sha256 }}
         push: ${{ inputs.push }}
         tags: ${{ inputs.tags }}
         cache-from: type=gha,scope=${{ inputs.cache-scope }}

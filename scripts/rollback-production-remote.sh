@@ -126,23 +126,33 @@ DEPLOY_DIR="$CLASSROOMPATH_DEPLOY_ROOT"
 STATE_DIR="$DEPLOY_DIR/release-state"
 deployment_state_init_paths "$STATE_DIR"
 
-if ! release_state_require_snapshot_fields "$DEPLOYMENT_STATE_PREVIOUS_FILE" current-runtime; then
-  log_error "Previous production release snapshot is incompatible with the current runtime contract"
-  exit 1
+# The v2 path delegates to scripts/lib/release-bundle-state.mjs. It is the
+# authoritative rollback source; the legacy snapshot remains only as a
+# fail-closed migration fallback.
+if deployment_state_v2_pointer_present previous; then
+  if ! deployment_state_load_previous_release; then
+    log_error "Previous production Release Bundle v2 state could not be verified"
+    exit 1
+  fi
+else
+  if ! release_state_require_snapshot_fields "$DEPLOYMENT_STATE_PREVIOUS_FILE" current-runtime; then
+    log_error "Previous production release snapshot is incompatible with the current runtime contract"
+    exit 1
+  fi
+
+  PREVIOUS_IMAGE_SOURCE="$(release_state_snapshot_value "$DEPLOYMENT_STATE_PREVIOUS_FILE" IMAGE_SOURCE)" || {
+    log_error "Previous production release snapshot does not declare IMAGE_SOURCE"
+    exit 1
+  }
+  if [ "$PREVIOUS_IMAGE_SOURCE" != "release-candidate" ]; then
+    log_error "Production rollback supports only release-candidate snapshots (IMAGE_SOURCE=$PREVIOUS_IMAGE_SOURCE)"
+    exit 1
+  fi
+
+  deployment_state_load_previous_release
 fi
 
-PREVIOUS_IMAGE_SOURCE="$(release_state_snapshot_value "$DEPLOYMENT_STATE_PREVIOUS_FILE" IMAGE_SOURCE)" || {
-  log_error "Previous production release snapshot does not declare IMAGE_SOURCE"
-  exit 1
-}
-if [ "$PREVIOUS_IMAGE_SOURCE" != "release-candidate" ]; then
-  log_error "Production rollback supports only release-candidate snapshots (IMAGE_SOURCE=$PREVIOUS_IMAGE_SOURCE)"
-  exit 1
-fi
-
-deployment_state_load_previous_release
-
-if [ -z "${APP_SHA:-}" ] || [ -z "${IMAGE_SOURCE:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ] || [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}" ]; then
+if [ -z "${APP_SHA:-}" ] || [ -z "${IMAGE_SOURCE:-}" ] || [ -z "${RELEASE_ID:-}" ] || [ -z "${RC_RUN_ID:-}" ] || [ -z "${OPENPATH_SHA:-}" ] || [ -z "${OPENPATH_CONTRACT_SHA256:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ] || [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}" ]; then
   log_error "Previous release metadata is incomplete for the canonical OpenPath installer lifecycle"
   exit 1
 fi
@@ -168,9 +178,19 @@ require_windows_offline_installer_runtime_pin || exit 1
 
 ROLLBACK_RELEASE_APP_SHA="$APP_SHA"
 ROLLBACK_RELEASE_IMAGE_SOURCE="${IMAGE_SOURCE:-}"
+ROLLBACK_RELEASE_ID="${RELEASE_ID:-}"
+ROLLBACK_RELEASE_RC_RUN_ID="${RC_RUN_ID:-}"
+ROLLBACK_OPENPATH_SHA="${OPENPATH_SHA:-}"
+ROLLBACK_OPENPATH_CONTRACT_SHA256="${OPENPATH_CONTRACT_SHA256:-}"
+ROLLBACK_RELEASE_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}"
 deployment_state_load_context
 APP_SHA="$ROLLBACK_RELEASE_APP_SHA"
 IMAGE_SOURCE="$ROLLBACK_RELEASE_IMAGE_SOURCE"
+RELEASE_ID="$ROLLBACK_RELEASE_ID"
+RC_RUN_ID="$ROLLBACK_RELEASE_RC_RUN_ID"
+OPENPATH_SHA="$ROLLBACK_OPENPATH_SHA"
+OPENPATH_CONTRACT_SHA256="$ROLLBACK_OPENPATH_CONTRACT_SHA256"
+CLASSROOMPATH_VERIFIER_IMAGE="$ROLLBACK_RELEASE_VERIFIER_IMAGE"
 
 if [ -n "${MIGRATION_RISK_LEVEL:-}" ] || [ -n "${DB_MIGRATED:-}" ] || [ -n "${PRODUCTION_BACKUP_REFERENCE:-}" ]; then
   log_warn "Rollback context: migration risk=${MIGRATION_RISK_LEVEL:-unknown}, db_migrated=${DB_MIGRATED:-unknown}, backup=${PRODUCTION_BACKUP_REFERENCE:-none}"
@@ -199,6 +219,11 @@ if ! git submodule deinit -f --all; then
 fi
 if ! git submodule update --init --recursive --force; then
   log_error "Unable to restore the production OpenPath checkout"
+  exit 1
+fi
+checked_out_openpath_sha="$(git rev-parse HEAD:upstream/openpath)"
+if [ "$checked_out_openpath_sha" != "$OPENPATH_SHA" ]; then
+  log_error "Checked-out OpenPath gitlink $checked_out_openpath_sha does not match Release Bundle OpenPath SHA $OPENPATH_SHA"
   exit 1
 fi
 if ! refresh_rollback_checked_out_helpers; then

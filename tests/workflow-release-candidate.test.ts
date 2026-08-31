@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
@@ -47,68 +45,19 @@ function normalizeNeeds(needs: WorkflowJob['needs']): string[] {
 }
 
 describe('Release candidate workflow contracts', () => {
-  test('Windows template tag uses VERSION and short SHA from the same published commit', () => {
-    const tempDir = mkdtempSync(join(tmpdir(), 'release-candidate-template-pin-'));
-    const versionPath = join(tempDir, 'VERSION');
+  test('RC workflow resolves the exact OpenPath v2 contract from the checked-out gitlink', () => {
     const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
-    const templateStep = workflow.jobs?.['derive-release-image-refs']?.steps?.find(
-      (step) => step.name === 'Resolve OpenPath installer template version'
+    const contractStep = workflow.jobs?.['derive-release-image-refs']?.steps?.find(
+      (step) => step.name === 'Resolve exact OpenPath v2 promotion contract'
     );
-    const templateRun = templateStep?.run ?? '';
+    const contractRun = contractStep?.run ?? '';
 
-    assert.ok(
-      templateRun.includes('git -C upstream/openpath show "${OPENPATH_TEMPLATE_COMMIT}:VERSION"'),
-      'the template VERSION must be read from the published promotion contract commit'
-    );
-    assert.ok(
-      templateRun.includes(
-        'git -C upstream/openpath rev-parse --short "$OPENPATH_TEMPLATE_COMMIT"'
-      ),
-      'the template short SHA must be derived from the published promotion contract commit'
-    );
-
-    try {
-      execFileSync('git', ['init', '--quiet', tempDir]);
-      execFileSync('git', ['-C', tempDir, 'config', 'user.email', 'test@example.invalid']);
-      execFileSync('git', ['-C', tempDir, 'config', 'user.name', 'Test User']);
-
-      writeFileSync(versionPath, '4.1.0\n', 'utf-8');
-      execFileSync('git', ['-C', tempDir, 'add', 'VERSION']);
-      execFileSync('git', ['-C', tempDir, 'commit', '--quiet', '-m', 'published template']);
-      const publishedCommit = execFileSync('git', ['-C', tempDir, 'rev-parse', 'HEAD'], {
-        encoding: 'utf-8',
-      }).trim();
-
-      writeFileSync(versionPath, '4.2.0\n', 'utf-8');
-      execFileSync('git', ['-C', tempDir, 'commit', '--quiet', '-am', 'unpublished bump']);
-
-      const headVersion = execFileSync('git', ['-C', tempDir, 'show', 'HEAD:VERSION'], {
-        encoding: 'utf-8',
-      }).trim();
-      const publishedVersion = execFileSync(
-        'git',
-        ['-C', tempDir, 'show', `${publishedCommit}:VERSION`],
-        { encoding: 'utf-8' }
-      ).trim();
-      const publishedShortSha = execFileSync(
-        'git',
-        ['-C', tempDir, 'rev-parse', '--short', publishedCommit],
-        { encoding: 'utf-8' }
-      ).trim();
-
-      assert.equal(headVersion, '4.2.0');
-      assert.equal(publishedVersion, '4.1.0');
-      assert.equal(
-        `scripts-v${publishedVersion}-${publishedShortSha}`,
-        `scripts-v4.1.0-${publishedShortSha}`
-      );
-      assert.notEqual(
-        `scripts-v${headVersion}-${publishedShortSha}`,
-        `scripts-v${publishedVersion}-${publishedShortSha}`
-      );
-    } finally {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
+    assert.ok(contractStep);
+    assert.equal(contractStep?.env?.OPENPATH_SHA, '${{ steps.openpath.outputs.sha }}');
+    assert.ok(contractRun.includes('node scripts/resolve-openpath-promotion-contract.mjs'));
+    assert.ok(contractRun.includes('--openpath-sha "$OPENPATH_SHA"'));
+    assert.ok(contractRun.includes('--contract-output openpath-promotion-contract.json'));
+    assert.ok(!contractRun.includes('resolve-openpath-linux-agent-version.mjs'));
   });
 
   test('release candidate detector classifies OpenPath gitlink changes through the shared component mapper', () => {
@@ -294,99 +243,43 @@ describe('Release candidate workflow contracts', () => {
         `previous RC resolver must expose ${field}`
       );
     }
+    const deriveStepNames =
+      jobs['derive-release-image-refs']?.steps?.map((step) => step.name ?? '') ?? [];
     const deriveOpenPathShaRun =
       jobs['derive-release-image-refs']?.steps?.find((step) => step.name === 'Resolve OpenPath SHA')
         ?.run ?? '';
     assert.ok(deriveOpenPathShaRun.includes('git rev-parse HEAD:upstream/openpath'));
-    const deriveOpenPathTemplateVersionStep = jobs['derive-release-image-refs']?.steps?.find(
-      (step) => step.name === 'Resolve OpenPath installer template version'
-    );
-    const deriveOpenPathTemplateVersionRun = deriveOpenPathTemplateVersionStep?.run ?? '';
-    assert.ok(
-      deriveOpenPathTemplateVersionStep,
-      'RC workflow must resolve the published OpenPath template version separately from the Linux agent package version'
+    const deriveOpenPathContractStep = jobs['derive-release-image-refs']?.steps?.find(
+      (step) => step.name === 'Resolve exact OpenPath v2 promotion contract'
     );
     assert.ok(
-      deriveOpenPathTemplateVersionRun.includes(
-        'git -C upstream/openpath show "${OPENPATH_TEMPLATE_COMMIT}:VERSION"'
-      )
-    );
-    assert.ok(deriveOpenPathTemplateVersionRun.includes('set -euo pipefail'));
-    const emptyPromotionGuardIndex = deriveOpenPathTemplateVersionRun.indexOf(
-      'if [ -z "$OPENPATH_TEMPLATE_COMMIT" ]'
-    );
-    const gitTemplateLookupIndex = deriveOpenPathTemplateVersionRun.indexOf(
-      'git -C upstream/openpath rev-parse --verify'
-    );
-    assert.ok(emptyPromotionGuardIndex >= 0);
-    assert.ok(
-      emptyPromotionGuardIndex < gitTemplateLookupIndex,
-      'the template lookup must be guarded before interpolating an empty promotion SHA'
-    );
-    assert.ok(
-      deriveOpenPathTemplateVersionRun.includes(
-        'git -C upstream/openpath rev-parse --short "$OPENPATH_TEMPLATE_COMMIT"'
-      )
+      deriveOpenPathContractStep,
+      'RC workflow must resolve one exact OpenPath v2 contract from the checked-out gitlink'
     );
     assert.equal(
-      deriveOpenPathTemplateVersionStep?.env?.OPENPATH_TEMPLATE_COMMIT,
-      '${{ steps.linux-agent.outputs.openpath_promotion_contract_sha }}'
+      deriveOpenPathContractStep?.env?.OPENPATH_SHA,
+      '${{ steps.openpath.outputs.sha }}'
+    );
+    assert.ok(
+      String(deriveOpenPathContractStep?.run ?? '').includes(
+        'node scripts/resolve-openpath-promotion-contract.mjs'
+      )
+    );
+    assert.ok(
+      String(deriveOpenPathContractStep?.run ?? '').includes(
+        '--contract-output openpath-promotion-contract.json'
+      )
     );
     const resolveOfflineInstallerStep = jobs['derive-release-image-refs']?.steps?.find(
       (step) => step.name === 'Resolve Windows offline installer template pin'
     );
-    assert.equal(
-      resolveOfflineInstallerStep?.env?.OPENPATH_VERSION,
-      '${{ steps.openpath-template.outputs.version }}',
-      'the Windows template pin must use the OpenPath VERSION, not the Linux agent package version'
+    assert.equal(resolveOfflineInstallerStep, undefined);
+    assert.ok(
+      deriveStepNames.includes('Resolve exact OpenPath v2 promotion contract') &&
+        !deriveStepNames.includes('Resolve OpenPath Linux agent version') &&
+        !deriveStepNames.includes('Resolve OpenPath installer template version'),
+      'legacy Linux and Windows selectors must not remain in the active RC workflow'
     );
-    assert.equal(
-      resolveOfflineInstallerStep?.env?.OPENPATH_SHA,
-      '${{ steps.linux-agent.outputs.openpath_promotion_contract_sha }}',
-      'the Windows template pin must use the published OpenPath promotion contract commit'
-    );
-    assert.equal(
-      resolveOfflineInstallerStep?.env?.OPENPATH_SHORT_SHA,
-      '${{ steps.openpath-template.outputs.short_sha }}',
-      'the Windows template pin must use the exact git abbreviation from the published OpenPath release'
-    );
-    for (const [envName, outputName] of [
-      [
-        'PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION',
-        'windows_offline_installer_template_version',
-      ],
-      [
-        'PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT',
-        'windows_offline_installer_template_commit',
-      ],
-      [
-        'PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG',
-        'windows_offline_installer_template_release_tag',
-      ],
-      [
-        'PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256',
-        'windows_offline_installer_template_sha256',
-      ],
-    ] as const) {
-      assert.equal(
-        resolveOfflineInstallerStep?.env?.[envName],
-        `\${{ needs.resolve-previous-release-candidate-manifest.outputs.${outputName} }}`,
-        `fallback pin resolution must receive ${outputName}`
-      );
-    }
-    assert.notEqual(
-      resolveOfflineInstallerStep?.env?.OPENPATH_VERSION,
-      '${{ steps.linux-agent.outputs.openpath_version }}'
-    );
-
-    const deriveLinuxAgentVersionRun =
-      jobs['derive-release-image-refs']?.steps?.find(
-        (step) => step.name === 'Resolve OpenPath Linux agent version'
-      )?.run ?? '';
-    const deriveLinuxAgentVersionEnv =
-      jobs['derive-release-image-refs']?.steps?.find(
-        (step) => step.name === 'Resolve OpenPath Linux agent version'
-      )?.env ?? {};
     const verifyOpenPathPrereleaseAptJob = jobs['verify-openpath-prerelease-apt'];
     const verifyInstallabilityStep = verifyOpenPathPrereleaseAptJob?.steps?.find(
       (step) => step.name === 'Verify OpenPath Linux agent APT installability'
@@ -400,8 +293,6 @@ describe('Release candidate workflow contracts', () => {
     );
     const waitForOpenPathAptPublishRun = waitForOpenPathAptPublishStep?.run ?? '';
     const waitForOpenPathAptPublishEnv = waitForOpenPathAptPublishStep?.env ?? {};
-    const deriveStepNames =
-      jobs['derive-release-image-refs']?.steps?.map((step) => step.name ?? '') ?? [];
     const aptStepNames =
       verifyOpenPathPrereleaseAptJob?.steps?.map((step) => step.name ?? '') ?? [];
     const aptFetchDiffBaseStep = verifyOpenPathPrereleaseAptJob?.steps?.find(
@@ -432,14 +323,6 @@ describe('Release candidate workflow contracts', () => {
       normalizeNeeds(jobs['derive-release-image-refs']?.needs).sort(),
       ['detect-release-candidate-components', 'resolve-previous-release-candidate-manifest'].sort()
     );
-    assert.equal(
-      deriveLinuxAgentVersionEnv['OPENPATH_LINUX_AGENT_REQUIRED'],
-      '${{ needs.detect-release-candidate-components.outputs.openpath_linux_agent_required }}'
-    );
-    assert.ok(
-      deriveLinuxAgentVersionRun.includes('OpenPath Linux agent promotion contract not required')
-    );
-    assert.ok(deriveLinuxAgentVersionRun.includes('PREVIOUS_OPENPATH_LINUX_AGENT_VERSION'));
     assert.ok(
       waitForOpenPathAptPublishRun.includes('node scripts/openpath-required-checks.mjs wait')
     );
@@ -476,29 +359,17 @@ describe('Release candidate workflow contracts', () => {
     );
     assert.ok(
       deriveStepNames.indexOf('Resolve OpenPath SHA') <
-        deriveStepNames.indexOf('Resolve OpenPath Linux agent version')
+        deriveStepNames.indexOf('Resolve exact OpenPath v2 promotion contract')
     );
     assert.ok(
-      deriveStepNames.indexOf('Resolve OpenPath Linux agent version') <
-        deriveStepNames.indexOf('Resolve OpenPath installer template version')
-    );
-    assert.ok(
-      deriveStepNames.indexOf('Resolve OpenPath installer template version') <
-        deriveStepNames.indexOf('Resolve Windows offline installer template pin')
-    );
-    assert.ok(
-      deriveLinuxAgentVersionRun.includes('node scripts/resolve-openpath-linux-agent-version.mjs')
+      deriveStepNames.indexOf('Resolve exact OpenPath v2 promotion contract') <
+        deriveStepNames.indexOf('Decide OpenPath-derived image reuse')
     );
     assert.ok(verifyInstallabilityStep, 'RC workflow must verify the exact APT pin is installable');
-    assert.ok(verifyInstallabilityRun.includes('git diff --quiet'));
-    assert.ok(verifyInstallabilityRun.includes('[ -n "$before_sha" ]'));
-    assert.ok(verifyInstallabilityRun.includes('upstream/openpath'));
     assert.ok(
-      verifyInstallabilityRun.includes(
-        'node scripts/resolve-openpath-linux-agent-version.mjs install-probe-script'
-      )
+      verifyInstallabilityRun.includes('node scripts/verify-openpath-promotion-contract.mjs')
     );
-    assert.ok(verifyInstallabilityRun.includes('docker run --rm -i ubuntu:24.04 bash'));
+    assert.ok(verifyInstallabilityRun.includes('openpath-promotion-contract-input'));
     assert.equal(
       deriveCheckout?.with?.['fetch-depth'],
       0,
@@ -694,11 +565,7 @@ describe('Release candidate workflow contracts', () => {
     );
     assert.ok(aptJobRun.includes('OpenPath submodule unchanged; skipping prerelease APT wait.'));
     assert.ok(aptJobRun.includes('node scripts/openpath-required-checks.mjs wait'));
-    assert.ok(
-      aptJobRun.includes(
-        'node scripts/resolve-openpath-linux-agent-version.mjs install-probe-script'
-      )
-    );
+    assert.ok(aptJobRun.includes('node scripts/verify-openpath-promotion-contract.mjs'));
 
     for (const jobName of [
       'build-gateway-release-candidate',
@@ -768,72 +635,15 @@ describe('Release candidate workflow contracts', () => {
       );
     }
 
-    assert.match(
-      workflowText,
-      /OPENPATH_LINUX_AGENT_VERSION=\$\{\{\s*needs\.derive-release-image-refs\.outputs\.openpath_linux_agent_version\s*\|\|\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.openpath_linux_agent_version\s*\}\}/
-    );
-    const fastPersistStep = (fastManifestJob?.steps ?? []).find(
-      (step) => step.name === 'Persist release candidate image manifest'
-    );
-    for (const [envName, outputName] of [
-      ['PREVIOUS_CLASSROOMPATH_GATEWAY_IMAGE', 'gateway_image'],
-      ['PREVIOUS_CLASSROOMPATH_MIGRATIONS_IMAGE', 'migrations_image'],
-      ['PREVIOUS_OPENPATH_FIREFOX_ASSETS_IMAGE', 'openpath_firefox_assets_image'],
-      ['PREVIOUS_OPENPATH_API_IMAGE', 'openpath_api_image'],
-      [
-        'PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION',
-        'windows_offline_installer_template_version',
-      ],
-      [
-        'PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT',
-        'windows_offline_installer_template_commit',
-      ],
-      [
-        'PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG',
-        'windows_offline_installer_template_release_tag',
-      ],
-      [
-        'PREVIOUS_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256',
-        'windows_offline_installer_template_sha256',
-      ],
-      ['PREVIOUS_CLASSROOMPATH_SPA_IMAGE', 'spa_image'],
-      ['PREVIOUS_CLASSROOMPATH_VERIFIER_IMAGE', 'verifier_image'],
-    ] as const) {
-      assert.equal(
-        fastPersistStep?.env?.[envName],
-        `\${{ needs.resolve-previous-release-candidate-manifest.outputs.${outputName} }}`,
-        `manifest-only publisher must pass ${outputName} to the transformation helper`
-      );
-    }
-    for (const [envName, outputName] of [
-      [
-        'NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION',
-        'windows_offline_installer_template_version',
-      ],
-      [
-        'NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT',
-        'windows_offline_installer_template_commit',
-      ],
-      [
-        'NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG',
-        'windows_offline_installer_template_release_tag',
-      ],
-      [
-        'NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256',
-        'windows_offline_installer_template_sha256',
-      ],
-    ] as const) {
-      assert.equal(
-        fastPersistStep?.env?.[envName],
-        `\${{ needs.derive-release-image-refs.outputs.${outputName} }}`,
-        `manifest-only publisher must pass the new ${outputName} to the transformation helper`
-      );
-    }
+    assert.ok(workflowText.includes('node scripts/release-bundle.mjs build'));
+    assert.ok(workflowText.includes('node scripts/release-bundle.mjs verify'));
+    assert.ok(workflowText.includes('release-bundle-${{ github.sha }}'));
+    assert.ok(!workflowText.includes('resolve-openpath-linux-agent-version.mjs'));
     assert.ok(
-      String(fastPersistStep?.run ?? '').includes(
-        'node scripts/lib/release-manifest.mjs manifest-only'
-      ),
-      'manifest-only publication must use the data transformation helper'
+      workflowText.includes('Build and verify Release Bundle v2 (manifest-only)') &&
+        workflowText.includes('node scripts/release-bundle.mjs build') &&
+        workflowText.includes('node scripts/release-bundle.mjs verify'),
+      'manifest-only publication must use the exact bundle transformation and verifier'
     );
     assert.ok(workflowText.includes('"manifestOnly": true'));
     assert.ok(workflowText.includes('### Manifest-Only Fast Path'));
@@ -864,32 +674,29 @@ describe('Release candidate workflow contracts', () => {
 
     assert.match(
       workflowText,
-      /CLASSROOMPATH_GATEWAY_IMAGE=\$\{\{\s*needs\.build-gateway-release-candidate\.outputs\.image\s*\}\}/
+      /CLASSROOMPATH_GATEWAY_IMAGE:\s*\$\{\{\s*needs\.build-gateway-release-candidate\.outputs\.image\s*\}\}/
     );
     assert.match(
       workflowText,
-      /CLASSROOMPATH_MIGRATIONS_IMAGE=\$\{\{\s*needs\.build-migrations-release-candidate\.outputs\.image\s*\}\}/
+      /CLASSROOMPATH_MIGRATIONS_IMAGE:\s*\$\{\{\s*needs\.build-migrations-release-candidate\.outputs\.image\s*\}\}/
     );
     assert.match(
       workflowText,
-      /OPENPATH_FIREFOX_ASSETS_IMAGE=\$\{\{\s*needs\.build-openpath-firefox-assets-release-candidate\.outputs\.image\s*\}\}/
+      /OPENPATH_FIREFOX_ASSETS_IMAGE:\s*\$\{\{\s*needs\.build-openpath-firefox-assets-release-candidate\.outputs\.image\s*\}\}/
     );
     assert.match(
       workflowText,
-      /OPENPATH_API_IMAGE=\$\{\{\s*needs\.build-openpath-api-release-candidate\.outputs\.image\s*\}\}/
+      /OPENPATH_API_IMAGE:\s*\$\{\{\s*needs\.build-openpath-api-release-candidate\.outputs\.image\s*\}\}/
     );
     assert.match(
       workflowText,
-      /CLASSROOMPATH_SPA_IMAGE=\$\{\{\s*needs\.build-spa-release-candidate\.outputs\.image\s*\}\}/
+      /CLASSROOMPATH_SPA_IMAGE:\s*\$\{\{\s*needs\.build-spa-release-candidate\.outputs\.image\s*\}\}/
     );
     assert.match(
       workflowText,
-      /CLASSROOMPATH_VERIFIER_IMAGE=\$\{\{\s*needs\.build-verifier-release-candidate\.outputs\.image\s*\}\}/
+      /CLASSROOMPATH_VERIFIER_IMAGE:\s*\$\{\{\s*needs\.build-verifier-release-candidate\.outputs\.image\s*\}\}/
     );
-    assert.match(
-      workflowText,
-      /OPENPATH_LINUX_AGENT_APT_SUITE=\$\{\{\s*needs\.derive-release-image-refs\.outputs\.openpath_linux_agent_apt_suite\s*\|\|\s*needs\.resolve-previous-release-candidate-manifest\.outputs\.openpath_linux_agent_apt_suite\s*\}\}/
-    );
+    assert.ok(workflowText.includes('openpath-promotion-contract-input'));
     assert.ok(workflowText.includes('release-candidate-timings-${{ github.sha }}'));
     assert.ok(workflowText.includes('release-candidate-timings.json'));
     assert.ok(workflowText.includes('## Release Candidate Timings'));
@@ -1073,16 +880,17 @@ describe('Release candidate workflow contracts', () => {
     );
     assert.match(
       String(installabilityStep?.run ?? ''),
-      /node scripts\/resolve-openpath-linux-agent-version\.mjs[\s\S]*--openpath-dir upstream\/openpath/
+      /node scripts\/resolve-openpath-promotion-contract\.mjs[\s\S]*--openpath-sha/
     );
     assert.match(
       String(installabilityStep?.run ?? ''),
-      /node scripts\/resolve-openpath-linux-agent-version\.mjs verify-runtime-pin/
+      /node scripts\/verify-openpath-promotion-contract\.mjs[\s\S]*--contract-file/
     );
     assert.match(
       String(installabilityStep?.run ?? ''),
-      /node scripts\/resolve-openpath-linux-agent-version\.mjs install-probe-script[\s\S]*docker run --rm -i ubuntu:24\.04 bash/
+      /--openpath-sha "\$\{\{ steps\.check\.outputs\.latest \}\}"/
     );
+    assert.ok(!workflowText.includes('resolve-openpath-linux-agent-version.mjs'));
     assert.ok(
       installabilityIndex >= 0 &&
         updateSubmoduleIndex >= 0 &&

@@ -61,6 +61,9 @@ release_execution_write_deploy_context() {
 
   TARGET_SHA="$target_sha" \
   APP_SHA="$app_sha" \
+  RELEASE_ID="${RELEASE_ID:-}" \
+  OPENPATH_SHA="${OPENPATH_SHA:-}" \
+  OPENPATH_CONTRACT_SHA256="${OPENPATH_CONTRACT_SHA256:-}" \
   IMAGE_SOURCE="${IMAGE_SOURCE:-}" \
   PREVIOUS_APP_SHA="${PREVIOUS_APP_SHA:-}" \
   MIGRATION_RISK_LEVEL="${MIGRATION_RISK_LEVEL:-safe}" \

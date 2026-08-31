@@ -21,6 +21,18 @@ on:
       verifier_image:
         required: true
         type: string
+      release_id:
+        required: true
+        type: string
+      rc_run_id:
+        required: true
+        type: string
+      openpath_sha:
+        required: true
+        type: string
+      openpath_contract_sha256:
+        required: true
+        type: string
       issue_title:
         required: false
         type: string
@@ -83,6 +95,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Record exact deployed Release Bundle identity
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+          RC_RUN_ID: ${{ inputs.rc_run_id }}
+          OPENPATH_SHA: ${{ inputs.openpath_sha }}
+          OPENPATH_CONTRACT_SHA256: ${{ inputs.openpath_contract_sha256 }}
+        run: |
+          set -euo pipefail
+          printf 'RELEASE_ID=%s\nRC_RUN_ID=%s\nOPENPATH_SHA=%s\nOPENPATH_CONTRACT_SHA256=%s\n' \
+            "$RELEASE_ID" "$RC_RUN_ID" "$OPENPATH_SHA" "$OPENPATH_CONTRACT_SHA256" \
+            > smoke-release-identity.env
+
       - name: Wait for readiness
         id: readiness
         env:
@@ -117,6 +141,10 @@ jobs:
           SMOKE_TEST_URL: ${{ steps.target.outputs.public_url }}
           SMOKE_TEST_TIMEOUT: '30000'
           CLASSROOMPATH_VERIFIER_IMAGE: ${{ inputs.verifier_image }}
+          CLASSROOMPATH_RELEASE_ID: ${{ inputs.release_id }}
+          CLASSROOMPATH_RC_RUN_ID: ${{ inputs.rc_run_id }}
+          OPENPATH_SHA: ${{ inputs.openpath_sha }}
+          OPENPATH_CONTRACT_SHA256: ${{ inputs.openpath_contract_sha256 }}
         run: |
           bash scripts/run-smoke-in-verifier.sh
           echo "exit_code=0" >> "$GITHUB_OUTPUT"
@@ -165,6 +193,7 @@ jobs:
           path: |
             smoke-results.txt
             smoke-failure-boundary.json
+            smoke-release-identity.env
           retention-days: 7
 
       - name: Create issue on failure

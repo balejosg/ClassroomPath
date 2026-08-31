@@ -175,7 +175,11 @@ printf 'state=%s\n' "$ROLLBACK_STATE"
     writeFileSync(
       previousStatePath,
       [
+        'RELEASE_ID=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        'RC_RUN_ID=123',
         'APP_SHA=previous-sha',
+        'OPENPATH_SHA=cccccccccccccccccccccccccccccccccccccccc',
+        'OPENPATH_CONTRACT_SHA256=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
         `IMAGE_SOURCE=${imageSource}`,
         'OPENPATH_FIREFOX_ASSETS_IMAGE=firefox-assets:previous',
         'OPENPATH_VERSION=4.1.0',
@@ -189,6 +193,7 @@ printf 'state=%s\n' "$ROLLBACK_STATE"
         'CLASSROOMPATH_MIGRATIONS_IMAGE=migrations:previous',
         'OPENPATH_API_IMAGE=openpath-api:previous',
         'CLASSROOMPATH_SPA_IMAGE=spa:previous',
+        'CLASSROOMPATH_VERIFIER_IMAGE=verifier@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
         '',
       ].join('\n')
     );
@@ -314,7 +319,11 @@ printf 'status=%s result=%s current=%s\n' "$status" "$ROLLBACK_RESULT" "$current
     writeFileSync(
       previousStatePath,
       [
+        'RELEASE_ID=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        'RC_RUN_ID=123',
         'APP_SHA=previous-sha',
+        'OPENPATH_SHA=cccccccccccccccccccccccccccccccccccccccc',
+        'OPENPATH_CONTRACT_SHA256=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
         `IMAGE_SOURCE=${imageSource}`,
         'CLASSROOMPATH_GATEWAY_IMAGE=gateway:previous',
         'CLASSROOMPATH_MIGRATIONS_IMAGE=migrations:previous',
@@ -324,6 +333,7 @@ printf 'status=%s result=%s current=%s\n' "$status" "$ROLLBACK_RESULT" "$current
         'OPENPATH_LINUX_AGENT_VERSION=4.1.19',
         ...(includeAptSuite ? ['OPENPATH_LINUX_AGENT_APT_SUITE=stable'] : []),
         'CLASSROOMPATH_SPA_IMAGE=spa:previous',
+        'CLASSROOMPATH_VERIFIER_IMAGE=verifier@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
         'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION=4.1.0',
         'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT=template-commit',
         'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG=scripts-v4.1.0',
@@ -390,7 +400,11 @@ bash "$3"
     writeFileSync(
       previousStatePath,
       [
+        'RELEASE_ID=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        'RC_RUN_ID=123',
         'APP_SHA=previous-sha',
+        'OPENPATH_SHA=cccccccccccccccccccccccccccccccccccccccc',
+        'OPENPATH_CONTRACT_SHA256=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
         'IMAGE_SOURCE=release-candidate',
         'CLASSROOMPATH_GATEWAY_IMAGE=gateway:previous',
         'CLASSROOMPATH_MIGRATIONS_IMAGE=migrations:previous',
@@ -400,6 +414,7 @@ bash "$3"
         'OPENPATH_LINUX_AGENT_VERSION=4.1.19',
         'OPENPATH_LINUX_AGENT_APT_SUITE=stable',
         'CLASSROOMPATH_SPA_IMAGE=spa:previous',
+        'CLASSROOMPATH_VERIFIER_IMAGE=verifier@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
         'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION=4.1.0',
         'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT=template-commit',
         'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG=scripts-v4.1.0',
@@ -426,7 +441,13 @@ export PRODUCTION_ROLLBACK_READINESS_DELAY_SECONDS=0
 export PRODUCTION_ROLLBACK_CURL_TIMEOUT_SECONDS=1
 export NODE_BIN="$3"
 export CALLS_FILE="$1/mutations.log"
-git() { printf 'git %s\n' "$*" >>"$CALLS_FILE"; return 0; }
+    git() {
+      printf 'git %s\n' "$*" >>"$CALLS_FILE"
+      if [ "$1" = rev-parse ]; then
+        printf '%s\n' "$OPENPATH_SHA"
+      fi
+      return 0
+    }
 docker() {
   printf 'docker %s\n' "$*" >>"$CALLS_FILE"
   case "$1" in
@@ -633,7 +654,7 @@ bash "$2"
     assert.ok(
       localContent.includes('prepare_staging_local_release_context') &&
         releaseHelperContent.includes(
-          'node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest'
+          'node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-bundle'
         )
     );
     assert.deepEqual(releaseCandidateWorkflow.on?.push?.branches, ['main']);
@@ -685,8 +706,9 @@ bash "$2"
     );
     assert.ok(releaseHelperContent.includes('STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS'));
     assert.ok(
-      remoteContent.includes('decode_release_manifest_base64 "$STAGING_RELEASE_MANIFEST_B64"') &&
-        remoteContent.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"')
+      remoteContent.includes('release_bundle_base64') &&
+        remoteContent.includes('openpath_contract_base64') &&
+        remoteContent.includes('node "$APP_DIR/scripts/release-bundle.mjs" verify')
     );
     assert.ok(
       remoteContent.includes(
@@ -970,8 +992,12 @@ warn_if_other_release_candidate_run_in_progress target-sha
 
     assert.ok(
       workflowContent.includes(
-        'RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}'
-      )
+        'RELEASE_BUNDLE_B64: ${{ steps.release-bundle.outputs.release_bundle_base64 }}'
+      ) &&
+        workflowContent.includes(
+          'OPENPATH_CONTRACT_B64: ${{ steps.release-bundle.outputs.openpath_contract_base64 }}'
+        ) &&
+        workflowContent.includes('RELEASE_ID: ${{ steps.release-bundle.outputs.release_id }}')
     );
     assert.ok(workflowContent.includes('OPENPATH_LINUX_AGENT_VERSION'));
     assert.ok(workflowContent.includes('OPENPATH_LINUX_AGENT_APT_SUITE'));
@@ -1008,12 +1034,11 @@ warn_if_other_release_candidate_run_in_progress target-sha
         )
     );
     assert.ok(
-      deployContextHelper.includes('decode_release_manifest_base64 "$RELEASE_MANIFEST_B64"') &&
+      deployContextHelper.includes('DEPLOY_RELEASE_BUNDLE_B64') &&
+        deployContextHelper.includes('DEPLOY_OPENPATH_CONTRACT_B64') &&
+        deployContextHelper.includes('release-bundle.mjs" verify') &&
         deployContextHelper.includes(
-          'release_manifest_is_canonical_contract "$RELEASE_MANIFEST_FILE"'
-        ) &&
-        deployContextHelper.includes(
-          'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
+          'export RELEASE_ID APP_SHA OPENPATH_SHA OPENPATH_CONTRACT_SHA256'
         )
     );
     assert.ok(
@@ -1079,14 +1104,17 @@ warn_if_other_release_candidate_run_in_progress target-sha
       'utf-8'
     );
     const snapshotPreflightIndex = rollbackRemoteScript.indexOf(
-      'release_state_require_snapshot_fields'
+      'deployment_state_v2_pointer_present previous'
     );
     const previousLoadIndex = rollbackRemoteScript.indexOf(
       'deployment_state_load_previous_release'
     );
     const checkoutIndex = rollbackRemoteScript.indexOf('git checkout --detach');
 
-    assert.ok(snapshotPreflightIndex >= 0, 'production rollback must validate snapshot keys');
+    assert.ok(
+      snapshotPreflightIndex >= 0,
+      'production rollback must validate the previous v2 pointer'
+    );
     assert.ok(previousLoadIndex >= 0, 'production rollback must load the previous state');
     assert.ok(checkoutIndex >= 0, 'production rollback must retain the checkout step');
     assert.ok(
@@ -1191,7 +1219,10 @@ warn_if_other_release_candidate_run_in_progress target-sha
       promotionReadyScript.includes('release-state-cli.mjs') &&
         promotionReadyScript.includes('verify-promotion-ready') &&
         promotionReadyScript.includes('wait-for-release-candidate.mjs') &&
-        promotionReadyScript.includes('resolve-manifest') &&
+        promotionReadyScript.includes('resolve-bundle') &&
+        promotionReadyScript.includes('staging_rc_run_id') &&
+        promotionReadyScript.includes('--run-id "$staging_rc_run_id"') &&
+        promotionReadyScript.includes('RC_RUN_ID="$staging_rc_run_id"') &&
         promotionReadyScript.includes('source "$SCRIPT_DIR/lib/deploy-container-platform.sh"') &&
         promotionReadyScript.includes('verify_production_container_platform_ready') &&
         promotionReadyScript.includes('configure_deploy_container_platform "$target_platform"')
@@ -1434,9 +1465,12 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(helper.includes('STAGING_VERIFICATION_STATE=${verification_state:-unset}'));
     assert.ok(helper.includes('IMAGE_SOURCE=${current_image_source:-unset}'));
     assert.ok(helper.includes('STAGING_VERIFIED_IMAGE_SOURCE=${verified_image_source:-unset}'));
+    assert.ok(helper.includes('RC_RUN_ID="$(read_env_value "$current_state_file" RC_RUN_ID)"'));
     assert.ok(
-      helper.includes('node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest') &&
-        helper.includes('--sha "$target_sha"')
+      helper.includes('release-identity.env') &&
+        helper.includes('--release-id "$RELEASE_ID"') &&
+        helper.includes('--rc-run-id "$RC_RUN_ID"') &&
+        helper.includes('--classroompath-sha "$CLASSROOMPATH_SHA"')
     );
     assert.ok(
       helper.includes(

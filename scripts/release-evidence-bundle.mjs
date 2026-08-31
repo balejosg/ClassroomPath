@@ -29,6 +29,7 @@ Options:
   --canary-run <id>          Backwards-compatible alias for --windows-canary-run.
   --windows-canary-run <id>  GitHub Actions Windows bootstrap canary run id.
   --linux-canary-run <id>    GitHub Actions Linux bootstrap canary run id.
+  --release-bundle-run <id>  Exact release-candidate run containing the Release Bundle v2 artifact.
   --repo <owner/repo>        GitHub repository. Default: ${DEFAULT_REPO}
   --production-url <url>     Production base URL. Default: ${DEFAULT_PRODUCTION_URL}
   --output-dir <path>        Output directory. Default: release-evidence-bundle-<deploy-run>
@@ -62,6 +63,7 @@ function parseArgs(argv) {
     tag: null,
     windowsCanaryRun: null,
     linuxCanaryRun: null,
+    releaseBundleRunId: null,
     help: false,
   };
 
@@ -94,6 +96,9 @@ function parseArgs(argv) {
       case '--linux-canary-run':
         args.linuxCanaryRun = readValue(argv, ++index, arg);
         break;
+      case '--release-bundle-run':
+        args.releaseBundleRunId = readValue(argv, ++index, arg);
+        break;
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }
@@ -124,6 +129,7 @@ async function main() {
     productionUrl: args.productionUrl,
     windowsCanaryRun: args.windowsCanaryRun,
     linuxCanaryRun: args.linuxCanaryRun,
+    releaseBundleRunId: args.releaseBundleRunId,
   });
 
   process.stdout.write(`Wrote release evidence bundle to ${outputDir}\n`);

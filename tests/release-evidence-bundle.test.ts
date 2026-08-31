@@ -1,5 +1,14 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -13,8 +22,11 @@ import {
   runReleaseEvidenceBundle,
   validateReleaseEvidenceChecklist,
   verifyArtifactIntegrity,
+  verifyReleaseBundleEvidence,
 } from '../scripts/lib/release-evidence-bundle.mjs';
+import { buildReleaseBundle, buildReleaseBundleArtifacts } from '../scripts/lib/release-bundle.mjs';
 import { buildDeployBrief, renderDeployBriefMarkdown } from '../scripts/lib/deploy-brief.mjs';
+import { assertReleaseEvidenceBundleCompleteness } from '../scripts/lib/release-evidence-contract.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
@@ -31,6 +43,62 @@ function createTempDir(prefix: string) {
 
 function writeJson(filePath: string, value: unknown) {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function buildExactReleaseBundleFixture() {
+  const classroomPathSha = 'a'.repeat(40);
+  const openPathSha = 'b'.repeat(40);
+  const contract = {
+    schemaVersion: 2,
+    openpathSha: openPathSha,
+    openpathVersion: '4.1.0',
+    interfaces: { wrapperIntegration: 1, windowsOfflineInstaller: 1, readiness: 1 },
+    components: {
+      linuxAgent: {
+        sourceSha: openPathSha,
+        inputsSha256: '1'.repeat(64),
+        packageName: 'openpath-dnsmasq',
+        packageVersion: '0.0.1-1',
+        aptSuite: 'unstable',
+        filename: 'pool/unstable/main/openpath-dnsmasq_0.0.1-1_amd64.deb',
+        sha256: '2'.repeat(64),
+      },
+      windowsOfflineInstaller: {
+        sourceSha: openPathSha,
+        inputsSha256: '3'.repeat(64),
+        version: '4.1.0',
+        releaseTag: 'scripts-v4.1.0-bbbbbbb',
+        templateAsset: 'OpenPath-Windows-Setup-Template.exe',
+        templateSha256: '4'.repeat(64),
+        payloadManifestAsset: 'payload-manifest.json',
+        payloadManifestSha256: '5'.repeat(64),
+      },
+      browserPolicy: {
+        sourceSha: openPathSha,
+        inputsSha256: '6'.repeat(64),
+        firefoxExtensionVersion: '2.0.1',
+        browserPolicySpecSha256: '7'.repeat(64),
+      },
+    },
+  };
+  const contractBytes = Buffer.from(JSON.stringify(contract, null, 2) + '\n', 'utf8');
+  const contractSha256 = createHash('sha256').update(contractBytes).digest('hex');
+  const bundle = buildReleaseBundle({
+    classroomPathSha,
+    openPath: { sourceSha: openPathSha, contractSha256 },
+    images: Object.fromEntries(
+      ['gateway', 'migrations', 'openpathFirefoxAssets', 'openpathApi', 'spa', 'verifier'].map(
+        (name, index) => [name, `ghcr.io/example/${name}@sha256:${String(index + 1).repeat(64)}`]
+      )
+    ),
+  });
+
+  return {
+    classroomPathSha,
+    openPathSha,
+    contractBytes,
+    artifacts: buildReleaseBundleArtifacts({ bundle, contractBytes }),
+  };
 }
 
 function buildReleaseEvidenceInput(overrides: Record<string, unknown> = {}) {
@@ -468,6 +536,106 @@ describe('release evidence bundle module', () => {
     assert.equal(missing.ok, false);
     assert.ok(missing.failures.includes('release.classroomPathSha missing'));
     assert.ok(missing.failures.includes('stagingVerification.verifiedAt missing'));
+  });
+
+  test('requires exact Release Bundle proof whenever release evidence carries a release id', () => {
+    assert.throws(
+      () =>
+        buildReleaseEvidenceBundle({
+          releaseEvidence: buildReleaseEvidenceInput({
+            release: {
+              outcome: 'released',
+              tagName: 'v1.2.99',
+              classroomPathSha: '1'.repeat(40),
+              openPathSha: '2'.repeat(40),
+              releaseId: '3'.repeat(64),
+              openPathContractSha256: '4'.repeat(64),
+            },
+          }),
+          productionHealth: {
+            health: { status: 'ok' },
+            ready: { ready: true },
+          },
+          outputDir: null,
+        }),
+      /exact Release Bundle proof is required/
+    );
+  });
+
+  test('verifies the exact bundle and rejects an RC run identity conflict', () => {
+    const workspace = createTempDir('classroompath-release-evidence-exact-bundle-');
+    const bundleDir = resolve(workspace, 'release-bundle');
+    const fixture = buildExactReleaseBundleFixture();
+    mkdirSync(bundleDir, { recursive: true });
+    writeFileSync(
+      resolve(bundleDir, 'classroompath-release-bundle.json'),
+      fixture.artifacts.bundleBytes
+    );
+    writeFileSync(resolve(bundleDir, 'openpath-promotion-contract.json'), fixture.contractBytes);
+
+    const releaseEvidence = {
+      release: {
+        releaseId: fixture.artifacts.releaseId,
+        classroomPathSha: fixture.classroomPathSha,
+        openPathSha: fixture.openPathSha,
+        openPathContractSha256: fixture.artifacts.contractSha256,
+        rcRunId: '123',
+      },
+    };
+    const proof = verifyReleaseBundleEvidence({
+      releaseEvidence,
+      bundleDir,
+      runId: '123',
+    });
+
+    assert.equal(proof?.releaseId, fixture.artifacts.releaseId);
+    assert.equal(proof?.rcRunId, '123');
+    assert.throws(
+      () => verifyReleaseBundleEvidence({ releaseEvidence, bundleDir, runId: '456' }),
+      /RC run ID does not match release evidence/
+    );
+    assert.throws(
+      () =>
+        verifyReleaseBundleEvidence({
+          releaseEvidence,
+          bundleDir: resolve(workspace, 'missing-release-bundle'),
+          runId: '123',
+        }),
+      /downloaded Release Bundle directory does not exist/
+    );
+  });
+
+  test('requires the persisted evidence proof to retain the exact RC run identity', () => {
+    assert.throws(
+      () =>
+        assertReleaseEvidenceBundleCompleteness({
+          ...buildReleaseEvidenceInput({
+            release: {
+              outcome: 'released',
+              tagName: 'v1.2.99',
+              classroomPathSha: '1'.repeat(40),
+              openPathSha: '2'.repeat(40),
+              releaseId: '3'.repeat(64),
+              openPathContractSha256: '4'.repeat(64),
+              rcRunId: '123',
+            },
+            production: {
+              health: { status: 'ok' },
+              ready: { ready: true },
+            },
+          }),
+          releaseBundle: {
+            releaseId: '3'.repeat(64),
+            classroomPathSha: '1'.repeat(40),
+            openpathSha: '2'.repeat(40),
+            contractSha256: '4'.repeat(64),
+            rcRunId: '456',
+            bundlePath: 'release-bundle/classroompath-release-bundle.json',
+            contractPath: 'release-bundle/openpath-promotion-contract.json',
+          },
+        }),
+      /exact Release Bundle proof rcRunId mismatch/
+    );
   });
 
   test('does not require a canary artifact before a high-risk post-release canary has produced evidence', () => {

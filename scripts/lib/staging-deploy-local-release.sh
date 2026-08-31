@@ -60,15 +60,27 @@ prepare_staging_local_release_context() {
     fi
 
     local requested_staging_deployment_mode="$effective_staging_deployment_mode"
+    local requested_staging_release_id="${STAGING_RELEASE_ID:-}"
+    local requested_staging_release_run_id="${STAGING_RELEASE_RUN_ID:-}"
 
     STAGING_IMAGE_SOURCE="$STAGING_IMAGE_MODE"
     STAGING_DEPLOYMENT_MODE=""
     STAGING_USE_RELEASE_CANDIDATE=0
     STAGING_RELEASE_SHA=""
-    STAGING_RELEASE_RUN_ID=""
+    STAGING_RELEASE_RUN_ID="$requested_staging_release_run_id"
     STAGING_RELEASE_REPOSITORY=""
     STAGING_RELEASE_MANIFEST_FILE=""
     STAGING_RELEASE_MANIFEST_B64=""
+    STAGING_RELEASE_BUNDLE_DIR=""
+    STAGING_RELEASE_BUNDLE_RUNTIME_FILE=""
+    STAGING_RELEASE_BUNDLE_FILE=""
+    STAGING_RELEASE_BUNDLE_B64=""
+    STAGING_OPENPATH_CONTRACT_FILE=""
+    STAGING_OPENPATH_CONTRACT_B64=""
+    STAGING_RELEASE_ID="$requested_staging_release_id"
+    STAGING_OPENPATH_SHA=""
+    STAGING_OPENPATH_CONTRACT_SHA256=""
+    STAGING_RELEASE_BUNDLE_OUTPUT_FILE=""
     STAGING_RELEASE_PLAN_ENV_FILE=""
     STAGING_DEPLOY_PAYLOAD_ENV_FILE=""
     STAGING_DEPLOY_PAYLOAD_B64=""
@@ -79,12 +91,45 @@ prepare_staging_local_release_context() {
     if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknown" ]; then
         require_cmd gh
         warn_if_other_release_candidate_run_in_progress "$REMOTE_SHA"
+        STAGING_RELEASE_REPOSITORY="${GITHUB_REPOSITORY:-balejosg/ClassroomPath}"
+        STAGING_RELEASE_BUNDLE_DIR="$(mktemp -d)"
+        STAGING_RELEASE_BUNDLE_RUNTIME_FILE="$(mktemp)"
+        STAGING_RELEASE_BUNDLE_OUTPUT_FILE="$(mktemp)"
         STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
-        UPSTREAM_OPENPATH_SHA="$UPSTREAM_OPENPATH_SHA" node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest \
-            --sha "$REMOTE_SHA" \
-            --timeout-seconds "$STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS" \
-            --interval-seconds "$STAGING_RELEASE_POLL_SECONDS" \
-            --output-file "$STAGING_RELEASE_MANIFEST_FILE" >/dev/null
+        bundle_resolve_args=(
+            --repo "$STAGING_RELEASE_REPOSITORY"
+            --sha "$REMOTE_SHA"
+            --timeout-seconds "$STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS"
+            --interval-seconds "$STAGING_RELEASE_POLL_SECONDS"
+            --output-file "$STAGING_RELEASE_BUNDLE_RUNTIME_FILE"
+            --output-dir "$STAGING_RELEASE_BUNDLE_DIR"
+            --legacy-manifest-file "$STAGING_RELEASE_MANIFEST_FILE"
+        )
+        if [ -n "$STAGING_RELEASE_RUN_ID" ]; then
+            bundle_resolve_args+=(--run-id "$STAGING_RELEASE_RUN_ID")
+        fi
+        if [ -n "$STAGING_RELEASE_ID" ]; then
+            bundle_resolve_args+=(--release-id "$STAGING_RELEASE_ID")
+        fi
+        UPSTREAM_OPENPATH_SHA="$UPSTREAM_OPENPATH_SHA" node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-bundle \
+            "${bundle_resolve_args[@]}" >"$STAGING_RELEASE_BUNDLE_OUTPUT_FILE"
+
+        set -a
+        . "$STAGING_RELEASE_BUNDLE_RUNTIME_FILE"
+        set +a
+        STAGING_RELEASE_ID="${RELEASE_ID:-}"
+        STAGING_OPENPATH_SHA="${OPENPATH_SHA:-}"
+        STAGING_OPENPATH_CONTRACT_SHA256="${OPENPATH_CONTRACT_SHA256:-}"
+        if [ -z "$STAGING_OPENPATH_SHA" ] || [ "$STAGING_OPENPATH_SHA" != "$UPSTREAM_OPENPATH_SHA" ]; then
+            log_error "Release Bundle v2 OpenPath SHA does not match the checked-out gitlink"
+            exit 1
+        fi
+        STAGING_RELEASE_SHA="${APP_SHA:-$REMOTE_SHA}"
+        STAGING_RELEASE_RUN_ID="$(awk -F= '$1 == "release_bundle_run_id" {print $2; exit}' "$STAGING_RELEASE_BUNDLE_OUTPUT_FILE")"
+        STAGING_RELEASE_BUNDLE_FILE="$STAGING_RELEASE_BUNDLE_DIR/classroompath-release-bundle.json"
+        STAGING_OPENPATH_CONTRACT_FILE="$STAGING_RELEASE_BUNDLE_DIR/openpath-promotion-contract.json"
+        STAGING_RELEASE_BUNDLE_B64="$(base64 < "$STAGING_RELEASE_BUNDLE_FILE" | tr -d '\n')"
+        STAGING_OPENPATH_CONTRACT_B64="$(base64 < "$STAGING_OPENPATH_CONTRACT_FILE" | tr -d '\n')"
     elif [ "$STAGING_IMAGE_MODE" = "release-candidate" ]; then
         log_error "STAGING_IMAGE_MODE=release-candidate requires origin/main to be reachable"
         exit 1
@@ -99,6 +144,10 @@ prepare_staging_local_release_context() {
     if [ -n "$STAGING_RELEASE_MANIFEST_FILE" ]; then
         PLAN_ARGS+=(--manifest-file "$STAGING_RELEASE_MANIFEST_FILE")
     fi
+    if [ -n "${STAGING_RELEASE_BUNDLE_B64:-}" ]; then
+        PLAN_ARGS+=(--bundle-base64 "$STAGING_RELEASE_BUNDLE_B64")
+        PLAN_ARGS+=(--contract-base64 "$STAGING_OPENPATH_CONTRACT_B64")
+    fi
 
     node "$SCRIPT_DIR/lib/release-plan.mjs" render-staging-env "${PLAN_ARGS[@]}" > "$STAGING_RELEASE_PLAN_ENV_FILE"
 
@@ -108,6 +157,10 @@ prepare_staging_local_release_context() {
 
     if [ -n "$STAGING_RELEASE_MANIFEST_FILE" ]; then
         export_release_manifest_runtime_env "$STAGING_RELEASE_MANIFEST_FILE"
+    fi
+
+    if [ -n "${STAGING_RELEASE_ID:-}" ]; then
+        export STAGING_RELEASE_ID STAGING_OPENPATH_SHA STAGING_OPENPATH_CONTRACT_SHA256
     fi
 
     if [ "$requested_staging_deployment_mode" = "debug" ]; then
@@ -121,7 +174,11 @@ prepare_staging_local_release_context() {
         --deploy-sha "$REMOTE_SHA" \
         --image-source "$STAGING_IMAGE_SOURCE" \
         --deployment-mode "$STAGING_DEPLOYMENT_MODE" \
-        --manifest-base64 "$STAGING_RELEASE_MANIFEST_B64" > "$STAGING_DEPLOY_PAYLOAD_ENV_FILE"
+        --manifest-base64 "$STAGING_RELEASE_MANIFEST_B64" \
+        --release-id "${STAGING_RELEASE_ID:-}" \
+        --rc-run-id "${STAGING_RELEASE_RUN_ID:-}" \
+        --release-bundle-base64 "${STAGING_RELEASE_BUNDLE_B64:-}" \
+        --openpath-contract-base64 "${STAGING_OPENPATH_CONTRACT_B64:-}" > "$STAGING_DEPLOY_PAYLOAD_ENV_FILE"
 
     set -a
     . "$STAGING_DEPLOY_PAYLOAD_ENV_FILE"
@@ -257,8 +314,11 @@ invalidate_staging_verification_evidence_for_release() {
 
     bash "$STAGING_VERIFICATION_RUNNER_PATH" invalidate "$pending_state_file" \
         "$STAGING_RELEASE_SHA" \
-        "$UPSTREAM_OPENPATH_SHA" \
-        "$STAGING_IMAGE_SOURCE"
+        "${STAGING_OPENPATH_SHA:-$UPSTREAM_OPENPATH_SHA}" \
+        "$STAGING_IMAGE_SOURCE" \
+        "${STAGING_RELEASE_ID:-}" \
+        "${STAGING_OPENPATH_CONTRACT_SHA256:-}" \
+        "${STAGING_RELEASE_RUN_ID:-}"
 
     log_info "Invalidating stale staging verification evidence for $STAGING_RELEASE_SHA..."
     "${SSH_CMD[@]}" "$(remote_assignment STATE_DIR "$STATE_DIR")bash -c 'mkdir -p \"\$STATE_DIR\" && cat > \"\$STATE_DIR/staging-verification.env\"'" < "$pending_state_file"

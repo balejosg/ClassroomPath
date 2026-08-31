@@ -16,6 +16,10 @@ describe('deploy payload', () => {
       imageSource: 'release-candidate',
       deploymentMode: 'promotion-eligible',
       manifestBase64: 'bWFuaWZlc3Q=',
+      releaseId: 'a'.repeat(64),
+      releaseBundleBase64: 'YnVuZGxl',
+      openpathContractBase64: 'Y29udHJhY3Q=',
+      rcRunId: '123456789',
     });
 
     assert.equal(payload.version, 3);
@@ -25,6 +29,10 @@ describe('deploy payload', () => {
     assert.equal(payload.imageSource, 'release-candidate');
     assert.equal(payload.deploymentMode, 'promotion-eligible');
     assert.equal(payload.manifestBase64, 'bWFuaWZlc3Q=');
+    assert.equal(payload.releaseId, 'a'.repeat(64));
+    assert.equal(payload.releaseBundleBase64, 'YnVuZGxl');
+    assert.equal(payload.openpathContractBase64, 'Y29udHJhY3Q=');
+    assert.equal(payload.rcRunId, '123456789');
   });
 
   test('round-trips through base64 transport encoding', () => {
@@ -35,6 +43,10 @@ describe('deploy payload', () => {
       imageSource: 'release-candidate',
       deploymentMode: 'promotion-eligible',
       manifestBase64: 'bWFuaWZlc3Q=',
+      releaseId: 'a'.repeat(64),
+      releaseBundleBase64: 'YnVuZGxl',
+      openpathContractBase64: 'Y29udHJhY3Q=',
+      rcRunId: '123456789',
     });
 
     const encoded = encodeDeployPayloadBase64(payload);

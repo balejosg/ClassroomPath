@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseReleaseStateText,
   readReleaseStateSnapshot,
+  validateStagingVerification,
   validateReleaseStatePromotionEvidence,
 } from '../scripts/lib/release-state-contract.mjs';
 
@@ -234,6 +235,33 @@ test('release-runtime helper persists and restores the complete offline-installe
   assert.equal(restored.trim(), `stable,4.1.0,${commit},scripts-v4.1.0-ccccccc,${sha256}`);
 });
 
+test('release-runtime helper persists Release Bundle identity beside legacy projections', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-runtime-bundle-identity-'));
+  const snapshotPath = join(tempDir, 'current-images.env');
+  const releaseId = 'a'.repeat(64);
+  const openpathSha = 'b'.repeat(40);
+  const contractSha256 = 'c'.repeat(64);
+
+  runCommand(
+    'bash',
+    [
+      '-lc',
+      [
+        'source scripts/lib/common.sh',
+        'source scripts/lib/release-state.sh',
+        'source scripts/lib/release-runtime.sh',
+        `write_release_runtime_state ${snapshotPath} app-sha release-candidate gateway migrations firefox-assets openpath-api 4.1.0 4.1.0 stable spa 4.1.0 ${'d'.repeat(40)} scripts-v4.1.0-ddddddd ${'e'.repeat(64)} ${releaseId} ${openpathSha} ${contractSha256}`,
+      ].join('; '),
+    ],
+    { ...process.env }
+  );
+
+  const snapshot = readReleaseStateSnapshot(snapshotPath);
+  assert.equal(snapshot.RELEASE_ID, releaseId);
+  assert.equal(snapshot.OPENPATH_SHA, openpathSha);
+  assert.equal(snapshot.OPENPATH_CONTRACT_SHA256, contractSha256);
+});
+
 test('promotion evidence rejects an OpenPath Linux agent APT suite drift', () => {
   const report = validateReleaseStatePromotionEvidence({
     deploymentMode: 'debug',
@@ -266,6 +294,80 @@ test('promotion evidence rejects an OpenPath Linux agent APT suite drift', () =>
 
   assert.equal(report.checks.currentRuntime.status, 'fail');
   assert.match(report.checks.currentRuntime.errors.join('\n'), /APT suite mismatch/);
+});
+
+test('promotion evidence rejects a Release Bundle identity drift', () => {
+  const report = validateReleaseStatePromotionEvidence({
+    deploymentMode: 'debug',
+    imageSource: 'release-candidate',
+    currentState: {
+      IMAGE_SOURCE: 'release-candidate',
+      RELEASE_ID: 'b'.repeat(64),
+      APP_SHA: 'abc123',
+      OPENPATH_SHA: 'd'.repeat(40),
+      OPENPATH_CONTRACT_SHA256: 'e'.repeat(64),
+      CLASSROOMPATH_GATEWAY_IMAGE: 'gateway',
+      CLASSROOMPATH_MIGRATIONS_IMAGE: 'migrations',
+      OPENPATH_FIREFOX_ASSETS_IMAGE: 'firefox-assets',
+      OPENPATH_API_IMAGE: 'openpath-api',
+      OPENPATH_VERSION: '4.1.0',
+      OPENPATH_LINUX_AGENT_VERSION: '4.1.0',
+      OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
+      CLASSROOMPATH_SPA_IMAGE: 'spa',
+    },
+    verificationState: {
+      STAGING_VERIFICATION_STATE: 'success',
+      STAGING_VERIFIED_IMAGE_SOURCE: 'release-candidate',
+      STAGING_VERIFIED_RELEASE_ID: 'b'.repeat(64),
+      STAGING_VERIFIED_APP_SHA: 'abc123',
+      STAGING_VERIFIED_OPENPATH_SHA: 'd'.repeat(40),
+      STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256: 'e'.repeat(64),
+    },
+    expectedRuntime: {
+      EXPECTED_RELEASE_ID: 'a'.repeat(64),
+      EXPECTED_APP_SHA: 'abc123',
+      EXPECTED_OPENPATH_SHA: 'c'.repeat(40),
+      EXPECTED_OPENPATH_CONTRACT_SHA256: 'f'.repeat(64),
+    },
+  });
+
+  assert.equal(report.checks.currentRuntime.status, 'fail');
+  assert.equal(report.checks.stagingVerification.status, 'fail');
+  assert.match(report.errors.join('\n'), /Release ID mismatch/);
+  assert.match(report.errors.join('\n'), /OpenPath SHA mismatch/);
+  assert.match(report.errors.join('\n'), /contract hash mismatch/);
+});
+
+test('promotion evidence outputs the verified Release Bundle identity', () => {
+  const report = validateReleaseStatePromotionEvidence({
+    deploymentMode: 'debug',
+    imageSource: 'release-candidate',
+    currentState: {
+      IMAGE_SOURCE: 'release-candidate',
+      APP_SHA: 'abc123',
+      CLASSROOMPATH_GATEWAY_IMAGE: 'gateway',
+      CLASSROOMPATH_MIGRATIONS_IMAGE: 'migrations',
+      OPENPATH_FIREFOX_ASSETS_IMAGE: 'firefox-assets',
+      OPENPATH_API_IMAGE: 'openpath-api',
+      OPENPATH_VERSION: '4.1.0',
+      OPENPATH_LINUX_AGENT_VERSION: '4.1.0',
+      OPENPATH_LINUX_AGENT_APT_SUITE: 'stable',
+      CLASSROOMPATH_SPA_IMAGE: 'spa',
+    },
+    verificationState: {
+      STAGING_VERIFIED_RELEASE_ID: 'a'.repeat(64),
+      STAGING_VERIFIED_OPENPATH_SHA: 'b'.repeat(40),
+      STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256: 'c'.repeat(64),
+      STAGING_VERIFIED_AT: '2026-08-31T00:00:00Z',
+    },
+    expectedRuntime: {
+      EXPECTED_APP_SHA: 'abc123',
+    },
+  });
+
+  assert.equal(report.outputs.release_id, 'a'.repeat(64));
+  assert.equal(report.outputs.openpath_sha, 'b'.repeat(40));
+  assert.equal(report.outputs.openpath_contract_sha256, 'c'.repeat(64));
 });
 
 test('promotion evidence detects a runtime offline-installer pin drift', () => {
@@ -501,6 +603,51 @@ test('release-state contract owns promotion-evidence validation policy', () => {
   assert.equal(report.eligible, true);
   assert.equal(report.checks.currentRuntime.status, 'pass');
   assert.equal(report.checks.signedFirefoxRelease.status, 'pass');
+});
+
+test('staging verification fails closed when expected Release Bundle identity is missing', () => {
+  const errors = validateStagingVerification(
+    {
+      STAGING_VERIFICATION_STATE: 'success',
+      STAGING_VERIFIED_APP_SHA: 'abc123',
+    },
+    {
+      EXPECTED_APP_SHA: 'abc123',
+      EXPECTED_RELEASE_ID: 'a'.repeat(64),
+      EXPECTED_OPENPATH_SHA: 'b'.repeat(40),
+      EXPECTED_OPENPATH_CONTRACT_SHA256: 'c'.repeat(64),
+    }
+  );
+
+  assert.match(errors.join('\n'), /Release ID intent is missing/);
+  assert.match(errors.join('\n'), /Verified Release ID is missing/);
+  assert.match(errors.join('\n'), /OpenPath SHA intent is missing/);
+  assert.match(errors.join('\n'), /Verified OpenPath SHA is missing/);
+  assert.match(errors.join('\n'), /OpenPath contract hash intent is missing/);
+  assert.match(errors.join('\n'), /Verified OpenPath contract hash is missing/);
+});
+
+test('staging verification compares the verified migrations image projection', () => {
+  const errors = validateStagingVerification(
+    {
+      STAGING_VERIFICATION_STATE: 'success',
+      STAGING_EXPECTED_APP_SHA: 'abc123',
+      STAGING_VERIFIED_APP_SHA: 'abc123',
+      STAGING_VERIFIED_IMAGE_SOURCE: 'release-candidate',
+      STAGING_SMOKE_RESULT: 'success',
+      STAGING_RELEASE_GATE_RESULT: 'success',
+      STAGING_ENROLLMENT_DOWNLOAD_RESULT: 'success',
+      STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT: 'success',
+      STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT: 'success',
+      STAGING_VERIFIED_MIGRATIONS_IMAGE: 'wrong-image',
+    },
+    {
+      EXPECTED_APP_SHA: 'abc123',
+      EXPECTED_MIGRATIONS_IMAGE: 'expected-image',
+    }
+  );
+
+  assert.match(errors.join('\n'), /Verified migrations image mismatch/);
 });
 
 test('verify-promotion-ready rejects staging evidence without signed Firefox release metadata', () => {
@@ -944,13 +1091,21 @@ test('release-state CLI lists canonical snapshot fields for shell consumers', ()
     { ...process.env }
   );
   assert.ok(readFileSync(currentOutputPath, 'utf-8').includes('OPENPATH_LINUX_AGENT_APT_SUITE\n'));
+  assert.ok(readFileSync(currentOutputPath, 'utf-8').includes('CLASSROOMPATH_VERIFIER_IMAGE\n'));
+  assert.ok(readFileSync(currentOutputPath, 'utf-8').includes('RC_RUN_ID\n'));
   assert.ok(
     readFileSync(verificationOutputPath, 'utf-8').includes(
       'STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE\n'
     )
   );
+  assert.ok(
+    readFileSync(verificationOutputPath, 'utf-8').includes('STAGING_VERIFIED_VERIFIER_IMAGE\n')
+  );
 
   assert.deepEqual(output.trim().split('\n'), [
+    'RELEASE_ID',
+    'OPENPATH_SHA',
+    'OPENPATH_CONTRACT_SHA256',
     'SMOKE_TARGET_URL',
     'SMOKE_SKIP_CORS',
     'STAGING_SMOKE_RESULT',
@@ -962,6 +1117,13 @@ test('release-state CLI lists canonical snapshot fields for shell consumers', ()
     'STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT',
     'STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT',
     'STAGING_VERIFIED_AT',
+    'STAGING_EXPECTED_RELEASE_ID',
+    'STAGING_EXPECTED_RC_RUN_ID',
+    'STAGING_EXPECTED_OPENPATH_SHA',
+    'STAGING_EXPECTED_OPENPATH_CONTRACT_SHA256',
+    'STAGING_VERIFIED_RELEASE_ID',
+    'STAGING_VERIFIED_RC_RUN_ID',
+    'STAGING_VERIFIED_VERIFIER_IMAGE',
     'STAGING_EMAIL_PREFLIGHT_MODE',
     'STAGING_EMAIL_DELIVERY_HIGH_RISK',
     'STAGING_EMAIL_PREFLIGHT_RESULT',

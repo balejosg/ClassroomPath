@@ -17,6 +17,9 @@ persist_staging_verification_evidence() {
   local state_dir="${STATE_DIR:-/srv/classroompath/release-state}"
   local app_dir="${APP_DIR:-/srv/classroompath/app}"
   local openpath_sha=""
+  local release_id=""
+  local contract_sha256=""
+  local rc_run_id=""
 
   mkdir -p "$state_dir"
 
@@ -27,15 +30,33 @@ persist_staging_verification_evidence() {
 
   load_release_state_env "$state_dir/current-images.env"
   openpath_sha="$(git -C "$app_dir/upstream/openpath" rev-parse HEAD)"
+  release_id="${RELEASE_ID:-}"
+  contract_sha256="${OPENPATH_CONTRACT_SHA256:-}"
+  rc_run_id="${RC_RUN_ID:-}"
+
+  if [ -n "${OPENPATH_SHA:-}" ] && [ "$OPENPATH_SHA" != "$openpath_sha" ]; then
+    echo "OpenPath gitlink does not match current release state" >&2
+    return 1
+  fi
+  if [ "${IMAGE_SOURCE:-}" = "release-candidate" ] && [ -z "$rc_run_id" ]; then
+    echo "RC_RUN_ID is missing from current release state" >&2
+    return 1
+  fi
 
   STAGING_VERIFICATION_STATE="success" \
+  STAGING_EXPECTED_RELEASE_ID="$release_id" \
+  STAGING_EXPECTED_RC_RUN_ID="$rc_run_id" \
   STAGING_EXPECTED_APP_SHA="${APP_SHA:-}" \
   STAGING_EXPECTED_OPENPATH_SHA="${openpath_sha:-}" \
+  STAGING_EXPECTED_OPENPATH_CONTRACT_SHA256="$contract_sha256" \
   STAGING_EXPECTED_IMAGE_SOURCE="${IMAGE_SOURCE:-}" \
   STAGING_VERIFICATION_STARTED_AT="${STAGING_VERIFICATION_STARTED_AT:-}" \
   STAGING_VERIFIED_BY="deploy-staging-local.sh" \
   STAGING_VERIFIED_APP_SHA="${APP_SHA:-}" \
+  STAGING_VERIFIED_RELEASE_ID="$release_id" \
+  STAGING_VERIFIED_RC_RUN_ID="$rc_run_id" \
   STAGING_VERIFIED_OPENPATH_SHA="${openpath_sha:-}" \
+  STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256="$contract_sha256" \
   STAGING_VERIFIED_IMAGE_SOURCE="${IMAGE_SOURCE:-}" \
   STAGING_VERIFIED_GATEWAY_IMAGE="${CLASSROOMPATH_GATEWAY_IMAGE:-}" \
   STAGING_VERIFIED_MIGRATIONS_IMAGE="${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" \
@@ -45,12 +66,13 @@ persist_staging_verification_evidence() {
   STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION="${OPENPATH_LINUX_AGENT_VERSION:-}" \
   STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE="${OPENPATH_LINUX_AGENT_APT_SUITE:-}" \
   STAGING_VERIFIED_SPA_IMAGE="${CLASSROOMPATH_SPA_IMAGE:-}" \
+  STAGING_VERIFIED_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" \
     write_staging_verification_state "$state_dir/staging-verification.env"
 }
 
 run_invalidate_subcommand() {
-  if [ "$#" -ne 4 ]; then
-    echo "Usage: run-staging-verification.sh invalidate <state-file> <app-sha> <openpath-sha> <image-source>" >&2
+  if [ "$#" -lt 4 ] || [ "$#" -gt 7 ]; then
+    echo "Usage: run-staging-verification.sh invalidate <state-file> <app-sha> <openpath-sha> <image-source> [release-id] [contract-sha256] [rc-run-id]" >&2
     exit 2
   fi
 
@@ -58,8 +80,18 @@ run_invalidate_subcommand() {
   local app_sha="$2"
   local openpath_sha="$3"
   local image_source="$4"
+  local release_id="${5:-}"
+  local contract_sha256="${6:-}"
+  local rc_run_id="${7:-}"
 
-  write_staging_verification_pending_state "$state_file" "$app_sha" "$openpath_sha" "$image_source"
+  write_staging_verification_pending_state \
+    "$state_file" \
+    "$app_sha" \
+    "$openpath_sha" \
+    "$image_source" \
+    "$release_id" \
+    "$contract_sha256" \
+    "$rc_run_id"
 }
 
 run_smoke_subcommand() {

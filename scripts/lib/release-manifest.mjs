@@ -3,10 +3,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 
-import {
-  selectWindowsOfflineInstallerTemplatePin,
-  validateWindowsOfflineInstallerTemplatePin,
-} from '../resolve-windows-offline-installer-template-pin.mjs';
+import { validateWindowsOfflineInstallerTemplatePin } from '../resolve-windows-offline-installer-template-pin.mjs';
 import {
   buildReleaseBundleArtifacts,
   projectOpenPathContractToLegacyRuntime,
@@ -108,7 +105,7 @@ import {
  *   openpathVersion?: string;
  *   linuxAgentVersion?: string;
  *   linuxAgentAptSuite?: string;
- *   newWindowsPin?: WindowsOfflineInstallerTemplatePinInput;
+ *   windowsPin?: WindowsOfflineInstallerTemplatePinInput;
  * }} ManifestOnlyReleaseCandidateOptions
  */
 
@@ -220,13 +217,21 @@ function readOptionalReleaseIdentity(assignments) {
 function readOfflineInstallerPin(assignments) {
   const values = {
     windows_offline_installer_template_version:
-      assignments.windows_offline_installer_template_version ?? '',
+      assignments.windows_offline_installer_template_version ??
+      assignments.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION ??
+      '',
     windows_offline_installer_template_commit:
-      assignments.windows_offline_installer_template_commit ?? '',
+      assignments.windows_offline_installer_template_commit ??
+      assignments.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT ??
+      '',
     windows_offline_installer_template_release_tag:
-      assignments.windows_offline_installer_template_release_tag ?? '',
+      assignments.windows_offline_installer_template_release_tag ??
+      assignments.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG ??
+      '',
     windows_offline_installer_template_sha256:
-      assignments.windows_offline_installer_template_sha256 ?? '',
+      assignments.windows_offline_installer_template_sha256 ??
+      assignments.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256 ??
+      '',
   };
   const present = Object.values(values).filter(Boolean).length;
   if (present === 0) return {};
@@ -324,7 +329,12 @@ export function parseCanonicalReleaseManifestText(text, options = {}) {
 export function parseArtifactReleaseManifestText(text, options = {}) {
   const assignments = parseManifestAssignments(text);
   const offlineInstallerPin = readOfflineInstallerPin(assignments);
-  const releaseIdentity = readOptionalReleaseIdentity(assignments);
+  const releaseIdentity = readOptionalReleaseIdentity({
+    release_id: assignments.release_id ?? assignments.RELEASE_ID,
+    openpath_sha: assignments.openpath_sha ?? assignments.OPENPATH_SHA,
+    openpath_contract_sha256:
+      assignments.openpath_contract_sha256 ?? assignments.OPENPATH_CONTRACT_SHA256,
+  });
   const manifest = {
     appSha: assignments.APP_SHA,
     gatewayImage: assignments.CLASSROOMPATH_GATEWAY_IMAGE,
@@ -470,10 +480,10 @@ export function buildCanonicalReleaseManifestFromBundle({
 }
 
 /**
- * Builds the artifact manifest for the manifest-only release-candidate path.
- * The image references and previous Windows tuple are copied from the previous
- * candidate; the Windows tuple is selected from the new pin when present and
- * otherwise from the previous candidate.
+ * Builds the compatibility manifest projection for the manifest-only
+ * release-candidate path. Image references may be reused from the previous
+ * candidate, but every OpenPath value, including the Windows tuple, must be
+ * supplied explicitly by the already-resolved v2 contract projection.
  *
  * @param {ManifestOnlyReleaseCandidateOptions} params
  * @returns {ReleaseCandidateArtifactManifest}
@@ -484,7 +494,7 @@ export function buildManifestOnlyReleaseCandidateArtifact({
   openpathVersion,
   linuxAgentVersion,
   linuxAgentAptSuite,
-  newWindowsPin = {},
+  windowsPin = {},
 }) {
   /**
    * @param {unknown} value
@@ -498,16 +508,9 @@ export function buildManifestOnlyReleaseCandidateArtifact({
     }
     return normalized;
   };
-  const previousWindowsPin = {
-    version: previousManifest.windows_offline_installer_template_version,
-    commit: previousManifest.windows_offline_installer_template_commit,
-    releaseTag: previousManifest.windows_offline_installer_template_release_tag,
-    sha256: previousManifest.windows_offline_installer_template_sha256,
-  };
   /** @type {WindowsOfflineInstallerTemplatePin} */
-  const windowsPin = selectWindowsOfflineInstallerTemplatePin({
-    newPin: newWindowsPin,
-    previousPin: previousWindowsPin,
+  const validatedWindowsPin = validateWindowsOfflineInstallerTemplatePin(windowsPin, {
+    context: 'Contract-derived Windows offline installer pin',
   });
 
   const artifact = {
@@ -531,10 +534,10 @@ export function buildManifestOnlyReleaseCandidateArtifact({
       linuxAgentAptSuite,
       'OPENPATH_LINUX_AGENT_APT_SUITE'
     ),
-    windows_offline_installer_template_version: windowsPin.version,
-    windows_offline_installer_template_commit: windowsPin.commit,
-    windows_offline_installer_template_release_tag: windowsPin.releaseTag,
-    windows_offline_installer_template_sha256: windowsPin.sha256,
+    windows_offline_installer_template_version: validatedWindowsPin.version,
+    windows_offline_installer_template_commit: validatedWindowsPin.commit,
+    windows_offline_installer_template_release_tag: validatedWindowsPin.releaseTag,
+    windows_offline_installer_template_sha256: validatedWindowsPin.sha256,
     CLASSROOMPATH_SPA_IMAGE: requiredValue(previousManifest.spa_image, 'CLASSROOMPATH_SPA_IMAGE'),
     CLASSROOMPATH_VERIFIER_IMAGE: requiredValue(
       previousManifest.verifier_image,
@@ -658,13 +661,11 @@ function runManifestOnlyCli() {
     openpathVersion: readOptionalEnvironmentValue('OPENPATH_VERSION'),
     linuxAgentVersion: readOptionalEnvironmentValue('OPENPATH_LINUX_AGENT_VERSION'),
     linuxAgentAptSuite: readOptionalEnvironmentValue('OPENPATH_LINUX_AGENT_APT_SUITE'),
-    newWindowsPin: {
-      version: readOptionalEnvironmentValue('NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_VERSION'),
-      commit: readOptionalEnvironmentValue('NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_COMMIT'),
-      releaseTag: readOptionalEnvironmentValue(
-        'NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_RELEASE_TAG'
-      ),
-      sha256: readOptionalEnvironmentValue('NEW_WINDOWS_OFFLINE_INSTALLER_TEMPLATE_SHA256'),
+    windowsPin: {
+      version: readOptionalEnvironmentValue('OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION'),
+      commit: readOptionalEnvironmentValue('OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT'),
+      releaseTag: readOptionalEnvironmentValue('OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG'),
+      sha256: readOptionalEnvironmentValue('OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256'),
     },
   });
   process.stdout.write(serializeArtifactReleaseManifest(artifact));

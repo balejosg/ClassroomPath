@@ -88,16 +88,22 @@ jobs:
       contents: read
       packages: read
     outputs:
-      gateway_image: ${{ steps.release-images.outputs.gateway_image }}
-      migrations_image: ${{ steps.release-images.outputs.migrations_image }}
-      openpath_firefox_assets_image: ${{ steps.release-images.outputs.openpath_firefox_assets_image }}
-      openpath_api_image: ${{ steps.release-images.outputs.openpath_api_image }}
-      openpath_version: ${{ steps.release-images.outputs.openpath_version }}
-      openpath_linux_agent_version: ${{ steps.release-images.outputs.linux_agent_version }}
-      openpath_linux_agent_apt_suite: ${{ steps.release-images.outputs.linux_agent_apt_suite }}
-      spa_image: ${{ steps.release-images.outputs.spa_image }}
-      verifier_image: ${{ steps.release-images.outputs.verifier_image }}
-      manifest_base64: ${{ steps.release-images.outputs.manifest_base64 }}
+      gateway_image: ${{ steps.release-bundle.outputs.gateway_image }}
+      migrations_image: ${{ steps.release-bundle.outputs.migrations_image }}
+      openpath_firefox_assets_image: ${{ steps.release-bundle.outputs.openpath_firefox_assets_image }}
+      openpath_api_image: ${{ steps.release-bundle.outputs.openpath_api_image }}
+      openpath_version: ${{ steps.release-bundle.outputs.openpath_version }}
+      openpath_linux_agent_version: ${{ steps.release-bundle.outputs.linux_agent_version }}
+      openpath_linux_agent_apt_suite: ${{ steps.release-bundle.outputs.linux_agent_apt_suite }}
+      spa_image: ${{ steps.release-bundle.outputs.spa_image }}
+      verifier_image: ${{ steps.release-bundle.outputs.verifier_image }}
+      release_id: ${{ steps.release-bundle.outputs.release_id }}
+      openpath_sha: ${{ steps.release-bundle.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ steps.release-bundle.outputs.openpath_contract_sha256 }}
+      rc_run_id: ${{ steps.tag-identity.outputs.rc_run_id }}
+      release_bundle_base64: ${{ steps.release-bundle.outputs.release_bundle_base64 }}
+      openpath_contract_base64: ${{ steps.release-bundle.outputs.openpath_contract_base64 }}
+      manifest_base64: ${{ steps.release-bundle.outputs.manifest_base64 }}
       payload_base64: ${{ steps.deploy-payload.outputs.payload_base64 }}
       staging_container_platform: ${{ steps.deploy-targets.outputs.staging_container_platform }}
       production_container_platform: ${{ steps.deploy-targets.outputs.production_container_platform }}
@@ -109,6 +115,28 @@ jobs:
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
 
+      - name: Read exact Release Bundle identity from annotated tag
+        id: tag-identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents)' > production-tag-message.txt
+          node scripts/promotion-evidence-cli.mjs extract-tag-identity \
+            --message-file production-tag-message.txt \
+            --identity-output release-identity.env
+          while IFS='=' read -r key value; do
+            case "$key" in
+              RELEASE_ID) echo "release_id=$value" >> "$GITHUB_OUTPUT" ;;
+              RC_RUN_ID) echo "rc_run_id=$value" >> "$GITHUB_OUTPUT" ;;
+              CLASSROOMPATH_SHA) echo "classroompath_sha=$value" >> "$GITHUB_OUTPUT" ;;
+            esac
+          done < release-identity.env
+          classroompath_sha="$(sed -n 's/^CLASSROOMPATH_SHA=//p' release-identity.env | head -n 1)"
+          if [ "$classroompath_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::Annotated production tag identity ClassroomPath SHA $classroompath_sha does not match tag target $GITHUB_SHA"
+            exit 1
+          fi
+
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
@@ -116,24 +144,32 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve approved release candidate manifest
-        id: release-images
+      - name: Resolve and verify exact Release Bundle v2
+        id: release-bundle
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_SHA: ${{ github.sha }}
+          RELEASE_ID: ${{ steps.tag-identity.outputs.release_id }}
+          RC_RUN_ID: ${{ steps.tag-identity.outputs.rc_run_id }}
         run: |
           set -euo pipefail
 
-          node scripts/wait-for-release-candidate.mjs resolve-manifest \
+          node scripts/wait-for-release-candidate.mjs resolve-bundle \
             --sha "$TARGET_SHA" \
+            --run-id "$RC_RUN_ID" \
+            --release-id "$RELEASE_ID" \
             --repo "${{ github.repository }}" \
             --timeout-seconds 60 \
             --interval-seconds 5 \
-            --output-file release-images.env >> "$GITHUB_OUTPUT"
+            --output-file release-images.env \
+            --legacy-manifest-file release-manifest.env \
+            --output-dir release-bundle >> "$GITHUB_OUTPUT"
 
-          echo "manifest_base64=$(base64 < release-images.env | tr -d '\n')" >> "$GITHUB_OUTPUT"
           printf 'TAG_NAME=%s\n' '${{ github.ref_name }}' >> release-images.env
+          echo "manifest_base64=$(base64 < release-manifest.env | tr -d '\n')" >> "$GITHUB_OUTPUT"
+          echo "release_bundle_base64=$(base64 < release-bundle/classroompath-release-bundle.json | tr -d '\n')" >> "$GITHUB_OUTPUT"
+          echo "openpath_contract_base64=$(base64 < release-bundle/openpath-promotion-contract.json | tr -d '\n')" >> "$GITHUB_OUTPUT"
 
       - name: Resolve deploy targets
         id: deploy-targets
@@ -152,7 +188,7 @@ jobs:
       - name: Verify production release image platforms
         shell: bash
         env:
-          RELEASE_MANIFEST_B64: ${{ steps.release-images.outputs.manifest_base64 }}
+          RELEASE_MANIFEST_B64: ${{ steps.release-bundle.outputs.manifest_base64 }}
           PRODUCTION_CONTAINER_PLATFORM: ${{ steps.deploy-targets.outputs.production_container_platform }}
         run: |
           set -euo pipefail
@@ -163,13 +199,12 @@ jobs:
       - name: Verify OpenPath Linux agent APT pin
         shell: bash
         env:
-          OPENPATH_LINUX_AGENT_VERSION: ${{ steps.release-images.outputs.linux_agent_version }}
-          OPENPATH_LINUX_AGENT_APT_SUITE: ${{ steps.release-images.outputs.linux_agent_apt_suite }}
+          OPENPATH_SHA: ${{ steps.release-bundle.outputs.openpath_sha }}
         run: |
           set -euo pipefail
-          node scripts/resolve-openpath-linux-agent-version.mjs verify-runtime-pin
-          node scripts/resolve-openpath-linux-agent-version.mjs install-probe-script \
-            | docker run --rm -i ubuntu:24.04 bash
+          node scripts/verify-openpath-promotion-contract.mjs \
+            --contract-file release-bundle/openpath-promotion-contract.json \
+            --openpath-sha "$OPENPATH_SHA"
 
       - name: Build deploy payload
         id: deploy-payload
@@ -177,7 +212,11 @@ jobs:
         env:
           DEPLOY_REF: ${{ github.ref }}
           DEPLOY_SHA: ${{ github.sha }}
-          RELEASE_MANIFEST_B64: ${{ steps.release-images.outputs.manifest_base64 }}
+          RELEASE_MANIFEST_B64: ${{ steps.release-bundle.outputs.manifest_base64 }}
+          RELEASE_ID: ${{ steps.release-bundle.outputs.release_id }}
+          RC_RUN_ID: ${{ steps.tag-identity.outputs.rc_run_id }}
+          RELEASE_BUNDLE_B64: ${{ steps.release-bundle.outputs.release_bundle_base64 }}
+          OPENPATH_CONTRACT_B64: ${{ steps.release-bundle.outputs.openpath_contract_base64 }}
         run: |
           set -euo pipefail
           node scripts/lib/deploy-payload.mjs render-github-output \
@@ -185,7 +224,11 @@ jobs:
             --deploy-ref "$DEPLOY_REF" \
             --deploy-sha "$DEPLOY_SHA" \
             --deployment-mode promotion-eligible \
-            --manifest-base64 "$RELEASE_MANIFEST_B64" >> "$GITHUB_OUTPUT"
+            --manifest-base64 "$RELEASE_MANIFEST_B64" \
+            --release-id "$RELEASE_ID" \
+            --rc-run-id "$RC_RUN_ID" \
+            --release-bundle-base64 "$RELEASE_BUNDLE_B64" \
+            --openpath-contract-base64 "$OPENPATH_CONTRACT_B64" >> "$GITHUB_OUTPUT"
 
       - name: Upload release image manifest
         uses: actions/upload-artifact@v7
@@ -226,6 +269,9 @@ jobs:
       staging_linux_self_update_result: ${{ steps.compare.outputs.staging_linux_self_update_result }}
       staging_prepromotion_rehearsal_result: ${{ steps.compare.outputs.staging_prepromotion_rehearsal_result }}
       staging_verified_at: ${{ steps.compare.outputs.staging_verified_at }}
+      release_id: ${{ steps.compare.outputs.release_id }}
+      openpath_sha: ${{ steps.compare.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ steps.compare.outputs.openpath_contract_sha256 }}
 
     steps:
       - name: Checkout
@@ -297,15 +343,22 @@ jobs:
         run: |
           set -euo pipefail
           git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents)' > production-tag-message.txt
-          if node scripts/promotion-evidence-cli.mjs extract-tag-message \
+          node scripts/promotion-evidence-cli.mjs extract-tag-message \
             --message-file production-tag-message.txt \
             --staging-current-output staging-release-state.env \
-            --staging-verification-output staging-verification.env 2>/dev/null; then
-            echo "source=tag" >> "$GITHUB_OUTPUT"
-          else
-            rm -f staging-release-state.env staging-verification.env
-            echo "source=ssh" >> "$GITHUB_OUTPUT"
-          fi
+            --staging-verification-output staging-verification.env \
+            --identity-output release-identity.env
+          node scripts/promotion-evidence-cli.mjs extract-tag-identity \
+            --message-file production-tag-message.txt \
+            --identity-output release-identity.env
+          while IFS='=' read -r key value; do
+            case "$key" in
+              RELEASE_ID) echo "release_id=$value" >> "$GITHUB_OUTPUT" ;;
+              RC_RUN_ID) echo "rc_run_id=$value" >> "$GITHUB_OUTPUT" ;;
+              CLASSROOMPATH_SHA) echo "classroompath_sha=$value" >> "$GITHUB_OUTPUT" ;;
+            esac
+          done < release-identity.env
+          echo "source=tag" >> "$GITHUB_OUTPUT"
 
       - name: Read staging release state
         if: steps.tag-evidence.outputs.source != 'tag'
@@ -363,6 +416,10 @@ jobs:
         env:
           HIGH_RISK: ${{ steps.risk.outputs.high_risk }}
           EXPECTED_APP_SHA: ${{ github.sha }}
+          EXPECTED_RELEASE_ID: ${{ needs.resolve-release-images.outputs.release_id }}
+          EXPECTED_RC_RUN_ID: ${{ needs.resolve-release-images.outputs.rc_run_id }}
+          EXPECTED_OPENPATH_SHA: ${{ needs.resolve-release-images.outputs.openpath_sha }}
+          EXPECTED_OPENPATH_CONTRACT_SHA256: ${{ needs.resolve-release-images.outputs.openpath_contract_sha256 }}
           EXPECTED_GATEWAY_IMAGE: ${{ needs.resolve-release-images.outputs.gateway_image }}
           EXPECTED_MIGRATIONS_IMAGE: ${{ needs.resolve-release-images.outputs.migrations_image }}
           EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE: ${{ needs.resolve-release-images.outputs.openpath_firefox_assets_image }}
@@ -371,6 +428,7 @@ jobs:
           EXPECTED_OPENPATH_LINUX_AGENT_VERSION: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_version }}
           EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE: ${{ needs.resolve-release-images.outputs.openpath_linux_agent_apt_suite }}
           EXPECTED_SPA_IMAGE: ${{ needs.resolve-release-images.outputs.spa_image }}
+          EXPECTED_VERIFIER_IMAGE: ${{ needs.resolve-release-images.outputs.verifier_image }}
         run: bash scripts/verify-staging-release-state.sh
 
       - name: Upload staging release state
@@ -732,7 +790,9 @@ jobs:
             "GITHUB_SERVER_URL": "${{ github.server_url }}",
             "TAG_NAME": "${{ github.ref_name }}",
             "APP_SHA": "${{ github.sha }}",
+            "RELEASE_ID": "${{ needs.resolve-release-images.outputs.release_id }}",
             "OPENPATH_SHA": "${{ needs.verify-openpath-upstream.outputs.openpath_sha }}",
+            "OPENPATH_CONTRACT_SHA256": "${{ needs.resolve-release-images.outputs.openpath_contract_sha256 }}",
             "STAGING_URL": "${{ steps.staging-target.outputs.public_url }}",
             "STAGING_GATEWAY_HEALTH_URL": "${{ steps.staging-target.outputs.gateway_health_url }}",
             "STAGING_READY_URL": "${{ steps.staging-target.outputs.ready_url }}",
@@ -771,6 +831,7 @@ jobs:
             "STAGING_LINUX_SELF_UPDATE_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_linux_self_update_result }}",
             "STAGING_PREPROMOTION_REHEARSAL_RESULT": "${{ needs.verify-staging-release-state.outputs.staging_prepromotion_rehearsal_result }}",
             "STAGING_VERIFIED_AT": "${{ needs.verify-staging-release-state.outputs.staging_verified_at }}",
+            "RC_RUN_ID": "${{ needs.resolve-release-images.outputs.rc_run_id }}",
             "WINDOWS_FIREFOX_CANARY_RESULT": "${{ needs.windows-firefox-canary.outputs.canary_result || needs.windows-firefox-canary.result }}",
             "WINDOWS_STAGING_BOOTSTRAP_CANARY_RESULT": "${{ needs.windows-staging-bootstrap-canary.outputs.canary_result || needs.windows-staging-bootstrap-canary.result }}",
             "PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_RESULT": "${{ needs.windows-staging-bootstrap-canary.outputs.canary_result || needs.windows-staging-bootstrap-canary.result }}",
@@ -805,6 +866,7 @@ jobs:
           node scripts/release-evidence-bundle.mjs \
             --deploy-run "${{ github.run_id }}" \
             --tag "${{ github.ref_name }}" \
+            --release-bundle-run "${{ needs.resolve-release-images.outputs.rc_run_id }}" \
             --production-url "${{ steps.production-target.outputs.public_url }}" \
             --output-dir release-evidence-bundle
 
@@ -817,7 +879,7 @@ jobs:
             echo "Current-run artifact download was unavailable or incomplete during this workflow."
             echo "Re-run after the deploy completes from a local shell in the artifact directory that contains \`release-evidence.json\`:"
             echo ""
-            echo '\`npm run release:evidence-bundle -- --deploy-run "${{ github.run_id }}" --tag "${{ github.ref_name }}" --production-url "${{ steps.production-target.outputs.public_url }}" --output-dir release-evidence-bundle\`'
+            echo '\`npm run release:evidence-bundle -- --deploy-run "${{ github.run_id }}" --tag "${{ github.ref_name }}" --release-bundle-run "${{ needs.resolve-release-images.outputs.rc_run_id }}" --production-url "${{ steps.production-target.outputs.public_url }}" --output-dir release-evidence-bundle\`'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Generate deploy brief

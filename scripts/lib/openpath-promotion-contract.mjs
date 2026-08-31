@@ -222,20 +222,21 @@ function canonicalizeContract(contract) {
   const openpathVersion = assertNonEmptyString(contract.openpathVersion, 'openpathVersion');
   const interfaces = canonicalizeInterfaces(contract.interfaces);
   assertExactKeys(contract.components, COMPONENT_NAMES, 'components');
+  const components = {
+    linuxAgent: canonicalizeComponent('linuxAgent', contract.components.linuxAgent),
+    windowsOfflineInstaller: canonicalizeComponent(
+      'windowsOfflineInstaller',
+      contract.components.windowsOfflineInstaller
+    ),
+    browserPolicy: canonicalizeComponent('browserPolicy', contract.components.browserPolicy),
+  };
 
   return {
     schemaVersion: 2,
     openpathSha,
     openpathVersion,
     interfaces,
-    components: {
-      linuxAgent: canonicalizeComponent('linuxAgent', contract.components.linuxAgent),
-      windowsOfflineInstaller: canonicalizeComponent(
-        'windowsOfflineInstaller',
-        contract.components.windowsOfflineInstaller
-      ),
-      browserPolicy: canonicalizeComponent('browserPolicy', contract.components.browserPolicy),
-    },
+    components,
   };
 }
 
@@ -307,9 +308,6 @@ export function parseOpenPathPromotionContractBytes(bytes, { expectedOpenpathSha
 async function readResponseBytes(response) {
   if (response && typeof response.arrayBuffer === 'function') {
     return Buffer.from(await response.arrayBuffer());
-  }
-  if (response && typeof response.text === 'function') {
-    return Buffer.from(await response.text(), 'utf8');
   }
   throw new Error('exact OpenPath v2 promotion contract response has no body reader');
 }

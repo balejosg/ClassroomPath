@@ -16,6 +16,10 @@ import {
  *   imageSource: 'release-candidate' | 'source-build';
  *   deploymentMode: 'promotion-eligible' | 'debug';
  *   manifestBase64: string;
+ *   releaseId?: string;
+ *   releaseBundleBase64?: string;
+ *   openpathContractBase64?: string;
+ *   rcRunId?: string;
  * }} DeployPayload
  */
 
@@ -27,6 +31,10 @@ import {
  *   imageSource: 'release-candidate' | 'source-build';
  *   deploymentMode: 'promotion-eligible' | 'debug';
  *   manifestBase64?: string;
+ *   releaseId?: string;
+ *   releaseBundleBase64?: string;
+ *   openpathContractBase64?: string;
+ *   rcRunId?: string;
  * }} params
  * @returns {DeployPayload}
  */
@@ -91,6 +99,22 @@ function parseCliArgs(args) {
         parsed.manifestBase64 = value;
         index += 1;
         break;
+      case '--release-id':
+        parsed.releaseId = value;
+        index += 1;
+        break;
+      case '--release-bundle-base64':
+        parsed.releaseBundleBase64 = value;
+        index += 1;
+        break;
+      case '--openpath-contract-base64':
+        parsed.openpathContractBase64 = value;
+        index += 1;
+        break;
+      case '--rc-run-id':
+        parsed.rcRunId = value;
+        index += 1;
+        break;
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }
@@ -117,6 +141,10 @@ function runCli() {
       parsed.deploymentMode ?? 'promotion-eligible'
     ),
     manifestBase64: parsed.manifestBase64 ?? '',
+    releaseId: parsed.releaseId ?? '',
+    releaseBundleBase64: parsed.releaseBundleBase64 ?? '',
+    openpathContractBase64: parsed.openpathContractBase64 ?? '',
+    rcRunId: parsed.rcRunId ?? '',
   });
   const payloadBase64 = encodeDeployPayloadBase64(payload);
 

@@ -15,6 +15,10 @@ import {
   waitForFirefoxReleaseAssets,
   waitForReleaseCandidateManifest,
 } from './lib/release-candidate.mjs';
+import {
+  buildReleaseCandidateBundleProjectionOutputs,
+  waitForExactReleaseCandidateBundle,
+} from './lib/release-candidate-bundle.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
@@ -28,6 +32,9 @@ function printUsage() {
   console.error(
     '  node scripts/wait-for-release-candidate.mjs resolve-firefox-assets --openpath-sha <sha> [--repo <owner/repo>] [--timeout-seconds <seconds>] [--interval-seconds <seconds>] [--output-dir <path>]'
   );
+  console.error(
+    '  node scripts/wait-for-release-candidate.mjs resolve-bundle --sha <sha> [--run-id <id>] [--release-id <id>] [--repo <owner/repo>] [--timeout-seconds <seconds>] [--interval-seconds <seconds>] [--output-file <path>] [--output-dir <path>]'
+  );
 }
 
 function parseCliArgs(argv) {
@@ -37,7 +44,10 @@ function parseCliArgs(argv) {
       '--openpath-sha',
       '--output-dir',
       '--output-file',
+      '--legacy-manifest-file',
+      '--release-id',
       '--repo',
+      '--run-id',
       '--sha',
       '--timeout-seconds',
     ],
@@ -51,9 +61,13 @@ function parseCliArgs(argv) {
         ? Number(parsed.options['interval-seconds'])
         : undefined,
       openpathSha: parsed.options['openpath-sha'],
+      bundleOutputDir: parsed.options['output-dir'],
       outputDir: parsed.options['output-dir'],
       outputFile: parsed.options['output-file'],
+      legacyManifestFile: parsed.options['legacy-manifest-file'],
+      releaseId: parsed.options['release-id'],
       repo: parsed.options.repo,
+      runId: parsed.options['run-id'],
       sha: parsed.options.sha,
       timeoutSeconds: parsed.options['timeout-seconds']
         ? Number(parsed.options['timeout-seconds'])
@@ -107,6 +121,30 @@ export function runReleaseCandidateCli(argv = process.argv.slice(2)) {
       openpath_sha: openpathSha,
       artifact_name: result.artifactName,
     });
+    return;
+  }
+
+  if (command === 'resolve-bundle' && options.sha) {
+    const result = waitForExactReleaseCandidateBundle({
+      classroomPathSha: options.sha,
+      runId: options.runId,
+      releaseId: options.releaseId,
+      repository: options.repo ?? process.env.GITHUB_REPOSITORY,
+      timeoutSeconds: options.timeoutSeconds ?? 900,
+      intervalSeconds: options.intervalSeconds ?? 10,
+      outputFile: options.outputFile,
+      outputDir: options.bundleOutputDir,
+      legacyManifestFile: options.legacyManifestFile,
+      cwd: projectRoot,
+    });
+    const output = {
+      ...buildReleaseCandidateBundleProjectionOutputs(result),
+      release_bundle_run_id: result.runId,
+      release_bundle_artifact: result.artifactName,
+      release_bundle_path: result.bundlePath ?? '',
+      openpath_contract_path: result.contractPath ?? '',
+    };
+    writeOutputs(output);
     return;
   }
 

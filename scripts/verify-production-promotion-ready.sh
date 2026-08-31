@@ -9,8 +9,6 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 # shellcheck source=lib/github-token.sh
 source "$SCRIPT_DIR/lib/github-token.sh"
-# shellcheck source=lib/release-manifest.sh
-source "$SCRIPT_DIR/lib/release-manifest.sh"
 # shellcheck source=lib/deploy-container-platform.sh
 source "$SCRIPT_DIR/lib/deploy-container-platform.sh"
 
@@ -129,6 +127,9 @@ verify_openpath_required_checks() {
 verify_openpath_required_checks
 ensure_github_token_env
 
+release_bundle_dir="$(mktemp -d)"
+release_bundle_runtime_file="$(mktemp)"
+release_bundle_outputs_file="$(mktemp)"
 release_manifest_file="$(mktemp)"
 current_state_file="$(mktemp)"
 verification_state_file="$(mktemp)"
@@ -137,38 +138,13 @@ risk_output_file="$(mktemp)"
 report_json_file="${PROMOTION_REPORT_JSON_PATH:-$(mktemp)}"
 
 cleanup() {
-  rm -f "$release_manifest_file" "$current_state_file" "$verification_state_file" "$production_state_file" "$risk_output_file" "$openpath_changed_files_file"
+  rm -rf "$release_bundle_dir"
+  rm -f "$release_bundle_runtime_file" "$release_bundle_outputs_file" "$release_manifest_file" "$current_state_file" "$verification_state_file" "$production_state_file" "$risk_output_file" "$openpath_changed_files_file"
   if [ -z "${PROMOTION_REPORT_JSON_PATH:-}" ]; then
     rm -f "$report_json_file"
   fi
 }
 trap cleanup EXIT
-
-node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-manifest \
-  --sha "$TARGET_SHA" \
-  --output-file "$release_manifest_file" >/dev/null
-
-release_manifest_validate_contract "$release_manifest_file" "$TARGET_SHA"
-export_release_manifest_runtime_env "$release_manifest_file"
-
-export EXPECTED_APP_SHA="$RELEASE_MANIFEST_APP_SHA"
-export EXPECTED_GATEWAY_IMAGE="$CLASSROOMPATH_GATEWAY_IMAGE"
-export EXPECTED_MIGRATIONS_IMAGE="$CLASSROOMPATH_MIGRATIONS_IMAGE"
-export EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE="$OPENPATH_FIREFOX_ASSETS_IMAGE"
-export EXPECTED_OPENPATH_API_IMAGE="$OPENPATH_API_IMAGE"
-export EXPECTED_OPENPATH_VERSION="$OPENPATH_VERSION"
-export EXPECTED_OPENPATH_LINUX_AGENT_VERSION="$OPENPATH_LINUX_AGENT_VERSION"
-export EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE="$OPENPATH_LINUX_AGENT_APT_SUITE"
-export EXPECTED_SPA_IMAGE="$CLASSROOMPATH_SPA_IMAGE"
-export EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION="$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION"
-export EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT="$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT"
-export EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG="$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG"
-export EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256="$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256"
-
-# Fail closed (not warn-and-skip) on the Firefox extension-id consistency check: this gate has the
-# OpenPath submodule checked out, so the pinned agent version's .deb id MUST match the served XPI id.
-OPENPATH_REQUIRE_AGENT_EXTENSION_ID_CHECK=1 \
-  node "$SCRIPT_DIR/resolve-openpath-linux-agent-version.mjs" verify-runtime-pin
 
 SSH_CMD=(
   ssh
@@ -235,6 +211,92 @@ verify_production_container_platform_ready "$(node "$SCRIPT_DIR/deploy-targets.m
 "${SSH_CMD[@]}" "cat /srv/classroompath/release-state/current-images.env" > "$current_state_file"
 "${SSH_CMD[@]}" "cat /srv/classroompath/release-state/staging-verification.env" > "$verification_state_file"
 
+read_state_value() {
+  local state_path="$1"
+  local key="$2"
+  awk -F= -v expected_key="$key" '$1 == expected_key { print substr($0, index($0, "=") + 1); exit }' "$state_path"
+}
+
+staging_release_id="$(read_state_value "$current_state_file" RELEASE_ID)"
+staging_rc_run_id="$(read_state_value "$current_state_file" RC_RUN_ID)"
+staging_openpath_sha="$(read_state_value "$current_state_file" OPENPATH_SHA)"
+staging_contract_sha256="$(read_state_value "$current_state_file" OPENPATH_CONTRACT_SHA256)"
+verified_release_id="$(read_state_value "$verification_state_file" STAGING_VERIFIED_RELEASE_ID)"
+
+if [ -z "$staging_release_id" ] || [ -z "$staging_rc_run_id" ] || [ -z "$staging_openpath_sha" ] || [ -z "$staging_contract_sha256" ]; then
+  die "Staging current release state is missing Release Bundle v2 identity or RC run ID" 1
+fi
+if ! [[ "$staging_rc_run_id" =~ ^[0-9]+$ ]]; then
+  die "Staging current release state RC run ID is invalid" 1
+fi
+if [ -n "$verified_release_id" ] && [ "$verified_release_id" != "$staging_release_id" ]; then
+  die "Staging verification releaseId does not match current release state" 1
+fi
+
+TARGET_OPENPATH_SHA="$(git rev-parse "$TARGET_SHA:upstream/openpath")"
+if [ "$staging_openpath_sha" != "$TARGET_OPENPATH_SHA" ]; then
+  die "Staging OpenPath SHA $staging_openpath_sha does not match staged gitlink $TARGET_OPENPATH_SHA" 1
+fi
+
+node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-bundle \
+  --sha "$TARGET_SHA" \
+  --run-id "$staging_rc_run_id" \
+  --release-id "$staging_release_id" \
+  --repo "${GITHUB_REPOSITORY:-balejosg/ClassroomPath}" \
+  --timeout-seconds "${RELEASE_BUNDLE_RESOLUTION_TIMEOUT_SECONDS:-60}" \
+  --interval-seconds "${RELEASE_BUNDLE_RESOLUTION_INTERVAL_SECONDS:-5}" \
+  --output-file "$release_bundle_runtime_file" \
+  --output-dir "$release_bundle_dir" \
+  --legacy-manifest-file "$release_manifest_file" > "$release_bundle_outputs_file"
+
+set -a
+# shellcheck disable=SC1090 # generated from the verified immutable bundle
+. "$release_bundle_runtime_file"
+set +a
+RC_RUN_ID="$staging_rc_run_id"
+export RC_RUN_ID
+
+release_bundle_run_id="$(awk -F= '$1 == "release_bundle_run_id" {print $2; exit}' "$release_bundle_outputs_file")"
+if [ "$release_bundle_run_id" != "$staging_rc_run_id" ]; then
+  die "Resolved Release Bundle RC run ID $release_bundle_run_id does not match staging state $staging_rc_run_id" 1
+fi
+
+if [ "${RELEASE_ID:-}" != "$staging_release_id" ]; then
+  die "Resolved Release Bundle releaseId does not match staging release state" 1
+fi
+if [ "${APP_SHA:-}" != "$TARGET_SHA" ]; then
+  die "Resolved Release Bundle ClassroomPath SHA does not match target SHA" 1
+fi
+if [ "${OPENPATH_SHA:-}" != "$TARGET_OPENPATH_SHA" ]; then
+  die "Resolved Release Bundle OpenPath SHA does not match staged gitlink" 1
+fi
+if [ "${OPENPATH_CONTRACT_SHA256:-}" != "$staging_contract_sha256" ]; then
+  die "Resolved Release Bundle contract hash does not match staging release state" 1
+fi
+
+node "$SCRIPT_DIR/verify-openpath-promotion-contract.mjs" \
+  --contract-file "$release_bundle_dir/openpath-promotion-contract.json" \
+  --openpath-sha "$OPENPATH_SHA"
+
+export EXPECTED_RELEASE_ID="$RELEASE_ID"
+export EXPECTED_RC_RUN_ID="$RC_RUN_ID"
+export EXPECTED_APP_SHA="$APP_SHA"
+export EXPECTED_OPENPATH_SHA="$OPENPATH_SHA"
+export EXPECTED_OPENPATH_CONTRACT_SHA256="$OPENPATH_CONTRACT_SHA256"
+export EXPECTED_GATEWAY_IMAGE="$CLASSROOMPATH_GATEWAY_IMAGE"
+export EXPECTED_MIGRATIONS_IMAGE="$CLASSROOMPATH_MIGRATIONS_IMAGE"
+export EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE="$OPENPATH_FIREFOX_ASSETS_IMAGE"
+export EXPECTED_OPENPATH_API_IMAGE="$OPENPATH_API_IMAGE"
+export EXPECTED_OPENPATH_VERSION="$OPENPATH_VERSION"
+export EXPECTED_OPENPATH_LINUX_AGENT_VERSION="$OPENPATH_LINUX_AGENT_VERSION"
+export EXPECTED_OPENPATH_LINUX_AGENT_APT_SUITE="$OPENPATH_LINUX_AGENT_APT_SUITE"
+export EXPECTED_SPA_IMAGE="$CLASSROOMPATH_SPA_IMAGE"
+export EXPECTED_VERIFIER_IMAGE="$CLASSROOMPATH_VERIFIER_IMAGE"
+export EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION="$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION"
+export EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT="$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT"
+export EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG="$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG"
+export EXPECTED_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256="$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256"
+
 if ! node "$SCRIPT_DIR/prepromotion-runner-rehearsal.mjs" verify \
   --staging-verification "$verification_state_file" \
   --changed-files "$openpath_changed_files_file" \
@@ -276,6 +338,14 @@ if [ -n "${PROMOTION_EVIDENCE_DIR:-}" ]; then
   mkdir -p "$PROMOTION_EVIDENCE_DIR"
   install -m 600 "$current_state_file" "$PROMOTION_EVIDENCE_DIR/staging-current-images.env"
   install -m 600 "$verification_state_file" "$PROMOTION_EVIDENCE_DIR/staging-verification.env"
+  install -m 600 "$release_bundle_dir/classroompath-release-bundle.json" "$PROMOTION_EVIDENCE_DIR/classroompath-release-bundle.json"
+  install -m 600 "$release_bundle_dir/openpath-promotion-contract.json" "$PROMOTION_EVIDENCE_DIR/openpath-promotion-contract.json"
+  GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-balejosg/ClassroomPath}" \
+  node "$SCRIPT_DIR/promotion-evidence-cli.mjs" write-tag-identity \
+    --release-id "$RELEASE_ID" \
+    --rc-run-id "$release_bundle_run_id" \
+    --classroompath-sha "$TARGET_SHA" \
+    --identity-output "$PROMOTION_EVIDENCE_DIR/release-identity.env"
 fi
 
 log_success "Staging release for $TARGET_SHA is promotion-ready"

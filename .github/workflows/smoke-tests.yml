@@ -22,11 +22,16 @@ permissions:
   packages: read
 
 jobs:
-  resolve-latest-verifier:
-    name: Resolve Latest Verifier
+  resolve-staging-release:
+    name: Resolve Exact Staging Release
     runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event.inputs.environment == 'staging' || github.event.inputs.environment == 'both'
     outputs:
-      verifier_image: ${{ steps.verifier.outputs.verifier_image }}
+      release_id: ${{ steps.state.outputs.release_id }}
+      rc_run_id: ${{ steps.state.outputs.rc_run_id }}
+      verifier_image: ${{ steps.state.outputs.verifier_image }}
+      openpath_sha: ${{ steps.state.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ steps.state.outputs.openpath_contract_sha256 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -34,20 +39,137 @@ jobs:
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
 
-      - name: Resolve latest release verifier image
-        id: verifier
+      - name: Resolve staging host
+        id: resolve
+        shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: node scripts/resolve-latest-verifier-image.mjs >> "$GITHUB_OUTPUT"
+          STAGING_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          STAGING_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+          STAGING_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+          STAGING_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_require_values \
+            "exact staging smoke release state" \
+            STAGING_DEPLOY_HOST "$STAGING_HOST" \
+            STAGING_DEPLOY_USER "$STAGING_USER" \
+            STAGING_DEPLOY_SSH_KEY "$STAGING_SSH_KEY"
+          github_actions_remote_write_resolved_host_outputs \
+            "$STAGING_HOST" \
+            "${STAGING_PORT:-22}" \
+            "$STAGING_USER" \
+            "exact staging smoke release state" >> "$GITHUB_OUTPUT"
+
+      - name: Install staging SSH key
+        env:
+          STAGING_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_install_ssh_key "$STAGING_SSH_KEY" ~/.ssh/classroompath-staging-smoke
+
+      - name: Read exact current staging Release Bundle state
+        id: state
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_ssh \
+            ~/.ssh/classroompath-staging-smoke \
+            "${{ steps.resolve.outputs.port }}" \
+            "${{ steps.resolve.outputs.user }}" \
+            "${{ steps.resolve.outputs.ip }}" \
+            'set -eu; state_root="/srv/classroompath/release-state"; test -s "$state_root/current"; pointer="$(tr -d "\r\n" < "$state_root/current")"; case "$pointer" in *[!0-9a-f]*|????????????????????????????????????????????????????????????????) ;; *) exit 1 ;; esac; test -f "$state_root/releases/$pointer/runtime.env"; printf "POINTER_RELEASE_ID=%s\n" "$pointer"; cat "$state_root/releases/$pointer/runtime.env"' \
+            > deployed-release-state.env
+          pointer_release_id="$(sed -n 's/^POINTER_RELEASE_ID=//p' deployed-release-state.env | head -n 1)"
+          test -n "$pointer_release_id"
+          node scripts/resolve-deployed-release-state.mjs \
+            --state-file deployed-release-state.env \
+            --pointer-release-id "$pointer_release_id" >> "$GITHUB_OUTPUT"
+
+  resolve-production-release:
+    name: Resolve Exact Production Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'production' || github.event.inputs.environment == 'both')
+    outputs:
+      release_id: ${{ steps.state.outputs.release_id }}
+      rc_run_id: ${{ steps.state.outputs.rc_run_id }}
+      verifier_image: ${{ steps.state.outputs.verifier_image }}
+      openpath_sha: ${{ steps.state.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ steps.state.outputs.openpath_contract_sha256 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: ./.github/actions/setup-node
+
+      - name: Resolve production host
+        id: resolve
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_require_values \
+            "exact production smoke release state" \
+            DEPLOY_HOST "$DEPLOY_HOST" \
+            DEPLOY_USER "$DEPLOY_USER" \
+            DEPLOY_SSH_KEY "$DEPLOY_SSH_KEY"
+          github_actions_remote_write_resolved_host_outputs \
+            "$DEPLOY_HOST" \
+            "${DEPLOY_PORT:-22}" \
+            "$DEPLOY_USER" \
+            "exact production smoke release state" >> "$GITHUB_OUTPUT"
+
+      - name: Install production SSH key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-smoke
+
+      - name: Read exact current production Release Bundle state
+        id: state
+        shell: bash
+        env:
+          CLASSROOMPATH_DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASSROOMPATH_DEPLOY_ROOT"
+          state_root="${CLASSROOMPATH_DEPLOY_ROOT%/}/release-state"
+          source scripts/lib/github-actions-remote.sh
+          state_command="$(printf 'set -eu; state_root=%q; test -s "\$state_root/current"; pointer="\$(tr -d "\\r\\n" < "\$state_root/current")"; case "\$pointer" in *[!0-9a-f]*|????????????????????????????????????????????????????????????????) ;; *) exit 1 ;; esac; test -f "\$state_root/releases/\$pointer/runtime.env"; printf "POINTER_RELEASE_ID=%%s\\n" "\$pointer"; cat "\$state_root/releases/\$pointer/runtime.env"' "$state_root")"
+          github_actions_remote_ssh \
+            ~/.ssh/classroompath-production-smoke \
+            "${{ steps.resolve.outputs.port }}" \
+            "${{ steps.resolve.outputs.user }}" \
+            "${{ steps.resolve.outputs.ip }}" \
+            "$state_command" \
+            > deployed-release-state.env
+          pointer_release_id="$(sed -n 's/^POINTER_RELEASE_ID=//p' deployed-release-state.env | head -n 1)"
+          test -n "$pointer_release_id"
+          node scripts/resolve-deployed-release-state.mjs \
+            --state-file deployed-release-state.env \
+            --pointer-release-id "$pointer_release_id" >> "$GITHUB_OUTPUT"
 
   smoke-test-staging:
-    needs: resolve-latest-verifier
+    needs: resolve-staging-release
     if: github.event_name == 'schedule' || github.event.inputs.environment == 'staging' || github.event.inputs.environment == 'both'
     uses: ./.github/workflows/reusable-smoke-test.yml
     with:
       environment_name: staging
-      verifier_image: ${{ needs.resolve-latest-verifier.outputs.verifier_image }}
+      release_id: ${{ needs.resolve-staging-release.outputs.release_id }}
+      rc_run_id: ${{ needs.resolve-staging-release.outputs.rc_run_id }}
+      verifier_image: ${{ needs.resolve-staging-release.outputs.verifier_image }}
+      openpath_sha: ${{ needs.resolve-staging-release.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ needs.resolve-staging-release.outputs.openpath_contract_sha256 }}
       create_issue_on_failure: true
       close_issue_on_recovery: true
       create_issue_on_schedule_only: true
@@ -55,12 +177,16 @@ jobs:
       issue_labels: 'smoke-test-failure,staging,automated'
 
   smoke-test-production:
-    needs: resolve-latest-verifier
+    needs: resolve-production-release
     if: github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'production' || github.event.inputs.environment == 'both')
     uses: ./.github/workflows/reusable-smoke-test.yml
     with:
       environment_name: production
-      verifier_image: ${{ needs.resolve-latest-verifier.outputs.verifier_image }}
+      release_id: ${{ needs.resolve-production-release.outputs.release_id }}
+      rc_run_id: ${{ needs.resolve-production-release.outputs.rc_run_id }}
+      verifier_image: ${{ needs.resolve-production-release.outputs.verifier_image }}
+      openpath_sha: ${{ needs.resolve-production-release.outputs.openpath_sha }}
+      openpath_contract_sha256: ${{ needs.resolve-production-release.outputs.openpath_contract_sha256 }}
       create_issue_on_failure: true
       close_issue_on_recovery: false
       create_issue_on_schedule_only: false

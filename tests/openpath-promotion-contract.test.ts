@@ -104,6 +104,17 @@ describe('exact OpenPath v2 promotion contract', () => {
     assert.match(result.contractSha256, /^[0-9a-f]{64}$/);
   });
 
+  test('fails closed when the response cannot expose the downloaded bytes', async () => {
+    await assert.rejects(
+      resolveOpenPathPromotionContract({
+        openpathSha,
+        fetchImpl: async () =>
+          ({ ok: true, status: 200, text: async () => contractBytes() }) as Response,
+      }),
+      /exact OpenPath v2 promotion contract download failed: exact OpenPath v2 promotion contract response has no body reader/
+    );
+  });
+
   test('fails closed when the exact contract is unavailable', async () => {
     await assert.rejects(
       resolveOpenPathPromotionContract({
@@ -124,6 +135,17 @@ describe('exact OpenPath v2 promotion contract', () => {
         }),
       /does not match the exact OpenPath SHA/
     );
+  });
+
+  test('accepts component provenance from an exact OpenPath contract when it is an ancestor', () => {
+    const contract = buildContract();
+    (contract.components as Record<string, Record<string, unknown>>).linuxAgent.sourceSha =
+      otherSha;
+
+    const parsed = parseOpenPathPromotionContractBytes(contractBytes(contract), {
+      expectedOpenpathSha: openpathSha,
+    });
+    assert.equal(parsed.contract.components.linuxAgent.sourceSha, otherSha);
   });
 
   test('fails closed for unsupported schema, interface, and incomplete component data', () => {

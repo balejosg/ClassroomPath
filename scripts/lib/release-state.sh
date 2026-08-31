@@ -114,7 +114,11 @@ release_state_list_fields() {
   case "$snapshot_type" in
     current-runtime)
       cat <<'EOF'
+RELEASE_ID
+RC_RUN_ID
 APP_SHA
+OPENPATH_SHA
+OPENPATH_CONTRACT_SHA256
 IMAGE_SOURCE
 CLASSROOMPATH_GATEWAY_IMAGE
 CLASSROOMPATH_MIGRATIONS_IMAGE
@@ -124,6 +128,7 @@ OPENPATH_VERSION
 OPENPATH_LINUX_AGENT_VERSION
 OPENPATH_LINUX_AGENT_APT_SUITE
 CLASSROOMPATH_SPA_IMAGE
+CLASSROOMPATH_VERIFIER_IMAGE
 OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION
 OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT
 OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG
@@ -132,8 +137,11 @@ EOF
       ;;
     deploy-context)
       cat <<'EOF'
+RELEASE_ID
 TARGET_SHA
 APP_SHA
+OPENPATH_SHA
+OPENPATH_CONTRACT_SHA256
 PREVIOUS_APP_SHA
 IMAGE_SOURCE
 MIGRATION_RISK_LEVEL
@@ -152,14 +160,20 @@ EOF
     staging-verification)
       cat <<'EOF'
 STAGING_VERIFICATION_STATE
+STAGING_EXPECTED_RELEASE_ID
+STAGING_EXPECTED_RC_RUN_ID
 STAGING_EXPECTED_APP_SHA
 STAGING_EXPECTED_OPENPATH_SHA
+STAGING_EXPECTED_OPENPATH_CONTRACT_SHA256
 STAGING_EXPECTED_IMAGE_SOURCE
 STAGING_VERIFICATION_STARTED_AT
 STAGING_VERIFIED_AT
 STAGING_VERIFIED_BY
 STAGING_VERIFIED_APP_SHA
+STAGING_VERIFIED_RELEASE_ID
+STAGING_VERIFIED_RC_RUN_ID
 STAGING_VERIFIED_OPENPATH_SHA
+STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256
 STAGING_VERIFIED_IMAGE_SOURCE
 STAGING_VERIFIED_GATEWAY_IMAGE
 STAGING_VERIFIED_MIGRATIONS_IMAGE
@@ -169,6 +183,7 @@ STAGING_VERIFIED_OPENPATH_VERSION
 STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION
 STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE
 STAGING_VERIFIED_SPA_IMAGE
+STAGING_VERIFIED_VERIFIER_IMAGE
 STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS
 STAGING_WINDOWS_FIREFOX_HIGH_RISK
 STAGING_SMOKE_RESULT
@@ -194,6 +209,9 @@ EOF
       ;;
     staging-verification-run)
       cat <<'EOF'
+RELEASE_ID
+OPENPATH_SHA
+OPENPATH_CONTRACT_SHA256
 SMOKE_TARGET_URL
 SMOKE_SKIP_CORS
 STAGING_SMOKE_RESULT
@@ -205,6 +223,13 @@ STAGING_ENROLLMENT_DOWNLOAD_RESULT
 STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT
 STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT
 STAGING_VERIFIED_AT
+STAGING_EXPECTED_RELEASE_ID
+STAGING_EXPECTED_RC_RUN_ID
+STAGING_EXPECTED_OPENPATH_SHA
+STAGING_EXPECTED_OPENPATH_CONTRACT_SHA256
+STAGING_VERIFIED_RELEASE_ID
+STAGING_VERIFIED_RC_RUN_ID
+STAGING_VERIFIED_VERIFIER_IMAGE
 STAGING_WINDOWS_FIREFOX_HIGH_RISK
 STAGING_FIREFOX_RELEASE_ARTIFACTS
 STAGING_WINDOWS_BOOTSTRAP_RESULT
@@ -289,19 +314,28 @@ write_staging_verification_pending_state() {
   local app_sha="$2"
   local openpath_sha="$3"
   local image_source="$4"
+  local release_id="${5:-}"
+  local contract_sha256="${6:-}"
+  local rc_run_id="${7:-}"
   local started_at=""
 
   started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   STAGING_VERIFICATION_STATE="pending" \
+  STAGING_EXPECTED_RELEASE_ID="$release_id" \
+  STAGING_EXPECTED_RC_RUN_ID="$rc_run_id" \
   STAGING_EXPECTED_APP_SHA="$app_sha" \
   STAGING_EXPECTED_OPENPATH_SHA="$openpath_sha" \
+  STAGING_EXPECTED_OPENPATH_CONTRACT_SHA256="$contract_sha256" \
   STAGING_EXPECTED_IMAGE_SOURCE="$image_source" \
   STAGING_VERIFICATION_STARTED_AT="$started_at" \
   STAGING_VERIFIED_AT="" \
   STAGING_VERIFIED_BY="" \
   STAGING_VERIFIED_APP_SHA="" \
+  STAGING_VERIFIED_RELEASE_ID="" \
+  STAGING_VERIFIED_RC_RUN_ID="" \
   STAGING_VERIFIED_OPENPATH_SHA="" \
+  STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256="" \
   STAGING_VERIFIED_IMAGE_SOURCE="" \
   STAGING_VERIFIED_GATEWAY_IMAGE="" \
   STAGING_VERIFIED_MIGRATIONS_IMAGE="" \
@@ -311,6 +345,7 @@ write_staging_verification_pending_state() {
   STAGING_VERIFIED_OPENPATH_LINUX_AGENT_VERSION="" \
   STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE="" \
   STAGING_VERIFIED_SPA_IMAGE="" \
+  STAGING_VERIFIED_VERIFIER_IMAGE="" \
   STAGING_VERIFIED_FIREFOX_RELEASE_ARTIFACTS="" \
   STAGING_EMAIL_PREFLIGHT_MODE="" \
   STAGING_EMAIL_DELIVERY_HIGH_RISK="" \
@@ -379,12 +414,27 @@ verify_current_release_state_matches_expected() {
   fi
 
   release_state_assert_equal "Staging APP_SHA" "$EXPECTED_APP_SHA" "${APP_SHA:-}" || return 1
+  if [ -n "${EXPECTED_RELEASE_ID:-}" ]; then
+    release_state_assert_equal "Release ID" "$EXPECTED_RELEASE_ID" "${RELEASE_ID:-}" || return 1
+  fi
+  if [ -n "${EXPECTED_OPENPATH_SHA:-}" ]; then
+    release_state_assert_equal "OpenPath SHA" "$EXPECTED_OPENPATH_SHA" "${OPENPATH_SHA:-}" || return 1
+  fi
+  if [ -n "${EXPECTED_OPENPATH_CONTRACT_SHA256:-}" ]; then
+    release_state_assert_equal \
+      "OpenPath contract hash" \
+      "$EXPECTED_OPENPATH_CONTRACT_SHA256" \
+      "${OPENPATH_CONTRACT_SHA256:-}" || return 1
+  fi
   release_state_assert_equal "Gateway image" "$EXPECTED_GATEWAY_IMAGE" "${CLASSROOMPATH_GATEWAY_IMAGE:-}" || return 1
   release_state_assert_equal "Migrations image" "$EXPECTED_MIGRATIONS_IMAGE" "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" || return 1
   release_state_assert_equal "OpenPath Firefox assets image" "$EXPECTED_OPENPATH_FIREFOX_ASSETS_IMAGE" "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" || return 1
   release_state_assert_equal "OpenPath API image" "$EXPECTED_OPENPATH_API_IMAGE" "${OPENPATH_API_IMAGE:-}" || return 1
   release_state_assert_equal "OpenPath version" "$EXPECTED_OPENPATH_VERSION" "${OPENPATH_VERSION:-}" || return 1
   release_state_assert_equal "SPA image" "$EXPECTED_SPA_IMAGE" "${CLASSROOMPATH_SPA_IMAGE:-}" || return 1
+  if [ -n "${EXPECTED_VERIFIER_IMAGE:-}" ]; then
+    release_state_assert_equal "Verifier image" "$EXPECTED_VERIFIER_IMAGE" "${CLASSROOMPATH_VERIFIER_IMAGE:-}" || return 1
+  fi
   release_state_assert_equal \
     "OpenPath Linux agent version" \
     "$EXPECTED_OPENPATH_LINUX_AGENT_VERSION" \
@@ -438,6 +488,24 @@ verify_staging_release_evidence_matches_expected() {
     "Staging verification SHA" \
     "$EXPECTED_APP_SHA" \
     "${STAGING_VERIFIED_APP_SHA:-}" || return 1
+  if [ -n "${EXPECTED_RELEASE_ID:-}" ]; then
+    release_state_assert_equal \
+      "Verified Release ID" \
+      "$EXPECTED_RELEASE_ID" \
+      "${STAGING_VERIFIED_RELEASE_ID:-}" || return 1
+  fi
+  if [ -n "${EXPECTED_OPENPATH_SHA:-}" ]; then
+    release_state_assert_equal \
+      "Verified OpenPath SHA" \
+      "$EXPECTED_OPENPATH_SHA" \
+      "${STAGING_VERIFIED_OPENPATH_SHA:-}" || return 1
+  fi
+  if [ -n "${EXPECTED_OPENPATH_CONTRACT_SHA256:-}" ]; then
+    release_state_assert_equal \
+      "Verified OpenPath contract hash" \
+      "$EXPECTED_OPENPATH_CONTRACT_SHA256" \
+      "${STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256:-}" || return 1
+  fi
   release_state_assert_equal \
     "Verified gateway image" \
     "$EXPECTED_GATEWAY_IMAGE" \
@@ -462,6 +530,12 @@ verify_staging_release_evidence_matches_expected() {
     "Verified SPA image" \
     "$EXPECTED_SPA_IMAGE" \
     "${STAGING_VERIFIED_SPA_IMAGE:-}" || return 1
+  if [ -n "${EXPECTED_VERIFIER_IMAGE:-}" ]; then
+    release_state_assert_equal \
+      "Verified verifier image" \
+      "$EXPECTED_VERIFIER_IMAGE" \
+      "${STAGING_VERIFIED_VERIFIER_IMAGE:-}" || return 1
+  fi
   release_state_assert_equal \
     "Verified OpenPath Linux agent version" \
     "$EXPECTED_OPENPATH_LINUX_AGENT_VERSION" \
@@ -535,6 +609,9 @@ emit_staging_release_evidence_outputs() {
   fi
 
   {
+    printf 'release_id=%s\n' "${STAGING_VERIFIED_RELEASE_ID:-unknown}"
+    printf 'openpath_sha=%s\n' "${STAGING_VERIFIED_OPENPATH_SHA:-unknown}"
+    printf 'openpath_contract_sha256=%s\n' "${STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256:-unknown}"
     printf 'staging_smoke_result=%s\n' "${STAGING_SMOKE_RESULT:-unknown}"
     printf 'staging_smoke_status=%s\n' "${STAGING_SMOKE_STATUS:-unknown}"
     printf 'staging_release_gate_result=%s\n' "${STAGING_RELEASE_GATE_RESULT:-unknown}"
@@ -542,6 +619,7 @@ emit_staging_release_evidence_outputs() {
     printf 'staging_linux_enrollment_script_result=%s\n' "${STAGING_LINUX_ENROLLMENT_SCRIPT_RESULT:-unknown}"
     printf 'staging_windows_enrollment_script_result=%s\n' "${STAGING_WINDOWS_ENROLLMENT_SCRIPT_RESULT:-unknown}"
     printf 'staging_windows_bootstrap_result=%s\n' "${STAGING_WINDOWS_BOOTSTRAP_RESULT:-unknown}"
+    printf 'staging_verified_verifier_image=%s\n' "${STAGING_VERIFIED_VERIFIER_IMAGE:-unknown}"
     printf 'staging_firefox_policy_result=%s\n' "${STAGING_FIREFOX_POLICY_RESULT:-unknown}"
     printf 'staging_windows_bootstrap_canary_result=%s\n' "${STAGING_WINDOWS_BOOTSTRAP_CANARY_RESULT:-unknown}"
     printf 'staging_windows_bootstrap_canary_app_sha=%s\n' "${STAGING_WINDOWS_BOOTSTRAP_CANARY_APP_SHA:-unknown}"

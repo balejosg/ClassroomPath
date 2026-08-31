@@ -18,12 +18,6 @@ function required(value, name) {
   return normalized;
 }
 
-function hasPinValues(pin = {}) {
-  return WINDOWS_OFFLINE_INSTALLER_TEMPLATE_PIN_FIELDS.some((field) => {
-    return String(pin?.[field] ?? '').trim() !== '';
-  });
-}
-
 export function validateWindowsOfflineInstallerTemplatePin(
   pin = {},
   { context = 'Windows offline installer pin' } = {}
@@ -59,15 +53,6 @@ export function validateWindowsOfflineInstallerTemplatePin(
   }
 
   return values;
-}
-
-export function selectWindowsOfflineInstallerTemplatePin({ newPin = {}, previousPin = {} } = {}) {
-  const hasNewPin = hasPinValues(newPin);
-  return validateWindowsOfflineInstallerTemplatePin(hasNewPin ? newPin : previousPin, {
-    context: hasNewPin
-      ? 'New Windows offline installer pin'
-      : 'Previous Windows offline installer pin',
-  });
 }
 
 export function deriveWindowsOfflineInstallerTemplateRelease({
@@ -179,14 +164,15 @@ async function main() {
   }
 
   writePin(
-    selectWindowsOfflineInstallerTemplatePin({
-      previousPin: {
-        version: process.env.PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION,
-        commit: process.env.PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT,
-        releaseTag: process.env.PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG,
-        sha256: process.env.PREVIOUS_OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256,
+    validateWindowsOfflineInstallerTemplatePin(
+      {
+        version: process.env.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION,
+        commit: process.env.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT,
+        releaseTag: process.env.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG,
+        sha256: process.env.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256,
       },
-    })
+      { context: 'contract-derived Windows offline installer pin' }
+    )
   );
 }
 

@@ -80,7 +80,7 @@ windows_offline_installer_template_sha256=abcdef0123456789abcdef0123456789abcdef
     );
   });
 
-  test('builds a manifest-only artifact with the previous complete Windows tuple unchanged', () => {
+  test('builds a manifest-only compatibility projection from an explicit contract tuple', () => {
     const previousManifest = {
       gateway_image: 'ghcr.io/example/gateway@sha256:old-gateway',
       migrations_image: 'ghcr.io/example/migrations@sha256:old-migrations',
@@ -104,6 +104,12 @@ windows_offline_installer_template_sha256=abcdef0123456789abcdef0123456789abcdef
       openpathVersion: '4.1.1',
       linuxAgentVersion: '4.1.1',
       linuxAgentAptSuite: 'unstable',
+      windowsPin: {
+        version: previousManifest.windows_offline_installer_template_version,
+        commit: previousManifest.windows_offline_installer_template_commit,
+        releaseTag: previousManifest.windows_offline_installer_template_release_tag,
+        sha256: previousManifest.windows_offline_installer_template_sha256,
+      },
     });
 
     assert.deepEqual(
@@ -134,12 +140,13 @@ windows_offline_installer_template_sha256=abcdef0123456789abcdef0123456789abcdef
           openpathVersion: '4.1.1',
           linuxAgentVersion: '4.1.1',
           linuxAgentAptSuite: 'unstable',
+          windowsPin: {},
         }),
       /complete Windows offline installer pin/
     );
   });
 
-  test('selects the new Windows tuple without mixing it with previous metadata', () => {
+  test('uses the explicitly supplied Windows tuple without mixing it with previous metadata', () => {
     const previousManifest = {
       gateway_image: 'ghcr.io/example/gateway@sha256:old-gateway',
       migrations_image: 'ghcr.io/example/migrations@sha256:old-migrations',
@@ -172,7 +179,7 @@ windows_offline_installer_template_sha256=abcdef0123456789abcdef0123456789abcdef
         openpathVersion: '4.2.0',
         linuxAgentVersion: '4.2.0',
         linuxAgentAptSuite: 'unstable',
-        newWindowsPin: newPin,
+        windowsPin: newPin,
       });
     const windowsTuple = (artifact) =>
       Object.fromEntries(Object.entries(artifact).filter(([key]) => key.startsWith('windows_')));
@@ -197,7 +204,7 @@ windows_offline_installer_template_sha256=abcdef0123456789abcdef0123456789abcdef
     );
   });
 
-  test('fails closed when manifest-only has no new pin and the previous pin is missing or partial', () => {
+  test('fails closed when manifest-only has no contract-derived Windows pin', () => {
     const baseManifest = {
       gateway_image: 'ghcr.io/example/gateway@sha256:old-gateway',
       migrations_image: 'ghcr.io/example/migrations@sha256:old-migrations',
@@ -221,7 +228,7 @@ windows_offline_installer_template_sha256=abcdef0123456789abcdef0123456789abcdef
             openpathVersion: '4.2.0',
             linuxAgentVersion: '4.2.0',
             linuxAgentAptSuite: 'unstable',
-            newWindowsPin: {},
+            windowsPin: {},
           }),
         /complete Windows offline installer pin/
       );

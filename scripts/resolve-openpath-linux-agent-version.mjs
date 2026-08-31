@@ -451,13 +451,8 @@ apt-get install -y --download-only ${shellSingleQuote(packagePin)}
 `;
 }
 
-export function isMissingPromotionContractError(error) {
-  return Number(error?.status ?? 0) === 404;
-}
-
 export async function resolveOpenPathLinuxAgentVersionFromContracts({
   pinnedOpenpathSha,
-  candidateOpenpathShas,
   promotionContractsBaseUrl,
   aptBaseUrl = DEFAULT_OPENPATH_APT_BASE_URL,
   downloadText = downloadPromotionContract,
@@ -466,55 +461,32 @@ export async function resolveOpenPathLinuxAgentVersionFromContracts({
   if (!normalizedPinnedSha) {
     throw new Error('Pinned OpenPath SHA is required');
   }
+  const url = buildPromotionContractUrl({
+    baseUrl: promotionContractsBaseUrl,
+    openpathSha: normalizedPinnedSha,
+  });
+  const promotionContract = parseOpenPathPromotionContract(await downloadText(url));
+  const result = resolveOpenPathLinuxAgentVersion({
+    openpathSha: normalizedPinnedSha,
+    promotionContract,
+  });
+  const aptPackagesUrl = buildAptPackagesUrl({
+    baseUrl: aptBaseUrl,
+    aptSuite: result.aptSuite,
+  });
+  assertOpenPathLinuxAgentVersionAdvertised({
+    aptPackagesContent: await downloadText(aptPackagesUrl),
+    linuxAgentVersion: result.version,
+    aptSuite: result.aptSuite,
+  });
 
-  const candidates = [
-    ...new Set(
-      [normalizedPinnedSha, ...(candidateOpenpathShas ?? [])]
-        .map((candidate) => String(candidate ?? '').trim())
-        .filter(Boolean)
-    ),
-  ];
-
-  for (const candidateSha of candidates) {
-    const url = buildPromotionContractUrl({
-      baseUrl: promotionContractsBaseUrl,
-      openpathSha: candidateSha,
-    });
-
-    try {
-      const promotionContract = parseOpenPathPromotionContract(await downloadText(url));
-      const result = resolveOpenPathLinuxAgentVersion({
-        openpathSha: candidateSha,
-        promotionContract,
-      });
-      const aptPackagesUrl = buildAptPackagesUrl({
-        baseUrl: aptBaseUrl,
-        aptSuite: result.aptSuite,
-      });
-      assertOpenPathLinuxAgentVersionAdvertised({
-        aptPackagesContent: await downloadText(aptPackagesUrl),
-        linuxAgentVersion: result.version,
-        aptSuite: result.aptSuite,
-      });
-
-      return {
-        openpathSha: normalizedPinnedSha,
-        promotionContractSha: candidateSha,
-        openpathVersion: result.openpathVersion,
-        version: result.version,
-        aptSuite: result.aptSuite,
-      };
-    } catch (error) {
-      if (isMissingPromotionContractError(error)) {
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  throw new Error(
-    `No OpenPath promotion contract found for pinned SHA ${normalizedPinnedSha} or its first-parent ancestors.`
-  );
+  return {
+    openpathSha: normalizedPinnedSha,
+    promotionContractSha: normalizedPinnedSha,
+    openpathVersion: result.openpathVersion,
+    version: result.version,
+    aptSuite: result.aptSuite,
+  };
 }
 
 function gitOutput(openpathDir, args) {
@@ -523,13 +495,6 @@ function gitOutput(openpathDir, args) {
 
 function resolveOpenPathSha(openpathDir) {
   return gitOutput(openpathDir, ['rev-parse', 'HEAD']);
-}
-
-function resolveOpenPathCandidateShas(openpathDir) {
-  return gitOutput(openpathDir, ['rev-list', '--first-parent', '--max-count=50', 'HEAD'])
-    .split('\n')
-    .map((sha) => sha.trim())
-    .filter(Boolean);
 }
 
 async function downloadPromotionContract(url) {
@@ -617,7 +582,6 @@ async function main() {
   const openpathSha = resolveOpenPathSha(options.openpathDir);
   const result = await resolveOpenPathLinuxAgentVersionFromContracts({
     pinnedOpenpathSha: openpathSha,
-    candidateOpenpathShas: resolveOpenPathCandidateShas(options.openpathDir),
     promotionContractsBaseUrl: options.promotionContractsBaseUrl,
     aptBaseUrl: options.aptBaseUrl,
   });

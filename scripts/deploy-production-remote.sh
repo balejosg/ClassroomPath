@@ -154,8 +154,16 @@ MIGRATION_CHANGED_FILES=""
 MIGRATION_DESTRUCTIVE_FILES=""
 PRODUCTION_BACKUP_REFERENCE=""
 RELEASE_MANIFEST_FILE=""
+RELEASE_BUNDLE_FILE=""
+OPENPATH_CONTRACT_FILE=""
+RELEASE_BUNDLE_RUNTIME_FILE=""
 DEPLOY_PAYLOAD_FILE=""
 RELEASE_MANIFEST_B64_FROM_PAYLOAD=""
+DEPLOY_RELEASE_ID=""
+DEPLOY_RC_RUN_ID=""
+DEPLOY_RELEASE_BUNDLE_B64=""
+DEPLOY_OPENPATH_CONTRACT_B64=""
+DEPLOY_PAYLOAD_TARGET_SHA=""
 TARGET_SHA=""
 PRODUCTION_REGISTRY_LOGGED_IN=0
 DEPLOY_DEBUG_FILE="$STATE_DIR/deploy-debug.json"
@@ -167,7 +175,12 @@ cleanup_production_deploy_artifacts() {
     write_production_deploy_debug_context "$exit_status" || true
   fi
 
-  rm -f "${RELEASE_MANIFEST_FILE:-}" "${DEPLOY_PAYLOAD_FILE:-}"
+  rm -f \
+    "${RELEASE_MANIFEST_FILE:-}" \
+    "${RELEASE_BUNDLE_FILE:-}" \
+    "${OPENPATH_CONTRACT_FILE:-}" \
+    "${RELEASE_BUNDLE_RUNTIME_FILE:-}" \
+    "${DEPLOY_PAYLOAD_FILE:-}"
   if [ "${PRODUCTION_REGISTRY_LOGGED_IN:-0}" = "1" ]; then
     docker logout ghcr.io >/dev/null 2>&1 || true
   fi
@@ -301,16 +314,23 @@ load_deploy_container_platform_helper() {
 
 load_production_deploy_payload() {
   local release_manifest_b64=""
+  local release_bundle_b64=""
+  local openpath_contract_b64=""
   local payload_image_source=""
   local payload_deployment_mode=""
 
   if [ -n "${DEPLOY_PAYLOAD_B64:-}" ]; then
     DEPLOY_PAYLOAD_FILE="$(mktemp)"
     decode_deploy_payload_base64 "$DEPLOY_PAYLOAD_B64" "$DEPLOY_PAYLOAD_FILE" >/dev/null
-    TARGET_SHA="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" deploy_sha)"
+    DEPLOY_PAYLOAD_TARGET_SHA="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" deploy_sha)"
+    TARGET_SHA="$DEPLOY_PAYLOAD_TARGET_SHA"
     payload_image_source="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" image_source)"
     payload_deployment_mode="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" deployment_mode)"
     release_manifest_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" manifest_base64)"
+    DEPLOY_RELEASE_ID="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" release_id || true)"
+    DEPLOY_RC_RUN_ID="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" rc_run_id || true)"
+    release_bundle_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" release_bundle_base64 || true)"
+    openpath_contract_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" openpath_contract_base64 || true)"
     if [ "$payload_image_source" != "release-candidate" ]; then
       log_error "Production deploy payload must resolve immutable release-candidate images"
       exit 1
@@ -320,9 +340,19 @@ load_production_deploy_payload() {
       exit 1
     fi
     RELEASE_MANIFEST_B64_FROM_PAYLOAD="$release_manifest_b64"
+    DEPLOY_RELEASE_BUNDLE_B64="$release_bundle_b64"
+    DEPLOY_OPENPATH_CONTRACT_B64="$openpath_contract_b64"
+    if [ -z "$DEPLOY_RELEASE_ID" ] || [ -z "$DEPLOY_RC_RUN_ID" ] || [ -z "$DEPLOY_RELEASE_BUNDLE_B64" ] || [ -z "$DEPLOY_OPENPATH_CONTRACT_B64" ]; then
+      log_error "Production deploy payload must contain one exact Release Bundle v2, contract, releaseId, and RC run ID"
+      exit 1
+    fi
+    if ! [[ "$DEPLOY_RC_RUN_ID" =~ ^[0-9]+$ ]]; then
+      log_error "Production deploy payload RC run ID must be numeric"
+      exit 1
+    fi
   else
-    TARGET_SHA="${DEPLOY_SHA:-}"
-    RELEASE_MANIFEST_B64_FROM_PAYLOAD="${RELEASE_MANIFEST_B64:-}"
+    log_error "Production deployment requires an exact Release Bundle v2 deploy payload"
+    exit 1
   fi
 }
 
@@ -341,6 +371,9 @@ prepare_production_checkout() {
     if [ -z "$TARGET_SHA" ]; then
       git fetch origin "refs/tags/${tag_name}:refs/tags/${tag_name}" || true
       TARGET_SHA=$(git rev-parse "${tag_name}^{commit}" 2>/dev/null || true)
+    fi
+    if [ -n "${DEPLOY_PAYLOAD_TARGET_SHA:-}" ] && [ "$TARGET_SHA" != "$DEPLOY_PAYLOAD_TARGET_SHA" ]; then
+      die "Production tag target $TARGET_SHA does not match deploy payload SHA $DEPLOY_PAYLOAD_TARGET_SHA" 1
     fi
   fi
 

@@ -189,23 +189,20 @@ describe('Deployment runtime contracts', () => {
     );
   });
 
-  test('release candidate workflow publishes verifier and OpenPath version pins in the manifest artifact', () => {
+  test('release candidate workflow publishes the verifier and exact Release Bundle v2 artifact', () => {
     const content = readFileSync(releaseCandidateWorkflowPath, 'utf-8');
 
     assert.ok(content.includes('build-verifier-release-candidate'));
     assert.ok(content.includes('build-openpath-firefox-assets-release-candidate'));
     assert.ok(content.includes('docker/Dockerfile.openpath-firefox-assets'));
-    assert.ok(content.includes('OPENPATH_FIREFOX_ASSETS_IMAGE='));
+    assert.ok(content.includes('OPENPATH_FIREFOX_ASSETS_IMAGE:'));
     assert.ok(content.includes('docker/Dockerfile.release-verifier'));
-    assert.ok(content.includes('CLASSROOMPATH_VERIFIER_IMAGE='));
-    assert.ok(content.includes('OPENPATH_LINUX_AGENT_VERSION='));
-    assert.ok(content.includes('OPENPATH_LINUX_AGENT_APT_SUITE='));
-    assert.ok(content.includes('OPENPATH_VERSION='));
-    assert.ok(content.includes('windows_offline_installer_template_version='));
-    assert.ok(content.includes('windows_offline_installer_template_commit='));
-    assert.ok(content.includes('windows_offline_installer_template_release_tag='));
-    assert.ok(content.includes('windows_offline_installer_template_sha256='));
-    assert.ok(content.includes('resolve-openpath-linux-agent-version.mjs'));
+    assert.ok(content.includes('CLASSROOMPATH_VERIFIER_IMAGE:'));
+    assert.ok(content.includes('node scripts/release-bundle.mjs build'));
+    assert.ok(content.includes('node scripts/release-bundle.mjs verify'));
+    assert.ok(content.includes('release-bundle-${{ github.sha }}'));
+    assert.ok(content.includes('openpath-promotion-contract-${{ github.sha }}'));
+    assert.ok(!content.includes('resolve-openpath-linux-agent-version.mjs'));
   });
 
   test('release manifest flows through staging and production as a single payload contract', () => {
@@ -289,13 +286,18 @@ describe('Deployment runtime contracts', () => {
     assert.ok(deployPayloadHelper.includes('export function decodeDeployPayloadBase64'));
     assert.ok(
       stagingLocalRelease.includes('STAGING_RELEASE_MANIFEST_FILE=') &&
-        stagingLocalRelease.includes('--output-file "$STAGING_RELEASE_MANIFEST_FILE"')
+        stagingLocalRelease.includes('STAGING_RELEASE_BUNDLE_FILE=') &&
+        stagingLocalRelease.includes('--output-file "$STAGING_RELEASE_BUNDLE_RUNTIME_FILE"') &&
+        stagingLocalRelease.includes('--output-dir "$STAGING_RELEASE_BUNDLE_DIR"') &&
+        stagingLocalRelease.includes('resolve-bundle')
     );
     assert.ok(
       stagingLocalRelease.includes('STAGING_DEPLOY_PAYLOAD_B64=') &&
         stagingLocalRelease.includes('STAGING_DEPLOY_PAYLOAD_B64="${DEPLOY_PAYLOAD_B64:-}"') &&
         commonHelper.includes('remote_assignment()') &&
         stagingLocalRuntime.includes('remote_assignment STAGING_DEPLOY_PAYLOAD_B64') &&
+        stagingLocalRuntime.includes('remote_assignment STAGING_RELEASE_BUNDLE_B64') &&
+        stagingLocalRuntime.includes('remote_assignment STAGING_OPENPATH_CONTRACT_B64') &&
         !stagingLocalRuntime.includes('remote_assignment() {') &&
         stagingLocalRuntime.includes('remote_assignment STAGING_CONTAINER_PLATFORM') &&
         stagingLocalRuntime.includes('remote_assignment STAGING_PUBLIC_URL')
@@ -309,7 +311,10 @@ describe('Deployment runtime contracts', () => {
           'payload_deployment_mode="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" deployment_mode)"'
         ) &&
         stagingRemote.includes(
-          'release_manifest_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" manifest_base64)"'
+          'release_bundle_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" release_bundle_base64 || true)"'
+        ) &&
+        stagingRemote.includes(
+          'openpath_contract_b64="$(deploy_payload_get "$STAGING_DEPLOY_PAYLOAD_FILE" openpath_contract_base64 || true)"'
         ) &&
         stagingRemote.includes('upsert_env_file_var "$APP_DIR/config/.env" PUBLIC_URL') &&
         stagingRemote.includes('upsert_env_file_var "$APP_DIR/config/.env" CORS_ORIGINS') &&
@@ -317,11 +322,11 @@ describe('Deployment runtime contracts', () => {
           'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_EXTENSION_INSTALL_URL'
         ) &&
         stagingRemote.includes('deploy-targets.mjs" get staging canaryPublicUrl') &&
-        stagingRemote.includes('source "$RELEASE_MANIFEST_HELPER_PATH"') &&
-        stagingRemote.includes('load_release_manifest_runtime "$STAGING_RELEASE_MANIFEST_FILE"') &&
+        stagingRemote.includes('node "$APP_DIR/scripts/release-bundle.mjs" verify') &&
+        stagingRemote.includes('Promotion-eligible staging requires an exact Release Bundle v2') &&
         stagingRemote.includes('ensure_staging_release_candidate_runtime_env || return 1') &&
         stagingRemote.includes('prepare_openpath_firefox_assets_from_image') &&
-        releaseRuntimeHelper.includes('docker pull "$OPENPATH_FIREFOX_ASSETS_IMAGE"') &&
+        releaseRuntimeHelper.includes('docker pull "$image_ref"') &&
         releaseRuntimeHelper.includes('chmod 755 "$tmp_dir"') &&
         releaseRuntimeHelper.includes('chmod 644 "$tmp_dir/metadata.json"') &&
         releaseRuntimeHelper.includes('chmod 644 "$tmp_dir/openpath-firefox-extension.xpi"') &&
@@ -361,41 +366,32 @@ describe('Deployment runtime contracts', () => {
           'payload_deployment_mode="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" deployment_mode)"'
         ) &&
         productionRemote.includes(
-          'release_manifest_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" manifest_base64)"'
+          'release_bundle_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" release_bundle_base64 || true)"'
+        ) &&
+        productionRemote.includes(
+          'openpath_contract_b64="$(deploy_payload_get "$DEPLOY_PAYLOAD_FILE" openpath_contract_base64 || true)"'
         ) &&
         productionRemote.includes(
           'Production deploy payload must resolve immutable release-candidate images'
         ) &&
-        productionRemote.includes('source "$RELEASE_MANIFEST_HELPER_PATH"') &&
-        deployProductionContextHelper.includes(
-          'load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"'
-        ) &&
+        deployProductionContextHelper.includes('release-bundle.mjs" verify') &&
+        deployProductionContextHelper.includes('Verified Release Bundle OpenPath SHA') &&
         deployProductionRuntimeHelper.includes(
           'ensure_production_release_candidate_runtime_env || return 1'
         ) &&
         deployProductionRuntimeHelper.includes('prepare_openpath_firefox_assets_from_image') &&
-        releaseRuntimeHelper.includes('docker pull "$OPENPATH_FIREFOX_ASSETS_IMAGE"') &&
+        releaseRuntimeHelper.includes('docker pull "$image_ref"') &&
         releaseRuntimeHelper.includes(
           '${OPENPATH_FIREFOX_RELEASE_HOST_ROOT:-${CLASSROOMPATH_DEPLOY_ROOT:-/srv/classroompath}/openpath-firefox-release}'
         ) &&
         releaseRuntimeHelper.includes(
           'docker cp "$assets_container:/openpath-firefox-release/openpath-firefox-extension.xpi"'
         ) &&
-        deployProductionRuntimeHelper.includes('RELEASE_MANIFEST_B64_FROM_PAYLOAD') &&
-        deployProductionRuntimeHelper.includes(
-          'decode_release_manifest_base64 "$release_manifest_b64" "$RELEASE_MANIFEST_FILE"'
-        ) &&
-        deployProductionRuntimeHelper.includes(
-          'OPENPATH_VERSION="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" openpath_version)"'
-        ) &&
-        deployProductionRuntimeHelper.includes(
-          'OPENPATH_LINUX_AGENT_VERSION="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" linux_agent_version)"'
-        ) &&
-        workflow.includes(
-          'node scripts/resolve-openpath-linux-agent-version.mjs verify-runtime-pin'
-        ) &&
+        deployProductionRuntimeHelper.includes('RELEASE_ID') &&
+        deployProductionRuntimeHelper.includes('deployment_state_persist_v2_release') &&
+        workflow.includes('node scripts/verify-openpath-promotion-contract.mjs') &&
         verifyProductionPromotionReadyScript.includes(
-          'node "$SCRIPT_DIR/resolve-openpath-linux-agent-version.mjs" verify-runtime-pin'
+          'node "$SCRIPT_DIR/verify-openpath-promotion-contract.mjs"'
         ) &&
         productionRemote.includes('source "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH"') &&
         deployProductionRuntimeHelper.includes(
@@ -470,6 +466,7 @@ describe('Deployment runtime contracts', () => {
       'utf-8'
     );
     const githubActionsRemoteHelper = readFileSync(githubActionsRemoteHelperPath, 'utf-8');
+    const productionRuntimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
 
     assert.ok(
       releaseStateHelper.includes('load_release_state_env()') &&
@@ -522,7 +519,10 @@ describe('Deployment runtime contracts', () => {
       releaseRuntimeHelper.includes('RELEASE_RUNTIME_HELPER_CONTRACT_VERSION=') &&
         releaseRuntimeHelper.includes('load_release_manifest_runtime()') &&
         releaseRuntimeHelper.includes('write_release_runtime_state()') &&
-        releaseRuntimeHelper.includes('require_openpath_linux_agent_runtime_pin()')
+        releaseRuntimeHelper.includes('require_openpath_linux_agent_runtime_pin()') &&
+        releaseRuntimeHelper.includes('CLASSROOMPATH_VERIFIER_IMAGE="$verifier_image"') &&
+        releaseRuntimeHelper.includes('RC_RUN_ID="$rc_run_id"') &&
+        releaseStateHelper.includes('STAGING_VERIFIED_VERIFIER_IMAGE')
     );
     assert.ok(
       githubActionsRemoteHelper.includes('github_actions_remote_write_resolved_host_outputs()') &&
@@ -547,7 +547,9 @@ describe('Deployment runtime contracts', () => {
         productionRemote.includes(
           'deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"'
         ) &&
-        productionRemote.includes('write_release_runtime_state')
+        productionRemote.includes('write_release_runtime_state') &&
+        productionRuntimeHelper.includes('"$CLASSROOMPATH_VERIFIER_IMAGE"') &&
+        productionRuntimeHelper.includes('"$RC_RUN_ID"')
     );
     assert.ok(
       persistVerification.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
@@ -672,6 +674,9 @@ describe('Deployment runtime contracts', () => {
       stagingRemote.includes(
         [
           '  load_staging_release_manifest',
+          '  if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ]; then',
+          '    deployment_state_capture_previous_release || exit 1',
+          '  fi',
           '  login_staging_registry',
           '  preflight_staging_release_candidate_images',
           '  classify_migration_risk',

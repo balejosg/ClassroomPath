@@ -6,38 +6,24 @@ plan_production_runtime_deploy_impl() {
 }
 
 ensure_production_release_candidate_runtime_env() {
-  local release_manifest_b64=""
-
   if [ "${PRODUCTION_DEPLOY_PLAN:-}" != "release-candidate" ]; then
     return 0
   fi
 
-  release_manifest_b64="${RELEASE_MANIFEST_B64_FROM_PAYLOAD:-${RELEASE_MANIFEST_B64:-}}"
-  if [ -n "$release_manifest_b64" ]; then
-    RELEASE_MANIFEST_FILE="$(mktemp)"
-    decode_release_manifest_base64 "$release_manifest_b64" "$RELEASE_MANIFEST_FILE" >/dev/null
-  fi
-
-  # A release manifest is authoritative even when a legacy host already has a
-  # complete, but stale, runtime pin in its environment.
-  if [ -n "${RELEASE_MANIFEST_FILE:-}" ] && [ -f "$RELEASE_MANIFEST_FILE" ]; then
-    load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "${TARGET_SHA:-}"
-    TARGET_SHA="${RELEASE_MANIFEST_APP_SHA:-${TARGET_SHA:-}}"
-  fi
-
-  if [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
-    if [ -n "${RELEASE_MANIFEST_FILE:-}" ] && [ -f "$RELEASE_MANIFEST_FILE" ]; then
-      export OPENPATH_VERSION
-      OPENPATH_VERSION="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" openpath_version)"
-      export OPENPATH_LINUX_AGENT_VERSION
-      OPENPATH_LINUX_AGENT_VERSION="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" linux_agent_version)"
-      export OPENPATH_LINUX_AGENT_APT_SUITE
-      OPENPATH_LINUX_AGENT_APT_SUITE="$(release_manifest_require_key "$RELEASE_MANIFEST_FILE" linux_agent_apt_suite)"
-    fi
-  fi
-
-  if [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ]; then
-    log_error "Release candidate manifest did not export OpenPath runtime versions"
+  if [ -z "${RELEASE_ID:-}" ] ||
+    [ -z "${RC_RUN_ID:-}" ] ||
+    [ -z "${OPENPATH_SHA:-}" ] ||
+    [ -z "${OPENPATH_CONTRACT_SHA256:-}" ] ||
+    [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] ||
+    [ -z "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ] ||
+    [ -z "${OPENPATH_VERSION:-}" ] ||
+    [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] ||
+    [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] ||
+    [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}" ] ||
+    [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}" ] ||
+    [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}" ] ||
+    [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}" ]; then
+    log_error "Verified Release Bundle v2 did not export the complete immutable runtime identity"
     return 1
   fi
 
@@ -90,7 +76,7 @@ apply_production_runtime_deploy_impl() {
   fi
 
   write_release_runtime_state \
-    "$STATE_DIR/current-images.env" \
+    "${DEPLOYMENT_STATE_PENDING_FILE:-$STATE_DIR/pending-images.env}" \
     "$TARGET_SHA" \
     "release-candidate" \
     "$CLASSROOMPATH_GATEWAY_IMAGE" \
@@ -104,7 +90,18 @@ apply_production_runtime_deploy_impl() {
     "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION" \
     "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT" \
     "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG" \
-    "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256"
+    "$OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256" \
+    "$RELEASE_ID" \
+    "$OPENPATH_SHA" \
+    "$OPENPATH_CONTRACT_SHA256" \
+    "$CLASSROOMPATH_VERIFIER_IMAGE" \
+    "$RC_RUN_ID"
+
+  deployment_state_persist_v2_release \
+    "$RELEASE_BUNDLE_FILE" \
+    "$OPENPATH_CONTRACT_FILE" \
+    "$RELEASE_ID" \
+    "$RC_RUN_ID"
 }
 
 start_production_runtime_impl() {
@@ -143,6 +140,8 @@ wait_for_production_runtime_readiness_impl() {
     if echo "$ready_check" | grep -q '"ready":true'; then
       log_success "Application readiness OK"
       release_execution_mark_stage completed
+      deployment_state_activate_v2_release "$RELEASE_ID"
+      deployment_state_publish_pending_release
       log_success "Deployment successful"
       docker logs classroompath-gateway --tail 5
       return 0

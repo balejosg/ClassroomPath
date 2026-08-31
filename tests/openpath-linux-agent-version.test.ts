@@ -173,52 +173,28 @@ Architecture: all
     );
   });
 
-  test('falls back to the nearest ancestor promotion contract for OpenPath commits without package changes', async () => {
+  test('fails closed instead of falling back to an ancestor promotion contract', async () => {
     const pinnedSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const parentSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
     const baseUrl = 'https://example.test/contracts';
     const requestedUrls: string[] = [];
 
-    const result = await resolveOpenPathLinuxAgentVersionFromContracts({
-      pinnedOpenpathSha: pinnedSha,
-      candidateOpenpathShas: [pinnedSha, parentSha, 'cccccccccccccccccccccccccccccccccccccccc'],
-      promotionContractsBaseUrl: baseUrl,
-      downloadText: async (url) => {
-        requestedUrls.push(url);
-        if (url.endsWith(`/${pinnedSha}.json`)) {
-          const error = new Error('not found');
-          (error as Error & { status?: number }).status = 404;
-          throw error;
-        }
+    await assert.rejects(
+      () =>
+        resolveOpenPathLinuxAgentVersionFromContracts({
+          pinnedOpenpathSha: pinnedSha,
+          promotionContractsBaseUrl: baseUrl,
+          downloadText: async (url) => {
+            requestedUrls.push(url);
+            const error = new Error('not found');
+            (error as Error & { status?: number }).status = 404;
+            throw error;
+          },
+        }),
+      /not found/
+    );
 
-        if (url.endsWith('/dists/unstable/main/binary-amd64/Packages')) {
-          return 'Package: openpath-dnsmasq\nVersion: 0.0.412-1\n';
-        }
-
-        return JSON.stringify({
-          version: 1,
-          openpathSha: parentSha,
-          packageVersion: '0.0.412',
-          linuxAgentVersion: '0.0.412',
-          aptSuite: 'unstable',
-          firefoxExtensionVersion: '4.1.25',
-          browserPolicySpecSha256: 'meta123',
-        });
-      },
-    });
-
-    assert.deepEqual(requestedUrls, [
-      `${baseUrl}/${pinnedSha}.json`,
-      `${baseUrl}/${parentSha}.json`,
-      `${DEFAULT_OPENPATH_APT_BASE_URL}/dists/unstable/main/binary-amd64/Packages`,
-    ]);
-    assert.deepEqual(result, {
-      openpathSha: pinnedSha,
-      promotionContractSha: parentSha,
-      openpathVersion: '0.0.412',
-      version: '0.0.412',
-      aptSuite: 'unstable',
-    });
+    assert.deepEqual(requestedUrls, [`${baseUrl}/${pinnedSha}.json`]);
   });
 
   test('fails closed when the published promotion contract does not match the pinned SHA', () => {

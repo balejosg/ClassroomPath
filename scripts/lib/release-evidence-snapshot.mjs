@@ -98,6 +98,24 @@ export function validateCurrentReleaseState(snapshot, expected) {
       snapshot.OPENPATH_LINUX_AGENT_APT_SUITE,
     ],
   ];
+  if (expected.EXPECTED_VERIFIER_IMAGE) {
+    comparisons.push([
+      'Verifier image',
+      expected.EXPECTED_VERIFIER_IMAGE,
+      snapshot.CLASSROOMPATH_VERIFIER_IMAGE,
+    ]);
+  }
+
+  for (const [label, expectedKey, actualKey] of [
+    ['Release ID', 'EXPECTED_RELEASE_ID', 'RELEASE_ID'],
+    ['Release Candidate run ID', 'EXPECTED_RC_RUN_ID', 'RC_RUN_ID'],
+    ['OpenPath SHA', 'EXPECTED_OPENPATH_SHA', 'OPENPATH_SHA'],
+    ['OpenPath contract hash', 'EXPECTED_OPENPATH_CONTRACT_SHA256', 'OPENPATH_CONTRACT_SHA256'],
+  ]) {
+    if (expected[expectedKey]) {
+      comparisons.push([label, expected[expectedKey], snapshot[actualKey]]);
+    }
+  }
 
   for (const [label, expectedKey, actualKey] of [
     [
@@ -156,6 +174,56 @@ export function validateStagingVerification(snapshot, expected) {
     freshnessErrors.push(
       `::error::Staging verification intent mismatch. expected successful evidence for ${expectedAppSha} but current evidence was started for ${snapshot.STAGING_EXPECTED_APP_SHA}.`
     );
+  }
+
+  for (const [label, expectedKey, intentKey, verifiedKey] of [
+    [
+      'Release ID',
+      'EXPECTED_RELEASE_ID',
+      'STAGING_EXPECTED_RELEASE_ID',
+      'STAGING_VERIFIED_RELEASE_ID',
+    ],
+    [
+      'Release Candidate run ID',
+      'EXPECTED_RC_RUN_ID',
+      'STAGING_EXPECTED_RC_RUN_ID',
+      'STAGING_VERIFIED_RC_RUN_ID',
+    ],
+    [
+      'OpenPath SHA',
+      'EXPECTED_OPENPATH_SHA',
+      'STAGING_EXPECTED_OPENPATH_SHA',
+      'STAGING_VERIFIED_OPENPATH_SHA',
+    ],
+    [
+      'OpenPath contract hash',
+      'EXPECTED_OPENPATH_CONTRACT_SHA256',
+      'STAGING_EXPECTED_OPENPATH_CONTRACT_SHA256',
+      'STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256',
+    ],
+  ]) {
+    const expectedValue = String(expected[expectedKey] ?? '');
+    if (!expectedValue) {
+      continue;
+    }
+
+    if (!snapshot[intentKey]) {
+      freshnessErrors.push(
+        `::error::Staging verification ${label} intent is missing. expected=${expectedValue}`
+      );
+    } else if (String(snapshot[intentKey]) !== expectedValue) {
+      freshnessErrors.push(
+        `::error::Staging verification ${label} intent mismatch. expected=${expectedValue} actual=${snapshot[intentKey]}`
+      );
+    }
+
+    if (!snapshot[verifiedKey]) {
+      freshnessErrors.push(`::error::Verified ${label} is missing. expected=${expectedValue}`);
+    } else if (String(snapshot[verifiedKey]) !== expectedValue) {
+      freshnessErrors.push(
+        `::error::Verified ${label} mismatch. expected=${expectedValue} actual=${snapshot[verifiedKey]}`
+      );
+    }
   }
 
   if (freshnessErrors.length > 0) {
@@ -231,6 +299,13 @@ export function validateStagingVerification(snapshot, expected) {
       snapshot.STAGING_VERIFIED_OPENPATH_LINUX_AGENT_APT_SUITE,
     ],
   ];
+  if (expected.EXPECTED_VERIFIER_IMAGE) {
+    comparisons.push([
+      'Verified verifier image',
+      expected.EXPECTED_VERIFIER_IMAGE,
+      snapshot.STAGING_VERIFIED_VERIFIER_IMAGE,
+    ]);
+  }
 
   for (const [label, expectedValue, actualValue] of comparisons) {
     if (String(expectedValue ?? '') !== String(actualValue ?? '')) {
@@ -343,6 +418,9 @@ export function validateHighRiskStagingVerification(snapshot) {
 
 export function buildStagingReleaseEvidenceOutputs(snapshot) {
   return {
+    release_id: snapshot.STAGING_VERIFIED_RELEASE_ID ?? 'unknown',
+    openpath_sha: snapshot.STAGING_VERIFIED_OPENPATH_SHA ?? 'unknown',
+    openpath_contract_sha256: snapshot.STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256 ?? 'unknown',
     staging_smoke_result: snapshot.STAGING_SMOKE_RESULT ?? 'unknown',
     staging_smoke_status: snapshot.STAGING_SMOKE_STATUS ?? 'unknown',
     staging_release_gate_result: snapshot.STAGING_RELEASE_GATE_RESULT ?? 'unknown',
@@ -752,6 +830,9 @@ export function createReleaseEvidenceSnapshot(input = process.env) {
       tagName: valueOrNull(env.TAG_NAME),
       classroomPathSha: valueOrNull(env.APP_SHA),
       openPathSha: valueOrNull(env.OPENPATH_SHA),
+      releaseId: valueOrNull(env.RELEASE_ID),
+      openPathContractSha256: valueOrNull(env.OPENPATH_CONTRACT_SHA256),
+      rcRunId: valueOrNull(env.RC_RUN_ID),
       outcome: deriveReleaseOutcome({
         deployResult: valueOrNull(env.DEPLOY_RESULT),
         smokeResult: valueOrNull(env.PRODUCTION_SMOKE_RESULT),
@@ -838,6 +919,9 @@ export function createReleaseEvidenceSnapshot(input = process.env) {
       windowsSelfUpdateResult: valueOrNull(env.STAGING_WINDOWS_SELF_UPDATE_RESULT),
       linuxSelfUpdateResult: valueOrNull(env.STAGING_LINUX_SELF_UPDATE_RESULT),
       prepromotionRehearsalResult: valueOrNull(env.STAGING_PREPROMOTION_REHEARSAL_RESULT),
+      releaseId: valueOrNull(env.STAGING_VERIFIED_RELEASE_ID),
+      openPathSha: valueOrNull(env.STAGING_VERIFIED_OPENPATH_SHA),
+      openPathContractSha256: valueOrNull(env.STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256),
       verifiedAt: valueOrNull(env.STAGING_VERIFIED_AT),
     },
     immutableImages: {
@@ -891,6 +975,9 @@ export function normalizeReleaseEvidenceSnapshot(snapshot) {
       tagName: snapshot.release?.tagName ?? null,
       classroomPathSha: snapshot.release?.classroomPathSha ?? null,
       openPathSha: snapshot.release?.openPathSha ?? null,
+      releaseId: snapshot.release?.releaseId ?? null,
+      openPathContractSha256: snapshot.release?.openPathContractSha256 ?? null,
+      rcRunId: snapshot.release?.rcRunId ?? null,
       outcome: snapshot.release?.outcome ?? 'unknown',
     },
     promotionEligibility: {
@@ -958,6 +1045,9 @@ export function normalizeReleaseEvidenceSnapshot(snapshot) {
       linuxSelfUpdateResult: snapshot.stagingVerification?.linuxSelfUpdateResult ?? null,
       prepromotionRehearsalResult:
         snapshot.stagingVerification?.prepromotionRehearsalResult ?? null,
+      releaseId: snapshot.stagingVerification?.releaseId ?? null,
+      openPathSha: snapshot.stagingVerification?.openPathSha ?? null,
+      openPathContractSha256: snapshot.stagingVerification?.openPathContractSha256 ?? null,
       verifiedAt: snapshot.stagingVerification?.verifiedAt ?? null,
     },
     immutableImages: {
@@ -1033,6 +1123,8 @@ export function projectReleaseEvidenceSnapshotToWorkflowOutputs(input = process.
     release_tag_name: snapshot.release.tagName ?? 'unknown',
     release_classroompath_sha: snapshot.release.classroomPathSha ?? 'unknown',
     release_openpath_sha: snapshot.release.openPathSha ?? 'unknown',
+    release_id: snapshot.release.releaseId ?? 'unknown',
+    release_openpath_contract_sha256: snapshot.release.openPathContractSha256 ?? 'unknown',
     release_promotion_eligibility: snapshot.promotionEligibility.status ?? 'unknown',
     release_promotion_deployment_mode: snapshot.promotionEligibility.deploymentMode ?? 'unknown',
   };

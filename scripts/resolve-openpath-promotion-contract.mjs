@@ -85,18 +85,28 @@ export async function runOpenPathPromotionContractResolver(
     contractSha256: result.contractSha256,
     contractUrl: result.url,
     contractPath,
+    openpath_sha: result.openpathSha,
+    contract_sha256: result.contractSha256,
+    openpath_version: result.contract.openpathVersion,
+    linux_agent_version: result.contract.components.linuxAgent.packageVersion,
+    linux_agent_apt_suite: result.contract.components.linuxAgent.aptSuite,
+    windows_offline_installer_template_version:
+      result.contract.components.windowsOfflineInstaller.version,
+    windows_offline_installer_template_commit:
+      result.contract.components.windowsOfflineInstaller.sourceSha,
+    windows_offline_installer_template_release_tag:
+      result.contract.components.windowsOfflineInstaller.releaseTag,
+    windows_offline_installer_template_sha256:
+      result.contract.components.windowsOfflineInstaller.templateSha256,
   };
 
   if (options.json) {
     process.stdout.write(JSON.stringify(output) + '\n');
   } else {
     process.stdout.write(
-      [
-        'openpath_sha=' + output.openpathSha,
-        'contract_sha256=' + output.contractSha256,
-        'contract_url=' + output.contractUrl,
-        'contract_path=' + output.contractPath,
-      ].join('\n') + '\n'
+      Object.entries(output)
+        .map(([key, value]) => key + '=' + value)
+        .join('\n') + '\n'
     );
   }
   return { ...result, ...output };

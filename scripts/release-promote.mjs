@@ -18,6 +18,7 @@ import { rerunGitHubRunFailedJobs as defaultRerunGitHubRunFailedJobs } from './l
 import {
   buildPromotionPlan,
   formatCommand,
+  readReleaseBundleLocatorIdentity,
   readStepState,
   runStep,
   summarizeGitHubRunMonitor,
@@ -140,10 +141,20 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
 
     validateTag(tag);
 
+    const transcriptRoot = dependencies.transcriptRoot;
     const plan = buildPromotionPlan({
       tag,
       highRiskWindows: options.highRiskWindows,
       postProductionWindowsCanary: options.postProductionWindowsCanary,
+      transcriptRoot,
+    });
+
+    const readStepStateFn = dependencies.readStepState ?? readStepState;
+    const persistedState = readStepStateFn({ root: transcriptRoot, tag });
+    const locatorIdentity = readReleaseBundleLocatorIdentity(plan.releaseBundleStateFile);
+    assertPromotionResumeIdentity({
+      state: persistedState,
+      locator: locatorIdentity,
     });
 
     // --- Step filtering (--from-step / --only / --resume) ---
@@ -152,7 +163,7 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       options,
       stateRoot: dependencies.transcriptRoot,
       tag,
-      readStepStateFn: dependencies.readStepState ?? readStepState,
+      readStepStateFn,
     });
 
     if (options.dryRun || !options.execute) {
@@ -176,10 +187,13 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       if (recorded.githubRun) {
         io.stdout(`${summarizeGitHubRunMonitor(recorded.githubRun)}\n`);
       }
+      const currentLocator = readReleaseBundleLocatorIdentity(plan.releaseBundleStateFile);
       // Persist step outcome so --resume can skip it on the next run.
       (dependencies.writeStepState ?? writeStepState)({
         root: dependencies.transcriptRoot,
         tag,
+        releaseId: currentLocator?.releaseId,
+        rcRunId: currentLocator?.rcRunId,
         startedAt,
         stepId: recorded.id,
         status: recorded.status,
@@ -396,6 +410,47 @@ function resolveSkipSet({ plan, options, stateRoot, tag, readStepStateFn }) {
   }
 
   return { skipSet, skipReasons };
+}
+
+function assertPromotionResumeIdentity({ state, locator }) {
+  const stateReleaseId = normalizePromotionReleaseId(state?.releaseId, 'persisted releaseId');
+  const stateRcRunId = normalizePromotionRcRunId(state?.rcRunId, 'persisted rcRunId');
+
+  if ((stateReleaseId || stateRcRunId) && !locator) {
+    throw new Error(
+      'Promotion state contains Release Bundle identity but the exact Release Bundle locator is missing'
+    );
+  }
+
+  if (stateReleaseId && stateReleaseId !== locator.releaseId) {
+    throw new Error(
+      `Promotion state is bound to a different Release Bundle releaseId: ${stateReleaseId} != ${locator.releaseId}`
+    );
+  }
+
+  if (stateRcRunId && stateRcRunId !== locator.rcRunId) {
+    throw new Error(
+      `Promotion state is bound to a different Release Bundle rcRunId: ${stateRcRunId} != ${locator.rcRunId}`
+    );
+  }
+}
+
+function normalizePromotionReleaseId(value, label) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '';
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new Error(`${label} must be a 64-character lowercase SHA-256 hex string`);
+  }
+  return normalized;
+}
+
+function normalizePromotionRcRunId(value, label) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '';
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error(`${label} must be a numeric GitHub run id`);
+  }
+  return normalized;
 }
 
 function buildWindowsPrepromotionEvidenceStep() {
