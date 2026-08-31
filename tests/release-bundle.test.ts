@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
+import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 import {
   RELEASE_BUNDLE_IMAGE_NAMES,
@@ -18,6 +23,8 @@ const classroomPathSha = '1111111111111111111111111111111111111111';
 const openpathSha = 'a3846d6cbbb5c816d12dc4c5a60409760e121b90';
 const contractSha256 = '2222222222222222222222222222222222222222222222222222222222222222';
 const digest = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const releaseBundleScriptPath = resolve(projectRoot, 'scripts/release-bundle.mjs');
 
 function imageRefs() {
   return Object.fromEntries(
@@ -190,6 +197,54 @@ describe('Release Bundle v2', () => {
         }),
       /contractSha256 does not match the exact OpenPath contract bytes/
     );
+  });
+
+  test('executes the CLI when invoked through a symlinked deployment path', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-release-bundle-cli-'));
+    try {
+      const contractBytes = exactContractBytes();
+      const bundle = buildBundle({
+        openPath: {
+          sourceSha: openpathSha,
+          contractSha256: createHash('sha256').update(contractBytes).digest('hex'),
+        },
+      });
+      const bundleBytes = Buffer.from(serializeReleaseBundle(bundle), 'utf8');
+      const releaseId = calculateReleaseId(bundleBytes);
+      const bundlePath = join(tempDir, 'bundle.json');
+      const contractPath = join(tempDir, 'contract.json');
+      const outputEnvPath = join(tempDir, 'runtime.env');
+      const symlinkPath = join(tempDir, 'release-bundle.mjs');
+
+      writeFileSync(bundlePath, bundleBytes);
+      writeFileSync(contractPath, contractBytes);
+      symlinkSync(releaseBundleScriptPath, symlinkPath);
+
+      execFileSync(
+        process.execPath,
+        [
+          symlinkPath,
+          'verify',
+          '--bundle-file',
+          bundlePath,
+          '--contract-file',
+          contractPath,
+          '--release-id',
+          releaseId,
+          '--classroompath-sha',
+          classroomPathSha,
+          '--output-env',
+          outputEnvPath,
+        ],
+        { encoding: 'utf8' }
+      );
+
+      const runtimeEnv = readFileSync(outputEnvPath, 'utf8');
+      assert.match(runtimeEnv, new RegExp(`^RELEASE_ID=${releaseId}$`, 'm'));
+      assert.match(runtimeEnv, new RegExp(`^APP_SHA=${classroomPathSha}$`, 'm'));
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   test('projects legacy runtime fields from the validated v2 contract', () => {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,7 +12,17 @@ import {
   writeReleaseBundleArtifacts,
 } from './lib/release-bundle.mjs';
 
-const currentFilePath = fileURLToPath(import.meta.url);
+const currentFilePath = realpathSync(fileURLToPath(import.meta.url));
+
+function isMainModule() {
+  if (!process.argv[1]) return false;
+
+  try {
+    return realpathSync(process.argv[1]) === currentFilePath;
+  } catch {
+    return false;
+  }
+}
 
 const IMAGE_ENV_KEYS = Object.freeze({
   gateway: 'CLASSROOMPATH_GATEWAY_IMAGE',
@@ -163,7 +173,7 @@ export async function runReleaseBundleCommand(argv = process.argv.slice(2), env 
   return result;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(currentFilePath)) {
+if (isMainModule()) {
   runReleaseBundleCommand().catch((error) => {
     console.error(error?.stack || error);
     process.exitCode = 1;
