@@ -247,17 +247,20 @@ describe('Release Bundle v2', () => {
     }
   });
 
-  test('projects legacy runtime fields from the validated v2 contract', () => {
+  test('projects the upstream Linux version while preserving the Debian package version', () => {
+    const contract = buildContract();
+
+    assert.equal(contract.components.linuxAgent.packageVersion, '0.0.20260830211724-1');
     assert.deepEqual(
       projectOpenPathContractToLegacyRuntime({
-        contract: buildContract(),
+        contract,
         contractSha256,
       }),
       {
         OPENPATH_SHA: openpathSha,
         OPENPATH_CONTRACT_SHA256: contractSha256,
         OPENPATH_VERSION: '4.1.0',
-        OPENPATH_LINUX_AGENT_VERSION: '0.0.20260830211724-1',
+        OPENPATH_LINUX_AGENT_VERSION: '0.0.20260830211724',
         OPENPATH_LINUX_AGENT_APT_SUITE: 'unstable',
         OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION: '4.1.0',
         OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT: openpathSha,

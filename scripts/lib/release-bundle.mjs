@@ -67,6 +67,12 @@ function assertOciDigest(value, label) {
   return value;
 }
 
+function normalizeLinuxAgentRuntimeVersion(packageVersion) {
+  // The v2 contract records the complete Debian version, while apt-bootstrap
+  // receives the upstream version and appends the Debian revision itself.
+  return packageVersion.trim().replace(/-[^-]+$/, '');
+}
+
 function normalizeImages(images) {
   assertExactKeys(images, RELEASE_BUNDLE_IMAGE_NAMES, 'images');
   return Object.fromEntries(
@@ -249,7 +255,7 @@ export function projectOpenPathContractToLegacyRuntime({ contract, contractSha25
   const projection = {
     OPENPATH_SHA: validatedContract.openpathSha,
     OPENPATH_VERSION: validatedContract.openpathVersion,
-    OPENPATH_LINUX_AGENT_VERSION: linux.packageVersion,
+    OPENPATH_LINUX_AGENT_VERSION: normalizeLinuxAgentRuntimeVersion(linux.packageVersion),
     OPENPATH_LINUX_AGENT_APT_SUITE: linux.aptSuite,
     OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION: windows.version,
     OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT: windows.sourceSha,
