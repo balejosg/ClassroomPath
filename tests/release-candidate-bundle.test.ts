@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { describe, test } from 'node:test';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import * as releaseCandidateBundle from '../scripts/lib/release-candidate-bundle.mjs';
 
@@ -7,6 +10,7 @@ import {
   buildReleaseCandidateBundleArtifactName,
   buildReleaseCandidateBundleRuntimeProjection,
   selectExactReleaseCandidateRun,
+  writeReleaseCandidateBundleRuntimeEnv,
 } from '../scripts/lib/release-candidate-bundle.mjs';
 
 const targetSha = 'a'.repeat(40);
@@ -228,5 +232,27 @@ describe('Release Candidate Bundle v2 locator', () => {
     assert.equal(projection.OPENPATH_SHA, 'd'.repeat(40));
     assert.equal(projection.OPENPATH_CONTRACT_SHA256, contractSha256);
     assert.match(projection.CLASSROOMPATH_GATEWAY_IMAGE, /@sha256:/);
+  });
+
+  test('persists runtime keys containing digits', () => {
+    const outputDir = mkdtempSync(join(tmpdir(), 'release-candidate-runtime-'));
+    const outputPath = join(outputDir, 'runtime.env');
+
+    try {
+      writeReleaseCandidateBundleRuntimeEnv(outputPath, {
+        APP_SHA: targetSha,
+        OPENPATH_CONTRACT_SHA256: contractSha256,
+        OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256: contractSha256,
+      });
+
+      const runtimeText = readFileSync(outputPath, 'utf8');
+      assert.match(runtimeText, new RegExp(`^OPENPATH_CONTRACT_SHA256=${contractSha256}$`, 'm'));
+      assert.match(
+        runtimeText,
+        new RegExp(`^OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256=${contractSha256}$`, 'm')
+      );
+    } finally {
+      rmSync(outputDir, { recursive: true, force: true });
+    }
   });
 });

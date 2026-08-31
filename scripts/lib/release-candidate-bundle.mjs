@@ -493,7 +493,7 @@ export function writeReleaseCandidateBundleRuntimeEnv(outputPath, runtime) {
   const values = buildReleaseCandidateBundleProjectionOutputs({ runtime });
   const text =
     Object.entries(values)
-      .filter(([key]) => /^[A-Z_]+$/.test(key))
+      .filter(([key]) => /^[A-Z][A-Z0-9_]*$/.test(key))
       .map(([key, value]) => key + '=' + value)
       .join('\n') + '\n';
   writeFileSync(path, text, 'utf8');
