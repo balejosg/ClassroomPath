@@ -331,6 +331,14 @@ describe('Deploy workflow contracts', () => {
   test('verify-production-promotion-ready.sh separates blocked (exit 10) from genuine errors', () => {
     const verifyScript = readText('scripts/verify-production-promotion-ready.sh');
 
+    assert.match(verifyScript, /require_cmd docker/u);
+    assert.match(
+      verifyScript,
+      /git -C upstream\/openpath show "\$TARGET_OPENPATH_SHA:firefox-extension\/manifest\.json"/u
+    );
+    assert.match(verifyScript, /--install-probe-script > "\$openpath_install_probe_file"/u);
+    assert.match(verifyScript, /bash "\$openpath_install_probe_file"/u);
+
     // The three-way exit contract is declared once and used for every "gate answered no" path.
     assert.match(verifyScript, /PROMOTION_BLOCKED_EXIT_CODE=10/);
     assert.match(verifyScript, /blocked\(\) \{/);
@@ -629,12 +637,22 @@ describe('Deploy workflow contracts', () => {
     );
     const resolveReleaseOpenPathVerifier = findWorkflowStepByName(
       resolveReleaseImagesJob,
-      'Verify OpenPath Linux agent APT pin'
+      'Verify OpenPath Linux agent exact .deb installability'
     );
     assert.match(
       String(resolveReleaseOpenPathVerifier?.run ?? ''),
       /--openpath-manifest-file upstream\/openpath\/firefox-extension\/manifest\.json/u,
       'release image resolution must verify the Firefox ID from the exact OpenPath checkout'
+    );
+    assert.match(
+      String(resolveReleaseOpenPathVerifier?.run ?? ''),
+      /--install-probe-script > "\$probe_file"/u,
+      'release image resolution must install the exact OpenPath .deb bytes'
+    );
+    assert.match(
+      String(resolveReleaseOpenPathVerifier?.run ?? ''),
+      /bash "\$probe_file"/u,
+      'release image resolution must execute the systemd installability probe'
     );
     assert.ok(
       String(

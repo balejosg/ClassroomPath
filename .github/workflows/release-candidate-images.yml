@@ -170,15 +170,19 @@ jobs:
           OPENPATH_REQUIRED_CHECKS_FAIL_FAST=true \
             node scripts/openpath-required-checks.mjs wait
 
-      - name: Verify OpenPath Linux agent APT provenance
+      - name: Verify OpenPath Linux agent exact .deb installability
         run: |
           set -euo pipefail
-          # Installer Contracts Success above is the exact-SHA systemd installability evidence;
-          # this step remains the local metadata, bytes, and Firefox-ID verifier.
+          # Installer Contracts Success above covers source-tree runtime under systemd;
+          # this probe installs the exact contract-pinned .deb bytes under systemd too.
+          probe_file="$(mktemp)"
+          trap 'rm -f "$probe_file"' EXIT
           node scripts/verify-openpath-promotion-contract.mjs \
             --contract-file openpath-promotion-contract-input/openpath-promotion-contract.json \
             --openpath-sha "${{ needs.derive-release-image-refs.outputs.openpath_sha }}" \
-            --openpath-manifest-file upstream/openpath/firefox-extension/manifest.json
+            --openpath-manifest-file upstream/openpath/firefox-extension/manifest.json \
+            --install-probe-script > "$probe_file"
+          bash "$probe_file"
 
   resolve-previous-release-candidate-manifest:
     name: Resolve Previous Release Candidate Manifest

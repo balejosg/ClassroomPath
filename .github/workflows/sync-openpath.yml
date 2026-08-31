@@ -144,15 +144,16 @@ jobs:
           OPENPATH_REQUIRED_CHECKS_FAIL_FAST=true \
             node scripts/openpath-required-checks.mjs wait
 
-      - name: Verify OpenPath Linux agent APT provenance
+      - name: Verify OpenPath Linux agent exact .deb installability
         if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
         run: |
           set -euo pipefail
-          # Installer Contracts Success above is the exact-SHA systemd installability evidence;
-          # this step remains the local metadata, bytes, and Firefox-ID verifier.
+          # Installer Contracts Success above covers source-tree runtime under systemd;
+          # this probe installs the exact contract-pinned .deb bytes under systemd too.
           contract_file="$(mktemp)"
           manifest_file="$(mktemp)"
-          trap 'rm -f "$contract_file" "$manifest_file"' EXIT
+          probe_file="$(mktemp)"
+          trap 'rm -f "$contract_file" "$manifest_file" "$probe_file"' EXIT
           git -C upstream/openpath show \
             "${{ steps.check.outputs.latest }}:firefox-extension/manifest.json" > "$manifest_file"
           node scripts/resolve-openpath-promotion-contract.mjs \
@@ -162,7 +163,9 @@ jobs:
           node scripts/verify-openpath-promotion-contract.mjs \
             --contract-file "$contract_file" \
             --openpath-sha "${{ steps.check.outputs.latest }}" \
-            --openpath-manifest-file "$manifest_file"
+            --openpath-manifest-file "$manifest_file" \
+            --install-probe-script > "$probe_file"
+          bash "$probe_file"
 
       - name: Update submodule
         if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')

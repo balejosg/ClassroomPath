@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { describe, test } from 'node:test';
 
 import {
+  renderOpenPathExactDebSystemdInstallProbeScript,
   renderOpenPathLinuxAgentInstallProbeScript,
   verifyOpenPathPromotionContract,
 } from '../scripts/verify-openpath-promotion-contract.mjs';
@@ -92,6 +93,30 @@ describe('OpenPath v2 physical provenance verifier', () => {
     assert.match(script, /apt-get check/u);
     assert.match(script, /dpkg-query -W/u);
     assert.doesNotMatch(script, /--download-only/u);
+  });
+
+  test('renders a systemd probe that installs the exact verified .deb bytes', () => {
+    const script = renderOpenPathExactDebSystemdInstallProbeScript({
+      packageName: contract().components.linuxAgent.packageName,
+      packageVersion,
+      packageSha256: packageHash,
+      packageBytes,
+    });
+
+    assert.match(script, /base64 --decode[\s\S]*openpath-package\.deb/u);
+    assert.match(script, new RegExp(packageBytes.toString('base64'), 'u'));
+    assert.match(script, new RegExp(packageHash, 'u'));
+    assert.match(script, /FROM ubuntu:24\.04/u);
+    assert.match(script, /CMD \["\/lib\/systemd\/systemd"\]/u);
+    assert.match(script, /docker run --detach[\s\S]*--privileged/u);
+    assert.match(
+      script,
+      /apt-get install -y --no-install-recommends \/tmp\/openpath-package\.deb/u
+    );
+    assert.match(script, /apt-get check/u);
+    assert.match(script, /systemctl is-active --quiet dnsmasq/u);
+    assert.match(script, /systemctl is-enabled openpath-dnsmasq\.timer/u);
+    assert.doesNotMatch(script, /apt-setup\.sh/u);
   });
 
   test('verifies the exact contract, APT tuple, and package bytes without selecting a version', async () => {

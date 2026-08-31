@@ -282,7 +282,7 @@ describe('Release candidate workflow contracts', () => {
     );
     const verifyOpenPathPrereleaseAptJob = jobs['verify-openpath-prerelease-apt'];
     const verifyInstallabilityStep = verifyOpenPathPrereleaseAptJob?.steps?.find(
-      (step) => step.name === 'Verify OpenPath Linux agent APT provenance'
+      (step) => step.name === 'Verify OpenPath Linux agent exact .deb installability'
     );
     const verifyInstallabilityRun = verifyInstallabilityStep?.run ?? '';
     const waitForOpenPathAptPublishStep = verifyOpenPathPrereleaseAptJob?.steps?.find(
@@ -355,7 +355,7 @@ describe('Release candidate workflow contracts', () => {
     );
     assert.ok(
       aptStepNames.indexOf('Wait for OpenPath prerelease APT publish') <
-        aptStepNames.indexOf('Verify OpenPath Linux agent APT provenance')
+        aptStepNames.indexOf('Verify OpenPath Linux agent exact .deb installability')
     );
     assert.ok(
       deriveStepNames.indexOf('Resolve OpenPath SHA') <
@@ -365,10 +365,7 @@ describe('Release candidate workflow contracts', () => {
       deriveStepNames.indexOf('Resolve exact OpenPath v2 promotion contract') <
         deriveStepNames.indexOf('Decide OpenPath-derived image reuse')
     );
-    assert.ok(
-      verifyInstallabilityStep,
-      'RC workflow must consume the exact OpenPath systemd installer contract check'
-    );
+    assert.ok(verifyInstallabilityStep, 'RC workflow must install the exact OpenPath .deb bytes');
     assert.ok(
       verifyInstallabilityRun.includes('node scripts/verify-openpath-promotion-contract.mjs')
     );
@@ -378,7 +375,8 @@ describe('Release candidate workflow contracts', () => {
         '--openpath-manifest-file upstream/openpath/firefox-extension/manifest.json'
       )
     );
-    assert.doesNotMatch(verifyInstallabilityRun, /--install-probe-script/u);
+    assert.match(verifyInstallabilityRun, /--install-probe-script > "\$probe_file"/u);
+    assert.match(verifyInstallabilityRun, /bash "\$probe_file"/u);
     assert.doesNotMatch(verifyInstallabilityRun, /docker run --rm -i ubuntu:24\.04 bash/u);
     assert.equal(
       deriveCheckout?.with?.['fetch-depth'],
@@ -871,11 +869,11 @@ describe('Release candidate workflow contracts', () => {
     const workflow = readWorkflow('.github/workflows/sync-openpath.yml');
     const steps = workflow.jobs?.sync?.steps ?? [];
     const installabilityStep = steps.find(
-      (step) => step.name === 'Verify OpenPath Linux agent APT provenance'
+      (step) => step.name === 'Verify OpenPath Linux agent exact .deb installability'
     );
     const updateSubmoduleIndex = steps.findIndex((step) => step.name === 'Update submodule');
     const installabilityIndex = steps.findIndex(
-      (step) => step.name === 'Verify OpenPath Linux agent APT provenance'
+      (step) => step.name === 'Verify OpenPath Linux agent exact .deb installability'
     );
 
     assert.ok(workflowText.includes('OPENPATH_BASE_SHA: ${{ steps.check.outputs.current }}'));
@@ -886,7 +884,7 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(!workflowText.includes('OPENPATH_REQUIRED_CHECKS: CI Success'));
     assert.ok(
       installabilityStep,
-      'OpenPath sync should verify the exact Linux APT provenance before updating the submodule'
+      'OpenPath sync should install the exact Linux .deb before updating the submodule'
     );
     assert.match(
       String(installabilityStep?.run ?? ''),
@@ -896,7 +894,8 @@ describe('Release candidate workflow contracts', () => {
       String(installabilityStep?.run ?? ''),
       /node scripts\/verify-openpath-promotion-contract\.mjs[\s\S]*--contract-file/
     );
-    assert.doesNotMatch(String(installabilityStep?.run ?? ''), /--install-probe-script/u);
+    assert.match(String(installabilityStep?.run ?? ''), /--install-probe-script > "\$probe_file"/u);
+    assert.match(String(installabilityStep?.run ?? ''), /bash "\$probe_file"/u);
     assert.doesNotMatch(
       String(installabilityStep?.run ?? ''),
       /docker run --rm -i ubuntu:24\.04 bash/u
@@ -918,7 +917,7 @@ describe('Release candidate workflow contracts', () => {
       installabilityIndex >= 0 &&
         updateSubmoduleIndex >= 0 &&
         installabilityIndex < updateSubmoduleIndex,
-      'OpenPath sync should verify APT provenance before updating the submodule'
+      'OpenPath sync should install the exact APT .deb before updating the submodule'
     );
   });
 });

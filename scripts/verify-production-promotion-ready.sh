@@ -15,6 +15,7 @@ source "$SCRIPT_DIR/lib/deploy-container-platform.sh"
 require_cmd git
 require_cmd node
 require_cmd ssh
+require_cmd docker
 
 # Exit-code contract (consumed by nightly-staging-candidate.yml and pinned by
 # tests/workflow-deploy.test.ts):
@@ -131,6 +132,8 @@ release_bundle_dir="$(mktemp -d)"
 release_bundle_runtime_file="$(mktemp)"
 release_bundle_outputs_file="$(mktemp)"
 release_manifest_file="$(mktemp)"
+openpath_manifest_file="$(mktemp)"
+openpath_install_probe_file="$(mktemp)"
 current_state_file="$(mktemp)"
 verification_state_file="$(mktemp)"
 production_state_file="$(mktemp)"
@@ -139,7 +142,7 @@ report_json_file="${PROMOTION_REPORT_JSON_PATH:-$(mktemp)}"
 
 cleanup() {
   rm -rf "$release_bundle_dir"
-  rm -f "$release_bundle_runtime_file" "$release_bundle_outputs_file" "$release_manifest_file" "$current_state_file" "$verification_state_file" "$production_state_file" "$risk_output_file" "$openpath_changed_files_file"
+  rm -f "$release_bundle_runtime_file" "$release_bundle_outputs_file" "$release_manifest_file" "$openpath_manifest_file" "$openpath_install_probe_file" "$current_state_file" "$verification_state_file" "$production_state_file" "$risk_output_file" "$openpath_changed_files_file"
   if [ -z "${PROMOTION_REPORT_JSON_PATH:-}" ]; then
     rm -f "$report_json_file"
   fi
@@ -237,6 +240,7 @@ TARGET_OPENPATH_SHA="$(git rev-parse "$TARGET_SHA:upstream/openpath")"
 if [ "$staging_openpath_sha" != "$TARGET_OPENPATH_SHA" ]; then
   die "Staging OpenPath SHA $staging_openpath_sha does not match staged gitlink $TARGET_OPENPATH_SHA" 1
 fi
+git -C upstream/openpath show "$TARGET_OPENPATH_SHA:firefox-extension/manifest.json" > "$openpath_manifest_file"
 
 node "$SCRIPT_DIR/wait-for-release-candidate.mjs" resolve-bundle \
   --sha "$TARGET_SHA" \
@@ -276,7 +280,10 @@ fi
 
 node "$SCRIPT_DIR/verify-openpath-promotion-contract.mjs" \
   --contract-file "$release_bundle_dir/openpath-promotion-contract.json" \
-  --openpath-sha "$OPENPATH_SHA"
+  --openpath-sha "$OPENPATH_SHA" \
+  --openpath-manifest-file "$openpath_manifest_file" \
+  --install-probe-script > "$openpath_install_probe_file"
+bash "$openpath_install_probe_file"
 
 export EXPECTED_RELEASE_ID="$RELEASE_ID"
 export EXPECTED_RC_RUN_ID="$RC_RUN_ID"

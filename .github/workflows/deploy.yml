@@ -198,16 +198,20 @@ jobs:
             --manifest-base64 "$RELEASE_MANIFEST_B64" \
             --target-platform "$PRODUCTION_CONTAINER_PLATFORM"
 
-      - name: Verify OpenPath Linux agent APT pin
+      - name: Verify OpenPath Linux agent exact .deb installability
         shell: bash
         env:
           OPENPATH_SHA: ${{ steps.release-bundle.outputs.openpath_sha }}
         run: |
           set -euo pipefail
+          probe_file="$(mktemp)"
+          trap 'rm -f "$probe_file"' EXIT
           node scripts/verify-openpath-promotion-contract.mjs \
             --contract-file release-bundle/openpath-promotion-contract.json \
             --openpath-sha "$OPENPATH_SHA" \
-            --openpath-manifest-file upstream/openpath/firefox-extension/manifest.json
+            --openpath-manifest-file upstream/openpath/firefox-extension/manifest.json \
+            --install-probe-script > "$probe_file"
+          bash "$probe_file"
 
       - name: Build deploy payload
         id: deploy-payload

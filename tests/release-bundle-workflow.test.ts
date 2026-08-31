@@ -79,7 +79,7 @@ describe('Release Bundle v2 workflow contracts', () => {
     assert.match(workflow, /STAGING_RELEASE_RUN_ID=/u);
   });
 
-  test('OpenPath installability comes from the exact SHA systemd contract check', () => {
+  test('OpenPath installability keeps source and exact artifact systemd checks', () => {
     const releaseCandidate = readProjectWorkflow('.github/workflows/release-candidate-images.yml');
     const sync = readProjectWorkflow('.github/workflows/sync-openpath.yml');
     const expectedChecks =
@@ -111,7 +111,8 @@ describe('Release Bundle v2 workflow contracts', () => {
       releaseCandidateText,
       /--openpath-manifest-file upstream\/openpath\/firefox-extension\/manifest\.json/u
     );
-    assert.doesNotMatch(releaseCandidateText, /--install-probe-script/u);
+    assert.match(releaseCandidateText, /--install-probe-script > "\$probe_file"/u);
+    assert.match(releaseCandidateText, /bash "\$probe_file"/u);
     assert.doesNotMatch(releaseCandidateText, /docker run --rm -i ubuntu:24\.04 bash/u);
 
     const syncText = readProjectText('.github/workflows/sync-openpath.yml');
@@ -121,7 +122,8 @@ describe('Release Bundle v2 workflow contracts', () => {
       /git -C upstream\/openpath show[\s\S]*steps\.check\.outputs\.latest[^\n]*:firefox-extension\/manifest\.json/u
     );
     assert.match(syncText, /--openpath-manifest-file "\$manifest_file"/u);
-    assert.doesNotMatch(syncText, /--install-probe-script/u);
+    assert.match(syncText, /--install-probe-script > "\$probe_file"/u);
+    assert.match(syncText, /bash "\$probe_file"/u);
     assert.doesNotMatch(syncText, /docker run --rm -i ubuntu:24\.04 bash/u);
   });
 });
