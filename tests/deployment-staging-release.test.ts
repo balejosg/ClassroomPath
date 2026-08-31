@@ -1491,6 +1491,25 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(preflight.includes('STAGING_VERIFIED_IMAGE_SOURCE=${verified_image_source:-unset}'));
   });
 
+  test('promotion helper only reads fields emitted by the exact tag identity file', () => {
+    const helper = readFileSync(
+      resolve(projectRoot, 'scripts/promote-current-staging-candidate.sh'),
+      'utf-8'
+    );
+    const identityCheckStart = helper.indexOf('if [ "$CLASSROOMPATH_SHA" != "$target_sha" ]; then');
+    const productionPreflightStart = helper.indexOf(
+      'log_info "Verifying production target readiness before tagging $next_tag..."'
+    );
+    assert.ok(identityCheckStart >= 0);
+    assert.ok(productionPreflightStart > identityCheckStart);
+
+    const identityCheck = helper.slice(identityCheckStart, productionPreflightStart);
+    assert.match(identityCheck, /\[ "\$STAGING_RELEASE_ID" != "\$RELEASE_ID" \]/u);
+    assert.match(identityCheck, /\[ "\$STAGING_RC_RUN_ID" != "\$RC_RUN_ID" \]/u);
+    assert.doesNotMatch(identityCheck, /\$OPENPATH_SHA/u);
+    assert.doesNotMatch(identityCheck, /\$OPENPATH_CONTRACT_SHA256/u);
+  });
+
   test('GitHub token helper falls back to gh auth token when env tokens are absent', () => {
     const tempDir = mkdtempSync(resolve(tmpdir(), 'classroompath-gh-token-'));
     const fakeBinDir = resolve(tempDir, 'bin');

@@ -165,11 +165,12 @@ if [ "$CLASSROOMPATH_SHA" != "$target_sha" ]; then
   die "Release Bundle ClassroomPath SHA $CLASSROOMPATH_SHA does not match staging SHA $target_sha" 1
 fi
 if [ "$STAGING_RELEASE_ID" != "$RELEASE_ID" ] ||
-  [ "$STAGING_RC_RUN_ID" != "$RC_RUN_ID" ] ||
-  [ "$STAGING_OPENPATH_SHA" != "$OPENPATH_SHA" ] ||
-  [ "$STAGING_OPENPATH_CONTRACT_SHA256" != "$OPENPATH_CONTRACT_SHA256" ]; then
+  [ "$STAGING_RC_RUN_ID" != "$RC_RUN_ID" ]; then
   die "Promotion evidence does not match the exact current staging Release Bundle identity" 1
 fi
+# verify-production-promotion-ready.sh already matched the OpenPath SHA and
+# contract hash against the exact resolved Release Bundle before writing this
+# identity file; that file intentionally contains only tag identity fields.
 
 log_info "Verifying production target readiness before tagging $next_tag..."
 bash "$SCRIPT_DIR/preflight-production-promotion-target.sh"
