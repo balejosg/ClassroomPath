@@ -184,6 +184,19 @@ describe('Deployment runtime contracts', () => {
       verifierDockerignore.includes('!scripts/lib/openpath-promotion-contract.mjs'),
       'the verifier image must retain the bundle CLI and its direct contract imports'
     );
+    for (const stateCliFile of [
+      '!scripts/lib/release-bundle-state.mjs',
+      '!scripts/lib/release-state-contract.mjs',
+      '!scripts/lib/release-evidence-snapshot.mjs',
+      '!scripts/lib/release-evidence-contract.mjs',
+      '!scripts/lib/windows-auto-allow-canary-evidence.mjs',
+      '!scripts/lib/auto-allow-boundary-evidence.mjs',
+    ]) {
+      assert.ok(
+        verifierDockerignore.includes(stateCliFile),
+        `the verifier image must retain ${stateCliFile.slice(1)} for no-Node state operations`
+      );
+    }
     assert.ok(verifierDockerignore.includes('tests/**'));
     assert.ok(verifierDockerignore.includes('!tests/smoke.test.ts'));
     assert.ok(verifierDockerignore.includes('!tests/release-gate.test.ts'));
@@ -567,6 +580,9 @@ describe('Deployment runtime contracts', () => {
     assert.ok(
       deploymentStateHelper.includes('deployment_state_init_paths()') &&
         deploymentStateHelper.includes('DEPLOYMENT_STATE_HELPER_CONTRACT_VERSION=') &&
+        deploymentStateHelper.includes('deployment_state_run_cli_in_verifier()') &&
+        deploymentStateHelper.includes('--entrypoint node') &&
+        deploymentStateHelper.includes('CLASSROOMPATH_VERIFIER_IMAGE') &&
         deploymentStateHelper.includes('deployment_state_capture_previous_release()') &&
         deploymentStateHelper.includes('deployment_state_activate_previous_release()')
     );

@@ -35,6 +35,117 @@ deployment_state_v2_pointer_present() {
   [ -s "$DEPLOYMENT_STATE_DIR/$pointer" ]
 }
 
+deployment_state_cli_available() {
+  command -v node >/dev/null 2>&1 && [ -f "$(deployment_state_bundle_cli_path)" ]
+}
+
+deployment_state_verifier_image() {
+  local verifier_image="${CLASSROOMPATH_VERIFIER_IMAGE:-}"
+  local current_release_id=""
+  local current_runtime_file=""
+
+  if [ -z "$verifier_image" ] && deployment_state_v2_pointer_present current; then
+    current_release_id="$(tr -d '\r\n' < "$DEPLOYMENT_STATE_CURRENT_POINTER_FILE")"
+    if [[ "$current_release_id" =~ ^[0-9a-f]{64}$ ]]; then
+      current_runtime_file="$DEPLOYMENT_STATE_RELEASES_DIR/$current_release_id/runtime.env"
+      if [ -f "$current_runtime_file" ]; then
+        verifier_image="$(awk -F= '$1 == "CLASSROOMPATH_VERIFIER_IMAGE" { print substr($0, index($0, "=") + 1); exit }' "$current_runtime_file")"
+      fi
+    fi
+  fi
+
+  if [[ ! "$verifier_image" =~ @sha256:[0-9a-f]{64}$ ]]; then
+    log_error "Release Bundle v2 state helper requires an immutable verifier image" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$verifier_image"
+}
+
+deployment_state_run_cli_in_verifier() {
+  local command_name="$1"
+  local bundle_file="${2:-}"
+  local contract_file="${3:-}"
+  local output_file="${4:-}"
+  shift 4
+
+  local verifier_image=""
+  local output_dir=""
+  local -a docker_mounts=(
+    -v
+    "$DEPLOYMENT_STATE_DIR:/tmp/classroompath-release-state:rw"
+  )
+  local -a cli_args=(
+    "$command_name"
+    --state-root
+    /tmp/classroompath-release-state
+  )
+
+  verifier_image="$(deployment_state_verifier_image)" || return 1
+
+  if [ -n "$bundle_file" ] || [ -n "$contract_file" ]; then
+    if [ -z "$bundle_file" ] || [ -z "$contract_file" ]; then
+      log_error "Release Bundle v2 verifier execution requires both bundle and contract files"
+      return 1
+    fi
+    if ! chmod 644 "$bundle_file" "$contract_file"; then
+      log_error "Unable to prepare Release Bundle v2 files for verifier execution"
+      return 1
+    fi
+    docker_mounts+=(
+      -v
+      "$bundle_file:/tmp/classroompath-release-bundle.json:ro"
+      -v
+      "$contract_file:/tmp/openpath-promotion-contract.json:ro"
+    )
+    cli_args+=(
+      --bundle-file
+      /tmp/classroompath-release-bundle.json
+      --contract-file
+      /tmp/openpath-promotion-contract.json
+    )
+  fi
+
+  if [ -n "$output_file" ]; then
+    output_dir="$(mktemp -d)"
+    if ! chmod 777 "$output_dir"; then
+      rm -rf "$output_dir"
+      log_error "Unable to prepare Release Bundle v2 verifier output directory"
+      return 1
+    fi
+    docker_mounts+=(
+      -v
+      "$output_dir:/tmp/release-state-output:rw"
+    )
+    cli_args+=(
+      --output-env
+      /tmp/release-state-output/runtime.env
+    )
+  fi
+
+  if ! docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    --entrypoint node \
+    "${docker_mounts[@]}" \
+    "$verifier_image" \
+    "/app/scripts/lib/release-bundle-state.mjs" \
+    "${cli_args[@]}" \
+    "$@"; then
+    [ -n "$output_dir" ] && rm -rf "$output_dir"
+    log_error "Release Bundle v2 state CLI failed inside the verifier image"
+    return 1
+  fi
+
+  if [ -n "$output_file" ]; then
+    if [ ! -s "$output_dir/runtime.env" ] || ! cp "$output_dir/runtime.env" "$output_file"; then
+      rm -rf "$output_dir"
+      log_error "Verifier image did not emit the Release Bundle v2 runtime projection"
+      return 1
+    fi
+    rm -rf "$output_dir"
+  fi
+}
+
 deployment_state_read_v2_pointer() {
   local pointer="$1"
   local runtime_file=""
@@ -45,16 +156,16 @@ deployment_state_read_v2_pointer() {
     log_error "Release Bundle v2 $pointer pointer is missing"
     return 1
   fi
-  if ! command -v node >/dev/null 2>&1 || [ ! -f "$(deployment_state_bundle_cli_path)" ]; then
-    log_error "Release Bundle v2 state helper is unavailable"
-    return 1
-  fi
-
   runtime_file="$(mktemp)"
-  if ! metadata="$(node "$(deployment_state_bundle_cli_path)" read \
-    --state-root "$DEPLOYMENT_STATE_DIR" \
-    --pointer "$pointer" \
-    --output-env "$runtime_file")"; then
+  if deployment_state_cli_available; then
+    if ! metadata="$(node "$(deployment_state_bundle_cli_path)" read \
+      --state-root "$DEPLOYMENT_STATE_DIR" \
+      --pointer "$pointer" \
+      --output-env "$runtime_file")"; then
+      rm -f "$runtime_file"
+      return 1
+    fi
+  elif ! metadata="$(deployment_state_run_cli_in_verifier read "" "" "$runtime_file" --pointer "$pointer")"; then
     rm -f "$runtime_file"
     return 1
   fi
@@ -100,7 +211,20 @@ deployment_state_persist_v2_release() {
   if [ -n "$rc_run_id" ]; then
     persist_args+=(--rc-run-id "$rc_run_id")
   fi
-  node "$(deployment_state_bundle_cli_path)" "${persist_args[@]}" >/dev/null
+  if deployment_state_cli_available; then
+    node "$(deployment_state_bundle_cli_path)" "${persist_args[@]}" >/dev/null
+  else
+    local -a verifier_args=(--release-id "$release_id")
+    if [ -n "$rc_run_id" ]; then
+      verifier_args+=(--rc-run-id "$rc_run_id")
+    fi
+    deployment_state_run_cli_in_verifier \
+      persist \
+      "$bundle_file" \
+      "$contract_file" \
+      "" \
+      "${verifier_args[@]}" >/dev/null
+  fi
 }
 
 deployment_state_activate_v2_release() {
@@ -110,20 +234,42 @@ deployment_state_activate_v2_release() {
     log_error "Release Bundle v2 activation requires releaseId"
     return 1
   fi
-  node "$(deployment_state_bundle_cli_path)" activate \
-    --state-root "$DEPLOYMENT_STATE_DIR" \
-    --release-id "$release_id" >/dev/null
+  if deployment_state_cli_available; then
+    node "$(deployment_state_bundle_cli_path)" activate \
+      --state-root "$DEPLOYMENT_STATE_DIR" \
+      --release-id "$release_id" >/dev/null
+  else
+    deployment_state_run_cli_in_verifier \
+      activate \
+      "" \
+      "" \
+      "" \
+      --release-id "$release_id" >/dev/null
+  fi
 }
 
 deployment_state_activate_v2_previous_release() {
-  node "$(deployment_state_bundle_cli_path)" activate-previous \
-    --state-root "$DEPLOYMENT_STATE_DIR" >/dev/null
+  if deployment_state_cli_available; then
+    node "$(deployment_state_bundle_cli_path)" activate-previous \
+      --state-root "$DEPLOYMENT_STATE_DIR" >/dev/null
+  else
+    deployment_state_run_cli_in_verifier \
+      activate-previous \
+      "" \
+      "" \
+      "" >/dev/null
+  fi
 }
 
 deployment_state_capture_previous_release() {
   if deployment_state_v2_pointer_present current; then
-    if ! node "$(deployment_state_bundle_cli_path)" capture-previous \
-      --state-root "$DEPLOYMENT_STATE_DIR" >/dev/null; then
+    if deployment_state_cli_available; then
+      if ! node "$(deployment_state_bundle_cli_path)" capture-previous \
+        --state-root "$DEPLOYMENT_STATE_DIR" >/dev/null; then
+        log_error "Unable to capture the active Release Bundle v2 as the rollback target"
+        return 1
+      fi
+    elif ! deployment_state_run_cli_in_verifier capture-previous "" "" "" >/dev/null; then
       log_error "Unable to capture the active Release Bundle v2 as the rollback target"
       return 1
     fi

@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
@@ -260,6 +267,70 @@ test('release-runtime helper persists Release Bundle identity beside legacy proj
   assert.equal(snapshot.RELEASE_ID, releaseId);
   assert.equal(snapshot.OPENPATH_SHA, openpathSha);
   assert.equal(snapshot.OPENPATH_CONTRACT_SHA256, contractSha256);
+});
+
+test('deployment state runs the exact v2 CLI in the verifier when host Node is unavailable', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'deployment-state-no-node-'));
+  const fakeBin = join(tempDir, 'bin');
+  const dockerLog = join(tempDir, 'docker-args.log');
+  const bundlePath = join(tempDir, 'bundle.json');
+  const contractPath = join(tempDir, 'contract.json');
+  const stateRoot = join(tempDir, 'state');
+
+  mkdirSync(fakeBin);
+  for (const command of ['awk', 'chmod', 'cp', 'dirname', 'id', 'mktemp', 'rm', 'tr']) {
+    symlinkSync(`/usr/bin/${command}`, join(fakeBin, command));
+  }
+  writeFileSync(
+    join(fakeBin, 'docker'),
+    ['#!/bin/sh', 'printf "%s\\n" "$@" >> "$FAKE_DOCKER_LOG"', ''].join('\n'),
+    'utf8'
+  );
+  chmodSync(join(fakeBin, 'docker'), 0o755);
+  writeFileSync(bundlePath, '{}\n', 'utf8');
+  writeFileSync(contractPath, '{}\n', 'utf8');
+
+  const result = spawnSync(
+    '/usr/bin/bash',
+    [
+      '--noprofile',
+      '--norc',
+      '-c',
+      [
+        'set -eu',
+        'source scripts/lib/common.sh',
+        'source scripts/lib/release-state.sh',
+        'source scripts/lib/deployment-state.sh',
+        'deployment_state_init_paths "$STATE_ROOT"',
+        'deployment_state_persist_v2_release "$BUNDLE_PATH" "$CONTRACT_PATH" "$RELEASE_ID" 123',
+        'deployment_state_activate_v2_release "$RELEASE_ID"',
+      ].join('\n'),
+    ],
+    {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: fakeBin,
+        FAKE_DOCKER_LOG: dockerLog,
+        STATE_ROOT: stateRoot,
+        BUNDLE_PATH: bundlePath,
+        CONTRACT_PATH: contractPath,
+        RELEASE_ID: 'a'.repeat(64),
+        CLASSROOMPATH_VERIFIER_IMAGE:
+          'ghcr.io/example/classroompath-release-verifier@sha256:' + 'b'.repeat(64),
+      },
+    }
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const dockerArgs = readFileSync(dockerLog, 'utf8');
+  assert.match(dockerArgs, /persist/u);
+  assert.match(dockerArgs, /activate/u);
+  assert.match(dockerArgs, /--entrypoint\nnode/u);
+  assert.match(dockerArgs, /\/app\/scripts\/lib\/release-bundle-state\.mjs/u);
+  assert.match(dockerArgs, /ghcr\.io\/example\/classroompath-release-verifier@sha256:/u);
+  assert.match(dockerArgs, /\/tmp\/classroompath-release-state/u);
 });
 
 test('promotion evidence rejects an OpenPath Linux agent APT suite drift', () => {

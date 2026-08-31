@@ -8,6 +8,12 @@ scripts/**
 !scripts/release-bundle.mjs
 !scripts/lib/release-bundle.mjs
 !scripts/lib/openpath-promotion-contract.mjs
+!scripts/lib/release-bundle-state.mjs
+!scripts/lib/release-state-contract.mjs
+!scripts/lib/release-evidence-snapshot.mjs
+!scripts/lib/release-evidence-contract.mjs
+!scripts/lib/windows-auto-allow-canary-evidence.mjs
+!scripts/lib/auto-allow-boundary-evidence.mjs
 tests/**
 !tests/
 !tests/helpers/

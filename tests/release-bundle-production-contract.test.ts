@@ -41,6 +41,32 @@ test('production bundle verification does not require Node on the host', () => {
   );
 });
 
+test('production Release Bundle v2 state operations have an immutable verifier fallback', () => {
+  const deploymentState = readFileSync(
+    resolve(projectRoot, 'scripts/lib/deployment-state.sh'),
+    'utf8'
+  );
+
+  assert.match(deploymentState, /deployment_state_cli_available\(\)/u);
+  assert.match(deploymentState, /deployment_state_run_cli_in_verifier\(\)/u);
+  assert.match(deploymentState, /--entrypoint node/u);
+  assert.match(deploymentState, /\/app\/scripts\/lib\/release-bundle-state\.mjs/u);
+  assert.match(deploymentState, /CLASSROOMPATH_VERIFIER_IMAGE/u);
+  assert.match(deploymentState, /@sha256:\[0-9a-f\]\{64\}/u);
+  assert.match(
+    deploymentState,
+    /deployment_state_persist_v2_release[\s\S]*deployment_state_run_cli_in_verifier/u
+  );
+  assert.match(
+    deploymentState,
+    /deployment_state_activate_v2_release[\s\S]*deployment_state_run_cli_in_verifier/u
+  );
+  assert.match(
+    deploymentState,
+    /deployment_state_capture_previous_release[\s\S]*deployment_state_run_cli_in_verifier/u
+  );
+});
+
 test('staging release-candidate runtime does not re-read the legacy manifest', () => {
   const staging = readFileSync(resolve(projectRoot, 'scripts/deploy-staging-remote.sh'), 'utf8');
   const localRelease = readFileSync(
