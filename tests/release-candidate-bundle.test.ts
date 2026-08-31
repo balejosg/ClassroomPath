@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
+import * as releaseCandidateBundle from '../scripts/lib/release-candidate-bundle.mjs';
+
 import {
   buildReleaseCandidateBundleArtifactName,
   buildReleaseCandidateBundleRuntimeProjection,
@@ -9,6 +11,87 @@ import {
 
 const targetSha = 'a'.repeat(40);
 const contractSha256 = 'c'.repeat(64);
+
+type ArtifactReader = (options: {
+  artifactDir: string;
+  readFile: (input: { artifactDir: string; fileName: string }) => Buffer | string;
+}) => {
+  bundleBytes: Buffer;
+  contractBytes: Buffer;
+};
+
+function readBundleFiles(files: Record<string, Buffer | string>) {
+  const reader = Reflect.get(releaseCandidateBundle, 'readBundleFilesFromArtifact') as
+    | ArtifactReader
+    | undefined;
+  assert.equal(
+    typeof reader,
+    'function',
+    'the artifact layout resolver must be exported for regression coverage'
+  );
+
+  return reader!({
+    artifactDir: '/fake/artifact',
+    readFile: ({ fileName }) => {
+      if (!Object.prototype.hasOwnProperty.call(files, fileName)) {
+        const error = new Error(`missing ${fileName}`) as Error & { code?: string };
+        error.code = 'ENOENT';
+        throw error;
+      }
+      return files[fileName];
+    },
+  });
+}
+
+describe('Release Candidate Bundle v2 artifact layouts', () => {
+  test('reads the complete canonical release-bundle pair', () => {
+    const result = readBundleFiles({
+      'release-bundle/classroompath-release-bundle.json': 'canonical bundle',
+      'release-bundle/openpath-promotion-contract.json': 'canonical contract',
+    });
+
+    assert.equal(result.bundleBytes.toString(), 'canonical bundle');
+    assert.equal(result.contractBytes.toString(), 'canonical contract');
+  });
+
+  test('reads the complete root pair as compatibility layout', () => {
+    const result = readBundleFiles({
+      'classroompath-release-bundle.json': 'root bundle',
+      'openpath-promotion-contract.json': 'root contract',
+    });
+
+    assert.equal(result.bundleBytes.toString(), 'root bundle');
+    assert.equal(result.contractBytes.toString(), 'root contract');
+  });
+
+  test('fails closed when neither layout contains a complete pair', () => {
+    assert.throws(() => readBundleFiles({}), /No complete .*pair/u);
+  });
+
+  test('fails closed instead of mixing an incomplete canonical and root layout', () => {
+    assert.throws(
+      () =>
+        readBundleFiles({
+          'release-bundle/classroompath-release-bundle.json': 'canonical bundle',
+          'openpath-promotion-contract.json': 'root contract',
+        }),
+      /No complete .*pair/u
+    );
+  });
+
+  test('fails closed when complete canonical and root pairs conflict', () => {
+    assert.throws(
+      () =>
+        readBundleFiles({
+          'release-bundle/classroompath-release-bundle.json': 'canonical bundle',
+          'release-bundle/openpath-promotion-contract.json': 'canonical contract',
+          'classroompath-release-bundle.json': 'root bundle',
+          'openpath-promotion-contract.json': 'root contract',
+        }),
+      /Ambiguous .*pair/u
+    );
+  });
+});
 
 describe('Release Candidate Bundle v2 locator', () => {
   test('names the immutable bundle artifact from the exact ClassroomPath SHA', () => {

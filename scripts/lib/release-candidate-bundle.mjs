@@ -213,7 +213,27 @@ export function readArtifactFile({ artifactDir, fileName }) {
   return readFileSync(resolvePath(artifactDir, fileName));
 }
 
-function readBundleFilesFromArtifact({ artifactDir, readFile, readTextFile }) {
+const RELEASE_BUNDLE_LAYOUTS = [
+  { name: 'release-bundle', prefix: 'release-bundle' },
+  { name: 'root', prefix: '' },
+];
+
+const RELEASE_BUNDLE_FILE_NAMES = {
+  bundle: 'classroompath-release-bundle.json',
+  contract: 'openpath-promotion-contract.json',
+};
+
+function readArtifactLayoutFile(readBytes, { artifactDir, prefix, fileName }) {
+  const layoutFileName = prefix ? `${prefix}/${fileName}` : fileName;
+  try {
+    return Buffer.from(readBytes({ artifactDir, fileName: layoutFileName }));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+export function readBundleFilesFromArtifact({ artifactDir, readFile, readTextFile }) {
   const readBytes =
     typeof readFile === 'function'
       ? readFile
@@ -222,13 +242,41 @@ function readBundleFilesFromArtifact({ artifactDir, readFile, readTextFile }) {
             Buffer.from(readTextFile({ artifactDir: directory, fileName }), 'utf8')
         : readArtifactFile;
 
+  const completePairs = [];
+  for (const layout of RELEASE_BUNDLE_LAYOUTS) {
+    const bundleBytes = readArtifactLayoutFile(readBytes, {
+      artifactDir,
+      prefix: layout.prefix,
+      fileName: RELEASE_BUNDLE_FILE_NAMES.bundle,
+    });
+    const contractBytes = readArtifactLayoutFile(readBytes, {
+      artifactDir,
+      prefix: layout.prefix,
+      fileName: RELEASE_BUNDLE_FILE_NAMES.contract,
+    });
+    if (bundleBytes !== null && contractBytes !== null) {
+      completePairs.push({ layout: layout.name, bundleBytes, contractBytes });
+    }
+  }
+
+  if (completePairs.length === 0) {
+    throw new Error('No complete Release Bundle v2 file pair exists in the artifact');
+  }
+
+  const [canonicalPair, compatibilityPair] = completePairs;
+  if (
+    compatibilityPair &&
+    (!canonicalPair.bundleBytes.equals(compatibilityPair.bundleBytes) ||
+      !canonicalPair.contractBytes.equals(compatibilityPair.contractBytes))
+  ) {
+    throw new Error(
+      'Ambiguous Release Bundle v2 artifact: complete release-bundle and root pairs differ'
+    );
+  }
+
   return {
-    bundleBytes: Buffer.from(
-      readBytes({ artifactDir, fileName: 'classroompath-release-bundle.json' })
-    ),
-    contractBytes: Buffer.from(
-      readBytes({ artifactDir, fileName: 'openpath-promotion-contract.json' })
-    ),
+    bundleBytes: canonicalPair.bundleBytes,
+    contractBytes: canonicalPair.contractBytes,
   };
 }
 
