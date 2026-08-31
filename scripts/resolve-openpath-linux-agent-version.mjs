@@ -1,15 +1,16 @@
 /**
  * Resolves the pinned OpenPath Linux agent version from the submodule git history for release notes and canary config.
  *
- * Invoked by: GitHub Actions release-candidate workflows; `openpath-linux-agent-version.test.ts`.
- * Usage: node scripts/resolve-openpath-linux-agent-version.mjs
+ * Invoked by: legacy explicit runtime-pin validators and compatibility tests.
+ * Active promotion workflows consume `verify-openpath-promotion-contract.mjs` directly.
+ * Usage: node scripts/resolve-openpath-linux-agent-version.mjs verify-runtime-pin ...
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gitOutput as runGitOutput } from './lib/git-process.mjs';
+import { renderOpenPathLinuxAgentInstallProbeScript as renderContractInstallProbeScript } from './verify-openpath-promotion-contract.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
@@ -23,48 +24,11 @@ export const DEFAULT_OPENPATH_APT_BASE_URL =
 function printUsage() {
   console.error('Usage:');
   console.error(
-    '  node scripts/resolve-openpath-linux-agent-version.mjs [--openpath-dir <path>] [--promotion-contracts-base-url <url>] [--apt-base-url <url>]'
-  );
-  console.error(
     '  node scripts/resolve-openpath-linux-agent-version.mjs verify-runtime-pin [--linux-agent-version <version>] [--apt-suite <stable|unstable>] [--apt-base-url <url>]'
   );
   console.error(
     '  node scripts/resolve-openpath-linux-agent-version.mjs install-probe-script [--linux-agent-version <version>] [--apt-suite <stable|unstable>] [--apt-base-url <url>]'
   );
-}
-
-function parseCliArgs(argv) {
-  const options = {
-    openpathDir: DEFAULT_OPENPATH_DIR,
-    promotionContractsBaseUrl: DEFAULT_PROMOTION_CONTRACTS_BASE_URL,
-    aptBaseUrl: DEFAULT_OPENPATH_APT_BASE_URL,
-  };
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-
-    if (token === '--openpath-dir') {
-      options.openpathDir = resolve(argv[index + 1]);
-      index += 1;
-      continue;
-    }
-
-    if (token === '--promotion-contracts-base-url') {
-      options.promotionContractsBaseUrl = String(argv[index + 1] ?? '').trim();
-      index += 1;
-      continue;
-    }
-
-    if (token === '--apt-base-url') {
-      options.aptBaseUrl = String(argv[index + 1] ?? '').trim();
-      index += 1;
-      continue;
-    }
-
-    throw new Error(`Unknown argument: ${token}`);
-  }
-
-  return options;
 }
 
 function parseVerifyRuntimePinCliArgs(argv) {
@@ -410,10 +374,6 @@ export async function assertOpenPathLinuxAgentExtensionIdConsistent({
   return agentExtensionId;
 }
 
-function shellSingleQuote(value) {
-  return `'${String(value).replaceAll("'", "'\\''")}'`;
-}
-
 export function renderOpenPathLinuxAgentInstallProbeScript({
   aptBaseUrl = DEFAULT_OPENPATH_APT_BASE_URL,
   aptSuite,
@@ -437,18 +397,16 @@ export function renderOpenPathLinuxAgentInstallProbeScript({
     throw new Error('OpenPath APT base URL is required');
   }
 
-  const packagePin = `openpath-dnsmasq=${normalizedVersion}-1`;
-  const setupFlag = normalizedSuite === 'unstable' ? '--unstable' : '--stable';
+  const packageVersion = normalizedVersion.endsWith('-1')
+    ? normalizedVersion
+    : `${normalizedVersion}-1`;
 
-  return `set -euo pipefail
-export DEBIAN_FRONTEND=noninteractive
-export OPENPATH_APT_REPO_URL=${shellSingleQuote(normalizedBaseUrl)}
-apt-get update -qq
-apt-get install -y --no-install-recommends ca-certificates curl gnupg
-curl -fsSL "\${OPENPATH_APT_REPO_URL}/apt-setup.sh" | bash -s -- ${setupFlag}
-apt-cache show ${shellSingleQuote(packagePin)} >/dev/null
-apt-get install -y --download-only ${shellSingleQuote(packagePin)}
-`;
+  return renderContractInstallProbeScript({
+    aptBaseUrl: normalizedBaseUrl,
+    aptSuite: normalizedSuite,
+    packageName: 'openpath-dnsmasq',
+    packageVersion,
+  });
 }
 
 export async function resolveOpenPathLinuxAgentVersionFromContracts({
@@ -489,14 +447,6 @@ export async function resolveOpenPathLinuxAgentVersionFromContracts({
   };
 }
 
-function gitOutput(openpathDir, args) {
-  return runGitOutput(['-C', openpathDir, ...args], { cwd: projectRoot });
-}
-
-function resolveOpenPathSha(openpathDir) {
-  return gitOutput(openpathDir, ['rev-parse', 'HEAD']);
-}
-
 async function downloadPromotionContract(url) {
   const response = await fetch(url);
   if (!response.ok) {
@@ -509,12 +459,6 @@ async function downloadPromotionContract(url) {
   }
 
   return response.text();
-}
-
-function writeOutputs(outputMap) {
-  for (const [key, value] of Object.entries(outputMap)) {
-    process.stdout.write(`${key}=${value}\n`);
-  }
 }
 
 async function main() {
@@ -578,21 +522,9 @@ async function main() {
     return;
   }
 
-  const options = parseCliArgs(process.argv.slice(2));
-  const openpathSha = resolveOpenPathSha(options.openpathDir);
-  const result = await resolveOpenPathLinuxAgentVersionFromContracts({
-    pinnedOpenpathSha: openpathSha,
-    promotionContractsBaseUrl: options.promotionContractsBaseUrl,
-    aptBaseUrl: options.aptBaseUrl,
-  });
-
-  writeOutputs({
-    openpath_sha: openpathSha,
-    openpath_promotion_contract_sha: result.promotionContractSha,
-    openpath_version: result.openpathVersion,
-    version: result.version,
-    apt_suite: result.aptSuite,
-  });
+  throw new Error(
+    'Legacy OpenPath version selection is retired; use verify-openpath-promotion-contract.mjs with the exact v2 contract'
+  );
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === currentFilePath) {

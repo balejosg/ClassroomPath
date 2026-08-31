@@ -38,7 +38,12 @@ export function parseReleaseBundleCliArgs(argv = []) {
       index += 1;
       continue;
     }
-    if (token === '--classroompath-sha' || token === '--release-id' || token === '--output-env') {
+    if (
+      token === '--classroompath-sha' ||
+      token === '--openpath-sha' ||
+      token === '--release-id' ||
+      token === '--output-env'
+    ) {
       options[token.slice(2).replaceAll('-', '')] = String(argv[index + 1] ?? '').trim();
       index += 1;
       continue;
@@ -113,6 +118,7 @@ function runVerify(options, env) {
     expectedReleaseId: options.releaseid || env.RELEASE_ID || undefined,
     expectedClassroomPathSha:
       options.classroompathsha || env.APP_SHA || env.GITHUB_SHA || undefined,
+    expectedOpenpathSha: options.openpathsha || env.OPENPATH_SHA || undefined,
   });
   if (options.outputenv) {
     writeEnvFile(

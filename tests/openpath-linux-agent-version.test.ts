@@ -169,8 +169,10 @@ Architecture: all
     assert.match(script, /apt-cache show 'openpath-dnsmasq=0\.0\.20260421051157-1'/);
     assert.match(
       script,
-      /apt-get install -y --download-only 'openpath-dnsmasq=0\.0\.20260421051157-1'/
+      /apt-get install -y --no-install-recommends 'openpath-dnsmasq=0\.0\.20260421051157-1'/
     );
+    assert.match(script, /apt-get check/);
+    assert.doesNotMatch(script, /--download-only/);
   });
 
   test('fails closed instead of falling back to an ancestor promotion contract', async () => {

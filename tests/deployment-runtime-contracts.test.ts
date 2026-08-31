@@ -1,5 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -203,6 +204,52 @@ describe('Deployment runtime contracts', () => {
     assert.ok(content.includes('release-bundle-${{ github.sha }}'));
     assert.ok(content.includes('openpath-promotion-contract-${{ github.sha }}'));
     assert.ok(!content.includes('resolve-openpath-linux-agent-version.mjs'));
+  });
+
+  test('production reload reinitializes v2 state paths when upgrading from the v1 helper', () => {
+    const production = readFileSync(
+      resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
+      'utf-8'
+    );
+    const reloadMarker = 'remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"';
+    const reloadIndex = production.indexOf(reloadMarker);
+    const initIndex = production.indexOf('deployment_state_init_paths "$STATE_DIR"', reloadIndex);
+
+    assert.ok(reloadIndex >= 0, 'production must reload checked-out helpers after checkout');
+    assert.ok(
+      initIndex > reloadIndex,
+      'production must reinitialize deployment-state paths after loading the checked-out helper'
+    );
+
+    const oldDeploymentStateHelper = [
+      'DEPLOYMENT_STATE_HELPER_CONTRACT_VERSION=1',
+      'deployment_state_init_paths() {',
+      '  local state_dir="$1"',
+      '  DEPLOYMENT_STATE_DIR="$state_dir"',
+      '  DEPLOYMENT_STATE_CURRENT_FILE="$state_dir/current-images.env"',
+      '  DEPLOYMENT_STATE_PREVIOUS_FILE="$state_dir/previous-images.env"',
+      '  DEPLOYMENT_STATE_CONTEXT_FILE="$state_dir/deploy-context.env"',
+      '}',
+    ].join('\n');
+
+    execFileSync(
+      'bash',
+      [
+        '-c',
+        [
+          'set -euo pipefail',
+          'state_dir="$(mktemp -d)"',
+          'trap \'rmdir "$state_dir"\' EXIT',
+          `source <(cat <<'EOF'\n${oldDeploymentStateHelper}\nEOF\n)`,
+          'deployment_state_init_paths "$state_dir"',
+          'source scripts/lib/deployment-state.sh',
+          'deployment_state_init_paths "$state_dir"',
+          'test "$DEPLOYMENT_STATE_PENDING_FILE" = "$state_dir/pending-images.env"',
+          'test "$DEPLOYMENT_STATE_CURRENT_POINTER_FILE" = "$state_dir/current"',
+        ].join('\n'),
+      ],
+      { cwd: projectRoot, encoding: 'utf8' }
+    );
   });
 
   test('release manifest flows through staging and production as a single payload contract', () => {

@@ -71,6 +71,7 @@ export async function runStep({ id, command, env = {}, cwd = process.cwd() }) {
   return { id, status: status.status, seconds, stdout: status.stdout, stderr: status.stderr };
 }
 
+/** @param {any} options */
 export function buildPromotionPlan({
   tag,
   highRiskWindows = false,
@@ -107,6 +108,47 @@ export function buildPromotionPlan({
       'Verify ClassroomPath is clean at origin/main and OpenPath is clean at the pinned gitlink.'
     ),
     step(
+      'verify-promotion-identity',
+      [
+        'bash',
+        '-lc',
+        [
+          'set -euo pipefail',
+          'git fetch origin main --quiet',
+          'current_classroom_path_sha="$(git rev-parse origin/main)"',
+          'test "$(git rev-parse HEAD)" = "$current_classroom_path_sha"',
+          'current_openpath_sha="$(git rev-parse origin/main:upstream/openpath)"',
+          'test "$(git -C upstream/openpath rev-parse HEAD)" = "$current_openpath_sha"',
+          `locator_file=${quoteShellArg(releaseBundleStateFile)}`,
+          'if [ ! -s "$locator_file" ]; then',
+          '  echo "No persisted Release Bundle identity; initial promotion check passed."',
+          '  exit 0',
+          'fi',
+          'set -a && . "$locator_file" && set +a',
+          'test -n "$STAGING_RELEASE_ID"',
+          'test -n "$STAGING_RELEASE_RUN_ID"',
+          'test -n "$STAGING_CLASSROOMPATH_SHA"',
+          'test -n "$STAGING_OPENPATH_SHA"',
+          'test -n "$STAGING_OPENPATH_CONTRACT_SHA256"',
+          'test "$current_classroom_path_sha" = "$STAGING_CLASSROOMPATH_SHA"',
+          'test "$current_openpath_sha" = "$STAGING_OPENPATH_SHA"',
+          `contract_file=${quoteShellArg(join(releaseBundleStateDir, 'release-bundle/openpath-promotion-contract.json'))}`,
+          `bundle_file=${quoteShellArg(join(releaseBundleStateDir, 'release-bundle/classroompath-release-bundle.json'))}`,
+          'test -s "$contract_file"',
+          'test -s "$bundle_file"',
+          'contract_sha256="$(sha256sum "$contract_file" | awk \'{print $1}\')"',
+          'test "$contract_sha256" = "$STAGING_OPENPATH_CONTRACT_SHA256"',
+          'node scripts/release-bundle.mjs verify \\',
+          '  --bundle-file "$bundle_file" \\',
+          '  --contract-file "$contract_file" \\',
+          '  --release-id "$STAGING_RELEASE_ID" \\',
+          '  --openpath-sha "$STAGING_OPENPATH_SHA" \\',
+          '  --classroompath-sha "$STAGING_CLASSROOMPATH_SHA"',
+        ].join('\n'),
+      ],
+      'Verify the current origin/main and OpenPath gitlink still match the persisted Release Bundle identity before any resume or selective skip.'
+    ),
+    step(
       'resolve-origin-main',
       ['bash', '-lc', 'git fetch origin main --quiet && git rev-parse origin/main'],
       'Resolve the exact ClassroomPath origin/main SHA to promote.'
@@ -120,18 +162,21 @@ export function buildPromotionPlan({
           `bundle_state_dir=${quoteShellArg(releaseBundleStateDir)}`,
           'mkdir -p "$bundle_state_dir"',
           'target_sha="$(git rev-parse origin/main)"',
-          'UPSTREAM_OPENPATH_SHA="$(git -C upstream/openpath rev-parse HEAD)" node scripts/wait-for-release-candidate.mjs resolve-bundle',
-          '  --repo balejosg/ClassroomPath',
-          '  --sha "$target_sha"',
-          '  --output-file "$bundle_state_dir/release-candidate-images.env"',
-          '  --output-dir "$bundle_state_dir/release-bundle"',
-          '  --legacy-manifest-file "$bundle_state_dir/release-manifest.env"',
-          '  > "$bundle_state_dir/outputs.env"',
+          'UPSTREAM_OPENPATH_SHA="$(git -C upstream/openpath rev-parse HEAD)" node scripts/wait-for-release-candidate.mjs resolve-bundle \\',
+          '  --repo balejosg/ClassroomPath \\',
+          '  --sha "$target_sha" \\',
+          '  --output-file "$bundle_state_dir/release-candidate-images.env" \\',
+          '  --output-dir "$bundle_state_dir/release-bundle" \\',
+          '  --legacy-manifest-file "$bundle_state_dir/release-manifest.env" > "$bundle_state_dir/outputs.env"',
           'release_id="$(awk -F= \'$1 == "release_id" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
           'run_id="$(awk -F= \'$1 == "release_bundle_run_id" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
+          'openpath_sha="$(awk -F= \'$1 == "openpath_sha" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
+          'openpath_contract_sha256="$(awk -F= \'$1 == "openpath_contract_sha256" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
           'test -n "$release_id"',
           'test -n "$run_id"',
-          `printf 'STAGING_RELEASE_ID=%s\\nSTAGING_RELEASE_RUN_ID=%s\\n' "$release_id" "$run_id" > ${quoteShellArg(releaseBundleStateFile)}`,
+          'test -n "$openpath_sha"',
+          'test -n "$openpath_contract_sha256"',
+          `printf 'STAGING_RELEASE_ID=%s\\nSTAGING_CLASSROOMPATH_SHA=%s\\nSTAGING_OPENPATH_SHA=%s\\nSTAGING_OPENPATH_CONTRACT_SHA256=%s\\nSTAGING_RELEASE_RUN_ID=%s\\n' "$release_id" "$target_sha" "$openpath_sha" "$openpath_contract_sha256" "$run_id" > ${quoteShellArg(releaseBundleStateFile)}`,
         ].join('\n'),
       ],
       'Resolve and persist the exact Release Bundle identity for origin/main.'
@@ -145,6 +190,8 @@ export function buildPromotionPlan({
           `test -s ${quoteShellArg(releaseBundleStateFile)}`,
           `set -a && . ${quoteShellArg(releaseBundleStateFile)} && set +a`,
           'test -n "$STAGING_RELEASE_ID" && test -n "$STAGING_RELEASE_RUN_ID"',
+          'test -n "$STAGING_CLASSROOMPATH_SHA" && test -n "$STAGING_OPENPATH_SHA"',
+          'test -n "$STAGING_OPENPATH_CONTRACT_SHA256"',
           'STAGING_GHCR_USERNAME="${STAGING_GHCR_USERNAME:-balejosg}" STAGING_GHCR_TOKEN="${STAGING_GHCR_TOKEN:-$(gh auth token)}" npm run deploy:staging',
         ].join(' && '),
       ],
@@ -350,10 +397,14 @@ export function summarizeGitHubRunMonitor(summary) {
  * Called after each step result during an --execute run so a crash mid-sequence
  * leaves a recoverable state that --resume can consult.
  */
+/** @param {any} options */
 export function writeStepState({
   root = '.opencode/tmp/release-promote',
   tag,
   releaseId,
+  classroomPathSha,
+  openpathSha,
+  openpathContractSha256,
   rcRunId,
   startedAt,
   stepId,
@@ -390,12 +441,44 @@ export function writeStepState({
     );
   }
 
+  const normalizedClassroomPathSha = normalizeSha40(classroomPathSha, 'classroomPathSha');
+  const existingClassroomPathSha = normalizeSha40(
+    existing.classroomPathSha,
+    'persisted classroomPathSha'
+  );
+  assertIdentityMatch('ClassroomPath SHA', existingClassroomPathSha, normalizedClassroomPathSha);
+
+  const normalizedOpenpathSha = normalizeSha40(openpathSha, 'openpathSha');
+  const existingOpenpathSha = normalizeSha40(existing.openpathSha, 'persisted openpathSha');
+  assertIdentityMatch('OpenPath SHA', existingOpenpathSha, normalizedOpenpathSha);
+
+  const normalizedOpenpathContractSha256 = normalizeSha256(
+    openpathContractSha256,
+    'openpathContractSha256'
+  );
+  const existingOpenpathContractSha256 = normalizeSha256(
+    existing.openpathContractSha256,
+    'persisted openpathContractSha256'
+  );
+  assertIdentityMatch(
+    'OpenPath contract SHA-256',
+    existingOpenpathContractSha256,
+    normalizedOpenpathContractSha256
+  );
+
   const boundReleaseId = normalizedReleaseId || existingReleaseId;
+  const boundClassroomPathSha = normalizedClassroomPathSha || existingClassroomPathSha;
+  const boundOpenpathSha = normalizedOpenpathSha || existingOpenpathSha;
+  const boundOpenpathContractSha256 =
+    normalizedOpenpathContractSha256 || existingOpenpathContractSha256;
   const boundRcRunId = normalizedRcRunId || existingRcRunId;
 
   const updated = {
     tag,
     ...(boundReleaseId ? { releaseId: boundReleaseId } : {}),
+    ...(boundClassroomPathSha ? { classroomPathSha: boundClassroomPathSha } : {}),
+    ...(boundOpenpathSha ? { openpathSha: boundOpenpathSha } : {}),
+    ...(boundOpenpathContractSha256 ? { openpathContractSha256: boundOpenpathContractSha256 } : {}),
     ...(boundRcRunId ? { rcRunId: boundRcRunId } : {}),
     startedAt: existing.startedAt ?? startedAt,
     updatedAt: new Date().toISOString(),
@@ -428,6 +511,32 @@ function normalizeRcRunId(value, label) {
   return normalized;
 }
 
+function normalizeSha40(value, label) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '';
+  if (!/^[0-9a-f]{40}$/.test(normalized)) {
+    throw new Error(`${label} must be a 40-character lowercase SHA`);
+  }
+  return normalized;
+}
+
+function normalizeSha256(value, label) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '';
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new Error(`${label} must be a 64-character lowercase SHA-256 hex string`);
+  }
+  return normalized;
+}
+
+function assertIdentityMatch(label, existingValue, requestedValue) {
+  if (existingValue && requestedValue && existingValue !== requestedValue) {
+    throw new Error(
+      `Promotion state is bound to a different ${label}: ${existingValue} != ${requestedValue}`
+    );
+  }
+}
+
 export function readReleaseBundleLocatorIdentity(locatorPath) {
   let text;
   try {
@@ -448,17 +557,27 @@ export function readReleaseBundleLocatorIdentity(locatorPath) {
       })
   );
   const releaseId = normalizeReleaseId(values.STAGING_RELEASE_ID, 'STAGING_RELEASE_ID');
+  const classroomPathSha = normalizeSha40(
+    values.STAGING_CLASSROOMPATH_SHA,
+    'STAGING_CLASSROOMPATH_SHA'
+  );
+  const openpathSha = normalizeSha40(values.STAGING_OPENPATH_SHA, 'STAGING_OPENPATH_SHA');
+  const openpathContractSha256 = normalizeSha256(
+    values.STAGING_OPENPATH_CONTRACT_SHA256,
+    'STAGING_OPENPATH_CONTRACT_SHA256'
+  );
   const rcRunId = normalizeRcRunId(values.STAGING_RELEASE_RUN_ID, 'STAGING_RELEASE_RUN_ID');
-  if (!releaseId || !rcRunId) {
+  if (!releaseId || !classroomPathSha || !openpathSha || !openpathContractSha256 || !rcRunId) {
     throw new Error(`Exact Release Bundle locator is incomplete: ${locatorPath}`);
   }
-  return { releaseId, rcRunId };
+  return { releaseId, classroomPathSha, openpathSha, openpathContractSha256, rcRunId };
 }
 
 /**
  * Read the per-step state file for a given tag.
  * Returns null when no state file exists yet.
  */
+/** @param {any} options */
 export function readStepState({ root = '.opencode/tmp/release-promote', tag } = {}) {
   const statePath = join(root, tag, 'state.json');
   try {

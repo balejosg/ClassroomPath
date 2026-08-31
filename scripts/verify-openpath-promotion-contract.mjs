@@ -63,6 +63,54 @@ function buildReleaseAssetUrl({ repository, releaseTag, assetName }) {
   );
 }
 
+function shellSingleQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
+/** @param {any} options */
+export function renderOpenPathLinuxAgentInstallProbeScript({
+  aptBaseUrl = DEFAULT_OPENPATH_APT_BASE_URL,
+  aptSuite,
+  packageName,
+  packageVersion,
+} = {}) {
+  const normalizedBaseUrl = String(aptBaseUrl ?? '')
+    .trim()
+    .replace(/\/+$/, '');
+  const normalizedSuite = String(aptSuite ?? '').trim();
+  const normalizedPackageName = String(packageName ?? '').trim();
+  const normalizedPackageVersion = String(packageVersion ?? '').trim();
+
+  if (!normalizedBaseUrl) {
+    throw new Error('OpenPath APT base URL is required');
+  }
+  if (!['stable', 'unstable'].includes(normalizedSuite)) {
+    throw new Error('OpenPath APT suite must be stable or unstable');
+  }
+  if (!normalizedPackageName) {
+    throw new Error('OpenPath Linux package name is required');
+  }
+  if (!normalizedPackageVersion) {
+    throw new Error('OpenPath Linux package version is required');
+  }
+
+  const packagePin = `${normalizedPackageName}=${normalizedPackageVersion}`;
+  const setupFlag = normalizedSuite === 'unstable' ? '--unstable' : '--stable';
+
+  return `set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+export OPENPATH_APT_REPO_URL=${shellSingleQuote(normalizedBaseUrl)}
+apt-get update -qq
+apt-get install -y --no-install-recommends ca-certificates curl gnupg
+curl -fsSL "\${OPENPATH_APT_REPO_URL}/apt-setup.sh" | bash -s -- ${setupFlag}
+apt-get update -qq
+apt-cache show ${shellSingleQuote(packagePin)} >/dev/null
+apt-get install -y --no-install-recommends ${shellSingleQuote(packagePin)}
+apt-get check
+test "\$(dpkg-query -W -f='\${Version}' ${shellSingleQuote(normalizedPackageName)})" = ${shellSingleQuote(normalizedPackageVersion)}
+`;
+}
+
 async function fetchText(url) {
   const response = await fetch(url);
   if (!response.ok) {
@@ -95,6 +143,7 @@ function assertLinuxPackageTuple({ contractComponent, aptPackagesContent }) {
   return match;
 }
 
+/** @param {any} options */
 export async function verifyOpenPathPromotionContract({
   contractBytes,
   expectedOpenpathSha,
@@ -186,6 +235,7 @@ function parseArgs(argv) {
     releaseRepository:
       process.env.OPENPATH_RELEASE_REPOSITORY?.trim() || DEFAULT_OPENPATH_RELEASE_REPOSITORY,
     json: false,
+    installProbeScript: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -213,6 +263,10 @@ function parseArgs(argv) {
       options.json = true;
       continue;
     }
+    if (token === '--install-probe-script') {
+      options.installProbeScript = true;
+      continue;
+    }
     throw new Error('Unknown argument: ' + token);
   }
   return options;
@@ -229,6 +283,17 @@ export async function runOpenPathPromotionContractVerifier(argv = process.argv.s
     aptBaseUrl: options.aptBaseUrl,
     releaseRepository: options.releaseRepository,
   });
+  if (options.installProbeScript) {
+    process.stdout.write(
+      renderOpenPathLinuxAgentInstallProbeScript({
+        aptBaseUrl: options.aptBaseUrl,
+        aptSuite: result.linuxAgent.aptSuite,
+        packageName: result.linuxAgent.packageName,
+        packageVersion: result.linuxAgent.packageVersion,
+      })
+    );
+    return result;
+  }
   const output = {
     openpath_sha: result.openpathSha,
     contract_sha256: result.contractSha256,

@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, test } from 'node:test';
 
-import { verifyOpenPathPromotionContract } from '../scripts/verify-openpath-promotion-contract.mjs';
+import {
+  renderOpenPathLinuxAgentInstallProbeScript,
+  verifyOpenPathPromotionContract,
+} from '../scripts/verify-openpath-promotion-contract.mjs';
 
 const openpathSha = 'a3846d6cbbb5c816d12dc4c5a60409760e121b90';
 const metadataHash = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
@@ -67,6 +70,23 @@ function packagesText(version = packageVersion, filename = packageFilename, sha2
 }
 
 describe('OpenPath v2 physical provenance verifier', () => {
+  test('renders a real exact-version APT installation probe from the v2 contract component', () => {
+    const script = renderOpenPathLinuxAgentInstallProbeScript({
+      aptBaseUrl: 'https://example.test/apt',
+      aptSuite: contract().components.linuxAgent.aptSuite,
+      packageName: contract().components.linuxAgent.packageName,
+      packageVersion: contract().components.linuxAgent.packageVersion,
+    });
+
+    assert.match(
+      script,
+      /apt-get install -y --no-install-recommends 'openpath-dnsmasq=0\.0\.20260830211724-1'/u
+    );
+    assert.match(script, /apt-get check/u);
+    assert.match(script, /dpkg-query -W/u);
+    assert.doesNotMatch(script, /--download-only/u);
+  });
+
   test('verifies the exact contract, APT tuple, and package bytes without selecting a version', async () => {
     const requests: string[] = [];
     const result = await verifyOpenPathPromotionContract({

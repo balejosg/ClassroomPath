@@ -45,11 +45,14 @@ Options:
   --from-step <id>                    Skip all steps before <id> and run from <id> to the end.
                                       Rejected if any skipped promotion gate has not already passed
                                       (i.e. is not recorded 'success' in the state file for this tag).
+                                      The verify-promotion-identity gate always runs.
   --only <id>                         Run only this step. May be repeated to build a set of steps
                                       (e.g. --only verify-promotion-ready --only release-preflight).
-                                      Subject to the same promotion-gate guard as --from-step.
+                                      Subject to the same promotion-gate guard as --from-step; the
+                                      verify-promotion-identity gate always runs.
   --resume                            Read the persisted state file for this tag and skip every step
-                                      already recorded 'success'. Promotion-gate guard still applies.
+                                      already recorded 'success'. Promotion-gate guard still applies;
+                                      verify-promotion-identity always runs.
   --help                              Show this help.
 `;
 }
@@ -193,6 +196,9 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
         root: dependencies.transcriptRoot,
         tag,
         releaseId: currentLocator?.releaseId,
+        classroomPathSha: currentLocator?.classroomPathSha,
+        openpathSha: currentLocator?.openpathSha,
+        openpathContractSha256: currentLocator?.openpathContractSha256,
         rcRunId: currentLocator?.rcRunId,
         startedAt,
         stepId: recorded.id,
@@ -387,6 +393,12 @@ function resolveSkipSet({ plan, options, stateRoot, tag, readStepStateFn }) {
     }
   }
 
+  // This gate is deliberately never skipped. It compares the live target refs and the
+  // persisted bundle bytes even when --resume, --from-step, or --only would otherwise skip it.
+  const identityGateId = 'verify-promotion-identity';
+  skipSet.delete(identityGateId);
+  skipReasons.delete(identityGateId);
+
   // Fail-closed guard: reject any skip of an un-passed promotion gate, regardless of which
   // flag built the skip set. Gates added by --resume are present only when already recorded
   // success, so they re-confirm here; gates added by --from-step / --only are checked against
@@ -414,9 +426,32 @@ function resolveSkipSet({ plan, options, stateRoot, tag, readStepStateFn }) {
 
 function assertPromotionResumeIdentity({ state, locator }) {
   const stateReleaseId = normalizePromotionReleaseId(state?.releaseId, 'persisted releaseId');
+  const stateClassroomPathSha = normalizePromotionSha40(
+    state?.classroomPathSha,
+    'persisted classroomPathSha'
+  );
+  const stateOpenpathSha = normalizePromotionSha40(state?.openpathSha, 'persisted openpathSha');
+  const stateOpenpathContractSha256 = normalizePromotionSha256(
+    state?.openpathContractSha256,
+    'persisted openpathContractSha256'
+  );
   const stateRcRunId = normalizePromotionRcRunId(state?.rcRunId, 'persisted rcRunId');
+  const stateIdentity = [
+    stateReleaseId,
+    stateClassroomPathSha,
+    stateOpenpathSha,
+    stateOpenpathContractSha256,
+    stateRcRunId,
+  ];
+  const hasStateIdentity = stateIdentity.some(Boolean);
 
-  if ((stateReleaseId || stateRcRunId) && !locator) {
+  if (hasStateIdentity && stateIdentity.some((value) => !value)) {
+    throw new Error(
+      'Promotion state contains an incomplete Release Bundle identity; refusing resume or selective skip'
+    );
+  }
+
+  if (hasStateIdentity && !locator) {
     throw new Error(
       'Promotion state contains Release Bundle identity but the exact Release Bundle locator is missing'
     );
@@ -425,6 +460,27 @@ function assertPromotionResumeIdentity({ state, locator }) {
   if (stateReleaseId && stateReleaseId !== locator.releaseId) {
     throw new Error(
       `Promotion state is bound to a different Release Bundle releaseId: ${stateReleaseId} != ${locator.releaseId}`
+    );
+  }
+
+  if (stateClassroomPathSha && stateClassroomPathSha !== locator.classroomPathSha) {
+    throw new Error(
+      `Promotion state is bound to a different ClassroomPath SHA: ${stateClassroomPathSha} != ${locator.classroomPathSha}`
+    );
+  }
+
+  if (stateOpenpathSha && stateOpenpathSha !== locator.openpathSha) {
+    throw new Error(
+      `Promotion state is bound to a different OpenPath SHA: ${stateOpenpathSha} != ${locator.openpathSha}`
+    );
+  }
+
+  if (
+    stateOpenpathContractSha256 &&
+    stateOpenpathContractSha256 !== locator.openpathContractSha256
+  ) {
+    throw new Error(
+      `Promotion state is bound to a different OpenPath contract SHA-256: ${stateOpenpathContractSha256} != ${locator.openpathContractSha256}`
     );
   }
 
@@ -449,6 +505,24 @@ function normalizePromotionRcRunId(value, label) {
   if (!normalized) return '';
   if (!/^\d+$/.test(normalized)) {
     throw new Error(`${label} must be a numeric GitHub run id`);
+  }
+  return normalized;
+}
+
+function normalizePromotionSha40(value, label) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '';
+  if (!/^[0-9a-f]{40}$/.test(normalized)) {
+    throw new Error(`${label} must be a 40-character lowercase SHA`);
+  }
+  return normalized;
+}
+
+function normalizePromotionSha256(value, label) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '';
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new Error(`${label} must be a 64-character lowercase SHA-256 hex string`);
   }
   return normalized;
 }

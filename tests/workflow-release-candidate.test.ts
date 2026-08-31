@@ -370,6 +370,8 @@ describe('Release candidate workflow contracts', () => {
       verifyInstallabilityRun.includes('node scripts/verify-openpath-promotion-contract.mjs')
     );
     assert.ok(verifyInstallabilityRun.includes('openpath-promotion-contract-input'));
+    assert.match(verifyInstallabilityRun, /--install-probe-script/u);
+    assert.match(verifyInstallabilityRun, /docker run --rm -i ubuntu:24\.04 bash/u);
     assert.equal(
       deriveCheckout?.with?.['fetch-depth'],
       0,
@@ -886,6 +888,8 @@ describe('Release candidate workflow contracts', () => {
       String(installabilityStep?.run ?? ''),
       /node scripts\/verify-openpath-promotion-contract\.mjs[\s\S]*--contract-file/
     );
+    assert.match(String(installabilityStep?.run ?? ''), /--install-probe-script/u);
+    assert.match(String(installabilityStep?.run ?? ''), /docker run --rm -i ubuntu:24\.04 bash/u);
     assert.match(
       String(installabilityStep?.run ?? ''),
       /--openpath-sha "\$\{\{ steps\.check\.outputs\.latest \}\}"/

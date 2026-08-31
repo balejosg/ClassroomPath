@@ -113,15 +113,42 @@ runs:
           exit 1
         fi
 
-        docker pull "$image"
-        revision="$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
-        contract_sha256="$(docker image inspect "$image" --format '{{ index .Config.Labels "eu.classroompath.openpath.contract-sha256" }}')"
+        command -v jq >/dev/null 2>&1
+        index_json="$(docker buildx imagetools inspect --raw "$image")"
+        for platform in linux/amd64 linux/arm64; do
+          os="${platform%/*}"
+          architecture="${platform#*/}"
+          child_digest="$(printf '%s\n' "$index_json" | jq -er --arg os "$os" --arg architecture "$architecture" '
+            [.manifests[]? | select(.platform.os == $os and .platform.architecture == $architecture)]
+            | if length == 1 then .[0].digest else error("required platform manifest is missing or duplicated") end
+          ')"
+          if [[ ! "$child_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Manifest child digest for $platform is invalid: $child_digest" >&2
+            exit 1
+          fi
 
-        if [ "$revision" != "$EXPECTED_OPENPATH_SOURCE_SHA" ]; then
-          echo "::error::Image OpenPath source provenance mismatch. expected=$EXPECTED_OPENPATH_SOURCE_SHA actual=$revision" >&2
-          exit 1
-        fi
-        if [ "$contract_sha256" != "$EXPECTED_OPENPATH_CONTRACT_SHA256" ]; then
-          echo "::error::Image OpenPath contract provenance mismatch. expected=$EXPECTED_OPENPATH_CONTRACT_SHA256 actual=$contract_sha256" >&2
-          exit 1
-        fi
+          child_manifest="$(docker buildx imagetools inspect --raw "${image%@*}@${child_digest}")"
+          child_config_digest="$(printf '%s\n' "$child_manifest" | jq -er '.config.digest')"
+          if [[ ! "$child_config_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Manifest child config digest for $platform is invalid: $child_config_digest" >&2
+            exit 1
+          fi
+
+          docker pull --platform "$platform" "$image"
+          actual_platform="$(docker image inspect --platform "$platform" --format '{{.Os}}/{{.Architecture}}' "$image")"
+          if [ "$actual_platform" != "$platform" ]; then
+            echo "::error::Published image platform mismatch. expected=$platform actual=$actual_platform" >&2
+            exit 1
+          fi
+          revision="$(docker image inspect --platform "$platform" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")"
+          contract_sha256="$(docker image inspect --platform "$platform" --format '{{ index .Config.Labels "eu.classroompath.openpath.contract-sha256" }}' "$image")"
+
+          if [ "$revision" != "$EXPECTED_OPENPATH_SOURCE_SHA" ]; then
+            echo "::error::Image OpenPath source provenance mismatch for $platform. expected=$EXPECTED_OPENPATH_SOURCE_SHA actual=$revision" >&2
+            exit 1
+          fi
+          if [ "$contract_sha256" != "$EXPECTED_OPENPATH_CONTRACT_SHA256" ]; then
+            echo "::error::Image OpenPath contract provenance mismatch for $platform. expected=$EXPECTED_OPENPATH_CONTRACT_SHA256 actual=$contract_sha256" >&2
+            exit 1
+          fi
+        done

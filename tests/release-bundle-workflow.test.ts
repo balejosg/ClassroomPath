@@ -34,7 +34,11 @@ describe('Release Bundle v2 workflow contracts', () => {
 
     assert.match(action, /openpath-source-sha:/u);
     assert.match(action, /openpath-contract-sha256:/u);
-    assert.match(action, /docker pull "\$image"/u);
+    assert.match(action, /docker pull --platform "\$platform" "\$image"/u);
+    assert.match(action, /docker buildx imagetools inspect --raw "\$image"/u);
+    assert.match(action, /for platform in linux\/amd64 linux\/arm64/u);
+    assert.match(action, /docker pull --platform "\$platform" "\$image"/u);
+    assert.match(action, /jq -er/u);
     assert.match(action, /org\.opencontainers\.image\.revision/u);
     assert.match(action, /eu\.classroompath\.openpath\.contract-sha256/u);
     assert.match(reusable, /openpath-source-sha: \$\{\{ inputs\.openpath_source_sha \}\}/u);

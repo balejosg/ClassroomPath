@@ -175,7 +175,8 @@ jobs:
           set -euo pipefail
           node scripts/verify-openpath-promotion-contract.mjs \
             --contract-file openpath-promotion-contract-input/openpath-promotion-contract.json \
-            --openpath-sha "${{ needs.derive-release-image-refs.outputs.openpath_sha }}"
+            --openpath-sha "${{ needs.derive-release-image-refs.outputs.openpath_sha }}" \
+            --install-probe-script | docker run --rm -i ubuntu:24.04 bash
 
   resolve-previous-release-candidate-manifest:
     name: Resolve Previous Release Candidate Manifest

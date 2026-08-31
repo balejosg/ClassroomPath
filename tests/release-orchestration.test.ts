@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -9,6 +9,7 @@ import {
   buildWaitForTagDeployCommand,
   formatCommand,
   monitorGitHubRun,
+  readReleaseBundleLocatorIdentity,
   runStep,
   summarizeGitHubRunMonitor,
 } from '../scripts/lib/release-orchestration.mjs';
@@ -26,6 +27,7 @@ describe('release promotion orchestration', () => {
       plan.steps.map((step) => step.id),
       [
         'verify-clean-repos',
+        'verify-promotion-identity',
         'resolve-origin-main',
         'wait-release-candidate',
         'deploy-staging',
@@ -103,9 +105,54 @@ describe('release promotion orchestration', () => {
     assert.match(commandsById['wait-release-candidate'], /resolve-bundle/u);
     assert.doesNotMatch(commandsById['wait-release-candidate'], /resolve-manifest/u);
     assert.match(commandsById['wait-release-candidate'], /release_bundle_run_id/u);
+    assert.match(commandsById['wait-release-candidate'], /STAGING_CLASSROOMPATH_SHA/u);
+    assert.match(commandsById['wait-release-candidate'], /STAGING_OPENPATH_SHA/u);
+    assert.match(commandsById['wait-release-candidate'], /STAGING_OPENPATH_CONTRACT_SHA256/u);
     assert.match(commandsById['wait-release-candidate'], /RELEASE_ID/u);
     assert.match(commandsById['deploy-staging'], /STAGING_RELEASE_ID/u);
     assert.match(commandsById['deploy-staging'], /STAGING_RELEASE_RUN_ID/u);
+  });
+
+  it('runs an identity gate that compares the current remote target with persisted bundle identity', () => {
+    const plan = buildPromotionPlan({ tag: 'v1.2.301' });
+    const identityStep = plan.steps.find((step) => step.id === 'verify-promotion-identity');
+    const command = formatCommand(identityStep?.command);
+
+    assert.ok(identityStep, 'promotion plan must include an identity gate');
+    assert.match(command, /git fetch origin main/u);
+    assert.match(command, /git rev-parse origin\/main/u);
+    assert.match(command, /git rev-parse origin\/main:upstream\/openpath/u);
+    assert.match(command, /STAGING_CLASSROOMPATH_SHA/u);
+    assert.match(command, /STAGING_OPENPATH_SHA/u);
+    assert.match(command, /STAGING_OPENPATH_CONTRACT_SHA256/u);
+    assert.match(command, /--openpath-sha "\$STAGING_OPENPATH_SHA"/u);
+    assert.match(command, /release-bundle\.mjs verify/u);
+  });
+
+  it('reads all five persisted Release Bundle identity fields', () => {
+    const root = mkdtempSync(join(tmpdir(), 'release-locator-identity-'));
+    const locatorPath = join(root, 'staging-release.env');
+    const identity = {
+      releaseId: 'a'.repeat(64),
+      classroomPathSha: 'b'.repeat(40),
+      openpathSha: 'c'.repeat(40),
+      openpathContractSha256: 'd'.repeat(64),
+      rcRunId: '123',
+    };
+
+    writeFileSync(
+      locatorPath,
+      [
+        `STAGING_RELEASE_ID=${identity.releaseId}`,
+        `STAGING_CLASSROOMPATH_SHA=${identity.classroomPathSha}`,
+        `STAGING_OPENPATH_SHA=${identity.openpathSha}`,
+        `STAGING_OPENPATH_CONTRACT_SHA256=${identity.openpathContractSha256}`,
+        `STAGING_RELEASE_RUN_ID=${identity.rcRunId}`,
+        '',
+      ].join('\n')
+    );
+
+    assert.deepEqual(readReleaseBundleLocatorIdentity(locatorPath), identity);
   });
 
   it('runs the post-production Windows canary by default before residual reporting', () => {
@@ -342,6 +389,7 @@ describe('release promotion orchestration', () => {
     assert.equal(result.status, 0);
     assert.deepEqual(executedSteps, [
       'verify-clean-repos',
+      'verify-promotion-identity',
       'resolve-origin-main',
       'wait-release-candidate',
       'deploy-staging',

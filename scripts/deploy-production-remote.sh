@@ -392,6 +392,7 @@ prepare_production_checkout() {
   git submodule deinit -f --all || true
   git submodule update --init --recursive --force
   remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"
+  deployment_state_init_paths "$STATE_DIR"
   RELEASE_EXECUTION_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-execution.sh")"
   if release_execution_helper_supports_contract "$RELEASE_EXECUTION_HELPER_PATH"; then
     # shellcheck source=lib/release-execution.sh

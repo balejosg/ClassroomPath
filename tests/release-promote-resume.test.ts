@@ -46,6 +46,7 @@ function stateWithSuccessGates(...ids: string[]) {
 // Full ordered step list for the default plan (highRiskWindows=true, postProductionWindowsCanary=true)
 const ALL_STEP_IDS = [
   'verify-clean-repos',
+  'verify-promotion-identity',
   'resolve-origin-main',
   'wait-release-candidate',
   'deploy-staging',
@@ -170,6 +171,10 @@ describe('step filtering — --from-step', () => {
       executedSteps.includes('verify-production-health'),
       'verify-production-health must run'
     );
+    assert.ok(
+      executedSteps.includes('verify-promotion-identity'),
+      'verify-promotion-identity must always run'
+    );
   });
 });
 
@@ -200,7 +205,11 @@ describe('step filtering — --only', () => {
     assert.equal(result.status, 0);
     assert.deepEqual(
       executedSteps.sort(),
-      ['report-residual-actions-runs', 'verify-production-health'].sort()
+      [
+        'report-residual-actions-runs',
+        'verify-production-health',
+        'verify-promotion-identity',
+      ].sort()
     );
   });
 });
@@ -380,6 +389,10 @@ describe('fail-closed promotion gate guard', () => {
       executedSteps.includes('verify-clean-repos'),
       false,
       'verify-clean-repos was already success'
+    );
+    assert.ok(
+      executedSteps.includes('verify-promotion-identity'),
+      'verify-promotion-identity must always run'
     );
   });
 });
@@ -578,15 +591,56 @@ describe('writeStepState / readStepState', () => {
     );
   });
 
+  it('persists the complete five-field Release Bundle identity', () => {
+    const root = mkdtempSync(join(tmpdir(), 'release-state-complete-identity-'));
+    const tag = 'v9.0.45';
+    const identity = {
+      releaseId: 'a'.repeat(64),
+      classroomPathSha: 'b'.repeat(40),
+      openpathSha: 'c'.repeat(40),
+      openpathContractSha256: 'd'.repeat(64),
+      rcRunId: '123',
+    };
+
+    writeStepState({
+      root,
+      tag,
+      ...identity,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      stepId: 'wait-release-candidate',
+      status: 'success',
+      seconds: 1,
+    });
+
+    const state = readStepState({ root, tag });
+    assert.deepEqual(
+      {
+        releaseId: state.releaseId,
+        classroomPathSha: state.classroomPathSha,
+        openpathSha: state.openpathSha,
+        openpathContractSha256: state.openpathContractSha256,
+        rcRunId: state.rcRunId,
+      },
+      identity
+    );
+  });
+
   it('rejects resume when the persisted state and exact bundle locator disagree', async () => {
     const root = mkdtempSync(join(tmpdir(), 'release-state-identity-mismatch-'));
     const tag = 'v9.0.5';
     const stateReleaseId = 'a'.repeat(64);
     const bundleReleaseId = 'b'.repeat(64);
+    const classroomPathSha = 'c'.repeat(40);
+    const openpathSha = 'd'.repeat(40);
+    const openpathContractSha256 = 'e'.repeat(64);
     writeStepState({
       root,
       tag,
       releaseId: stateReleaseId,
+      classroomPathSha,
+      openpathSha,
+      openpathContractSha256,
+      rcRunId: '123',
       startedAt: '2026-01-01T00:00:00.000Z',
       stepId: 'verify-clean-repos',
       status: 'success',
@@ -595,7 +649,14 @@ describe('writeStepState / readStepState', () => {
     mkdirSync(join(root, tag, 'bundle'), { recursive: true });
     writeFileSync(
       join(root, tag, 'bundle', 'staging-release.env'),
-      `STAGING_RELEASE_ID=${bundleReleaseId}\nSTAGING_RELEASE_RUN_ID=123\n`
+      [
+        `STAGING_RELEASE_ID=${bundleReleaseId}`,
+        `STAGING_CLASSROOMPATH_SHA=${classroomPathSha}`,
+        `STAGING_OPENPATH_SHA=${openpathSha}`,
+        `STAGING_OPENPATH_CONTRACT_SHA256=${openpathContractSha256}`,
+        'STAGING_RELEASE_RUN_ID=123',
+        '',
+      ].join('\n')
     );
 
     let stderr = '';
@@ -613,6 +674,139 @@ describe('writeStepState / readStepState', () => {
 
     assert.equal(result.status, 2);
     assert.match(stderr, /different Release Bundle releaseId/);
+  });
+
+  it('rejects resume when a persisted source identity field differs from the locator', async () => {
+    const identity = {
+      releaseId: 'a'.repeat(64),
+      classroomPathSha: 'b'.repeat(40),
+      openpathSha: 'c'.repeat(40),
+      openpathContractSha256: 'd'.repeat(64),
+      rcRunId: '123',
+    };
+
+    for (const [field, label] of [
+      ['classroomPathSha', 'ClassroomPath SHA'],
+      ['openpathSha', 'OpenPath SHA'],
+      ['openpathContractSha256', 'OpenPath contract SHA-256'],
+    ]) {
+      const root = mkdtempSync(join(tmpdir(), `release-state-${field}-mismatch-`));
+      const tag = 'v9.0.55';
+      writeStepState({
+        root,
+        tag,
+        ...identity,
+        startedAt: '2026-01-01T00:00:00.000Z',
+        stepId: 'verify-clean-repos',
+        status: 'success',
+        seconds: 1,
+      });
+      mkdirSync(join(root, tag, 'bundle'), { recursive: true });
+      const locatorIdentity = {
+        ...identity,
+        [field]: field === 'openpathContractSha256' ? 'e'.repeat(64) : 'e'.repeat(40),
+      };
+      writeFileSync(
+        join(root, tag, 'bundle', 'staging-release.env'),
+        [
+          `STAGING_RELEASE_ID=${locatorIdentity.releaseId}`,
+          `STAGING_CLASSROOMPATH_SHA=${locatorIdentity.classroomPathSha}`,
+          `STAGING_OPENPATH_SHA=${locatorIdentity.openpathSha}`,
+          `STAGING_OPENPATH_CONTRACT_SHA256=${locatorIdentity.openpathContractSha256}`,
+          `STAGING_RELEASE_RUN_ID=${locatorIdentity.rcRunId}`,
+          '',
+        ].join('\n')
+      );
+
+      let stderr = '';
+      const result = await runReleasePromoteCommand(
+        ['--tag', tag, '--execute', '--resume'],
+        makeSuccessDeps({
+          transcriptRoot: root,
+          readStepState: ({ root: stateRoot, tag: stateTag }) =>
+            readStepState({ root: stateRoot, tag: stateTag }),
+          stderr: (value: string) => {
+            stderr += value;
+          },
+        })
+      );
+
+      assert.equal(result.status, 2);
+      assert.match(stderr, new RegExp(`different ${label}`));
+    }
+  });
+
+  it('always runs the identity gate before accepting a resume skip set', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'release-state-current-identity-'));
+    const tag = 'v9.0.6';
+    const identity = {
+      releaseId: 'a'.repeat(64),
+      classroomPathSha: 'b'.repeat(40),
+      openpathSha: 'c'.repeat(40),
+      openpathContractSha256: 'd'.repeat(64),
+      rcRunId: '123',
+    };
+    mkdirSync(join(root, tag), { recursive: true });
+    writeFileSync(
+      join(root, tag, 'state.json'),
+      JSON.stringify({
+        tag,
+        ...identity,
+        startedAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        steps: {
+          'verify-clean-repos': { status: 'success', seconds: 1 },
+          'verify-promotion-identity': { status: 'success', seconds: 1 },
+          'resolve-origin-main': { status: 'success', seconds: 1 },
+          'wait-release-candidate': { status: 'success', seconds: 1 },
+          'deploy-staging': { status: 'success', seconds: 1 },
+        },
+      }) + '\n'
+    );
+    mkdirSync(join(root, tag, 'bundle'), { recursive: true });
+    writeFileSync(
+      join(root, tag, 'bundle', 'staging-release.env'),
+      [
+        `STAGING_RELEASE_ID=${identity.releaseId}`,
+        `STAGING_CLASSROOMPATH_SHA=${identity.classroomPathSha}`,
+        `STAGING_OPENPATH_SHA=${identity.openpathSha}`,
+        `STAGING_OPENPATH_CONTRACT_SHA256=${identity.openpathContractSha256}`,
+        `STAGING_RELEASE_RUN_ID=${identity.rcRunId}`,
+        '',
+      ].join('\n')
+    );
+
+    const executedSteps: string[] = [];
+    const result = await runReleasePromoteCommand(
+      [
+        '--tag',
+        tag,
+        '--execute',
+        '--no-high-risk-windows',
+        '--no-post-production-windows-canary',
+        '--resume',
+      ],
+      makeSuccessDeps({
+        transcriptRoot: root,
+        readStepState: ({ root: stateRoot, tag: stateTag }) =>
+          readStepState({ root: stateRoot, tag: stateTag }),
+        runStep: async (step: { id: string }) => {
+          executedSteps.push(step.id);
+          if (step.id === 'verify-promotion-identity') {
+            return {
+              id: step.id,
+              status: 'failed',
+              seconds: 1,
+              stderr: 'current promotion identity changed',
+            };
+          }
+          return { id: step.id, status: 'success', seconds: 1 };
+        },
+      })
+    );
+
+    assert.equal(result.status, 1);
+    assert.deepEqual(executedSteps, ['verify-promotion-identity']);
   });
 
   it('returns null when no state file exists', () => {
