@@ -968,6 +968,7 @@ jobs:
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLASSROOMPATH_DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
           PRODUCTION_CONTAINER_PLATFORM: ${{ needs.resolve-release-images.outputs.production_container_platform }}
         uses: appleboy/ssh-action@v1.2.4
         with:
@@ -977,5 +978,5 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 15m
-          envs: GHCR_USERNAME,GHCR_TOKEN,PRODUCTION_CONTAINER_PLATFORM
+          envs: GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_DEPLOY_ROOT,PRODUCTION_CONTAINER_PLATFORM
           script_path: scripts/rollback-production-remote.sh

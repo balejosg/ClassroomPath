@@ -27,6 +27,20 @@ test('production deploy consumes the exact Release Bundle and embedded contract'
   assert.match(remote, /openpath_contract_base64/u);
 });
 
+test('production bundle verification does not require Node on the host', () => {
+  const context = readFileSync(
+    resolve(projectRoot, 'scripts/lib/deploy-production-context.sh'),
+    'utf8'
+  );
+
+  assert.match(context, /docker run[\s\S]*--entrypoint node[\s\S]*release-bundle\.mjs" verify/u);
+  assert.match(context, /RELEASE_MANIFEST_B64_FROM_PAYLOAD/u);
+  assert.doesNotMatch(
+    context,
+    /\$\(resolve_node_bin\)\s+"\$APP_DIR\/scripts\/release-bundle\.mjs"/u
+  );
+});
+
 test('staging release-candidate runtime does not re-read the legacy manifest', () => {
   const staging = readFileSync(resolve(projectRoot, 'scripts/deploy-staging-remote.sh'), 'utf8');
   const localRelease = readFileSync(

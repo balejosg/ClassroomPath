@@ -423,6 +423,7 @@ prepare_production_checkout() {
 
 load_production_release_manifest() {
   # Helper contract: load_release_manifest_runtime "$RELEASE_MANIFEST_FILE" "$TARGET_SHA"
+  login_production_registry
   load_production_release_manifest_impl "$@"
 }
 

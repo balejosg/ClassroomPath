@@ -885,6 +885,13 @@ describe('Deploy workflow contracts', () => {
       'rollback SSH step must forward PRODUCTION_CONTAINER_PLATFORM'
     );
     assert.ok(
+      String(
+        jobs['rollback-production']?.steps?.find((step) => step.name === 'Roll back via SSH')?.with
+          ?.envs ?? ''
+      ).includes('CLASSROOMPATH_DEPLOY_ROOT'),
+      'rollback SSH step must forward CLASSROOMPATH_DEPLOY_ROOT'
+    );
+    assert.ok(
       rollbackProductionScript.includes('deploy-container-platform.sh') &&
         rollbackProductionScript.includes(
           'configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/arm64}"'
