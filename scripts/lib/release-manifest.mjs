@@ -7,6 +7,10 @@ import {
   selectWindowsOfflineInstallerTemplatePin,
   validateWindowsOfflineInstallerTemplatePin,
 } from '../resolve-windows-offline-installer-template-pin.mjs';
+import {
+  buildReleaseBundleArtifacts,
+  projectOpenPathContractToLegacyRuntime,
+} from './release-bundle.mjs';
 
 /**
  * @typedef {{
@@ -122,6 +126,9 @@ import {
  *   linux_agent_apt_suite: string;
  *   spa_image: string;
  *   verifier_image: string;
+ *   release_id?: string;
+ *   openpath_sha?: string;
+ *   openpath_contract_sha256?: string;
  *   windows_offline_installer_template_version?: string;
  *   windows_offline_installer_template_commit?: string;
  *   windows_offline_installer_template_release_tag?: string;
@@ -142,6 +149,12 @@ const CANONICAL_RELEASE_MANIFEST_KEYS = /** @type {const} */ ([
   'linux_agent_apt_suite',
   'spa_image',
   'verifier_image',
+]);
+
+const RELEASE_MANIFEST_V2_IDENTITY_KEYS = /** @type {const} */ ([
+  'release_id',
+  'openpath_sha',
+  'openpath_contract_sha256',
 ]);
 
 function parseManifestAssignments(content) {
@@ -173,6 +186,31 @@ function requireManifestKeys(assignments, keys, prefix) {
       throw new Error(`${prefix} missing required key: ${key}`);
     }
   }
+}
+
+function readOptionalReleaseIdentity(assignments) {
+  const values = {
+    release_id: assignments.release_id ?? '',
+    openpath_sha: assignments.openpath_sha ?? '',
+    openpath_contract_sha256: assignments.openpath_contract_sha256 ?? '',
+  };
+  const present = Object.values(values).filter(Boolean).length;
+  if (present === 0) return {};
+  if (present !== Object.keys(values).length) {
+    throw new Error(
+      'Release manifest v2 identity must contain release_id, openpath_sha, and openpath_contract_sha256'
+    );
+  }
+  if (!/^[0-9a-f]{64}$/.test(values.release_id)) {
+    throw new Error('Release manifest release_id is invalid');
+  }
+  if (!/^[0-9a-f]{40}$/.test(values.openpath_sha)) {
+    throw new Error('Release manifest openpath_sha is invalid');
+  }
+  if (!/^[0-9a-f]{64}$/.test(values.openpath_contract_sha256)) {
+    throw new Error('Release manifest openpath_contract_sha256 is invalid');
+  }
+  return values;
 }
 
 /**
@@ -258,6 +296,7 @@ export function parseCanonicalReleaseManifestText(text, options = {}) {
   }
 
   const offlineInstallerPin = readOfflineInstallerPin(assignments);
+  const releaseIdentity = readOptionalReleaseIdentity(assignments);
 
   return /** @type {CanonicalReleaseManifest} */ ({
     repository: assignments.repository,
@@ -272,6 +311,7 @@ export function parseCanonicalReleaseManifestText(text, options = {}) {
     linux_agent_apt_suite: assignments.linux_agent_apt_suite,
     spa_image: assignments.spa_image,
     verifier_image: assignments.verifier_image,
+    ...releaseIdentity,
     ...offlineInstallerPin,
   });
 }
@@ -284,6 +324,7 @@ export function parseCanonicalReleaseManifestText(text, options = {}) {
 export function parseArtifactReleaseManifestText(text, options = {}) {
   const assignments = parseManifestAssignments(text);
   const offlineInstallerPin = readOfflineInstallerPin(assignments);
+  const releaseIdentity = readOptionalReleaseIdentity(assignments);
   const manifest = {
     appSha: assignments.APP_SHA,
     gatewayImage: assignments.CLASSROOMPATH_GATEWAY_IMAGE,
@@ -295,6 +336,13 @@ export function parseArtifactReleaseManifestText(text, options = {}) {
     linuxAgentAptSuite: assignments.OPENPATH_LINUX_AGENT_APT_SUITE ?? '',
     spaImage: assignments.CLASSROOMPATH_SPA_IMAGE,
     verifierImage: assignments.CLASSROOMPATH_VERIFIER_IMAGE,
+    ...(releaseIdentity.release_id
+      ? {
+          releaseId: releaseIdentity.release_id,
+          openpathSha: releaseIdentity.openpath_sha,
+          openpathContractSha256: releaseIdentity.openpath_contract_sha256,
+        }
+      : {}),
     ...(offlineInstallerPin.windows_offline_installer_template_version
       ? {
           windowsOfflineInstallerTemplateVersion:
@@ -356,7 +404,68 @@ export function buildCanonicalReleaseManifest({ repository, runId, manifest }) {
     linux_agent_apt_suite: manifest.linuxAgentAptSuite,
     spa_image: manifest.spaImage,
     verifier_image: manifest.verifierImage,
+    ...(manifest.releaseId
+      ? {
+          release_id: manifest.releaseId,
+          openpath_sha: manifest.openpathSha,
+          openpath_contract_sha256: manifest.openpathContractSha256,
+        }
+      : {}),
     ...offlineInstallerPin,
+  };
+}
+
+/**
+ * Builds the legacy manifest projection from one verified v2 bundle and its
+ * exact OpenPath contract bytes. The bundle remains the authority.
+ *
+ * @param {{
+ *   repository: string;
+ *   runId: string;
+ *   bundle: object;
+ *   contractBytes: Buffer | Uint8Array;
+ * }} params
+ * @returns {CanonicalReleaseManifest}
+ */
+export function buildCanonicalReleaseManifestFromBundle({
+  repository,
+  runId,
+  bundle,
+  contractBytes,
+}) {
+  if (!repository) {
+    throw new Error('repository is required to build the canonical release manifest');
+  }
+  if (!runId) {
+    throw new Error('runId is required to build the canonical release manifest');
+  }
+  const artifact = buildReleaseBundleArtifacts({ bundle, contractBytes });
+  const projection = projectOpenPathContractToLegacyRuntime({
+    contract: artifact.contract,
+    contractSha256: artifact.contractSha256,
+  });
+  return {
+    repository,
+    run_id: String(runId),
+    app_sha: artifact.bundle.classroomPathSha,
+    gateway_image: artifact.bundle.images.gateway,
+    migrations_image: artifact.bundle.images.migrations,
+    openpath_firefox_assets_image: artifact.bundle.images.openpathFirefoxAssets,
+    openpath_api_image: artifact.bundle.images.openpathApi,
+    openpath_version: projection.OPENPATH_VERSION,
+    linux_agent_version: projection.OPENPATH_LINUX_AGENT_VERSION,
+    linux_agent_apt_suite: projection.OPENPATH_LINUX_AGENT_APT_SUITE,
+    spa_image: artifact.bundle.images.spa,
+    verifier_image: artifact.bundle.images.verifier,
+    release_id: artifact.releaseId,
+    openpath_sha: artifact.bundle.openPath.sourceSha,
+    openpath_contract_sha256: artifact.contractSha256,
+    windows_offline_installer_template_version:
+      projection.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION,
+    windows_offline_installer_template_commit: projection.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT,
+    windows_offline_installer_template_release_tag:
+      projection.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG,
+    windows_offline_installer_template_sha256: projection.OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256,
   };
 }
 
@@ -442,6 +551,9 @@ export function buildManifestOnlyReleaseCandidateArtifact({
 export function serializeReleaseManifest(manifest) {
   /** @type {string[]} */
   const keys = [...CANONICAL_RELEASE_MANIFEST_KEYS];
+  if (RELEASE_MANIFEST_V2_IDENTITY_KEYS.every((key) => manifest[key])) {
+    keys.push(...RELEASE_MANIFEST_V2_IDENTITY_KEYS);
+  }
   const offlineInstallerPin = readCanonicalOfflineInstallerPin(manifest);
   if (Object.keys(offlineInstallerPin).length > 0) {
     keys.push(

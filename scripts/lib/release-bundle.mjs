@@ -262,6 +262,41 @@ export function projectOpenPathContractToLegacyRuntime({ contract, contractSha25
   return projection;
 }
 
+export function projectReleaseBundleToRuntimeEnv({
+  bundle,
+  contract,
+  contractSha256,
+  releaseId,
+  imageSource = 'release-candidate',
+} = {}) {
+  const validatedBundle = validateReleaseBundle(bundle);
+  const expectedReleaseId = calculateReleaseId(validatedBundle);
+  if (releaseId !== undefined && releaseId !== expectedReleaseId) {
+    throw new Error('release bundle runtime projection releaseId does not match bundle bytes');
+  }
+  const projection = projectOpenPathContractToLegacyRuntime({
+    contract,
+    contractSha256: contractSha256 ?? validatedBundle.openPath.contractSha256,
+  });
+  if (projection.OPENPATH_SHA !== validatedBundle.openPath.sourceSha) {
+    throw new Error('release bundle runtime projection OpenPath SHA does not match bundle');
+  }
+  return {
+    RELEASE_ID: expectedReleaseId,
+    IMAGE_SOURCE: imageSource,
+    APP_SHA: validatedBundle.classroomPathSha,
+    OPENPATH_SHA: validatedBundle.openPath.sourceSha,
+    OPENPATH_CONTRACT_SHA256: validatedBundle.openPath.contractSha256,
+    CLASSROOMPATH_GATEWAY_IMAGE: validatedBundle.images.gateway,
+    CLASSROOMPATH_MIGRATIONS_IMAGE: validatedBundle.images.migrations,
+    OPENPATH_FIREFOX_ASSETS_IMAGE: validatedBundle.images.openpathFirefoxAssets,
+    OPENPATH_API_IMAGE: validatedBundle.images.openpathApi,
+    CLASSROOMPATH_SPA_IMAGE: validatedBundle.images.spa,
+    CLASSROOMPATH_VERIFIER_IMAGE: validatedBundle.images.verifier,
+    ...projection,
+  };
+}
+
 export function shouldRebuildOpenPathDerivedImages({
   previousContractSha256,
   currentContractSha256,
