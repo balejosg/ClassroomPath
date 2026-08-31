@@ -371,6 +371,22 @@ describe('release candidate component classification', () => {
     );
   });
 
+  test('rebuilds the verifier when its Docker ignore allowlist changes', () => {
+    assert.deepEqual(
+      classifyReleaseCandidateComponents({
+        changedFiles: ['docker/Dockerfile.release-verifier.dockerignore'],
+        openpathChangedFiles: [],
+      }),
+      {
+        gatewayChanged: false,
+        migrationsChanged: false,
+        openpathApiChanged: false,
+        spaChanged: false,
+        verifierChanged: true,
+      }
+    );
+  });
+
   test('keeps production canary harness changes out of release image rebuilds', () => {
     assert.deepEqual(
       classifyReleaseCandidateComponents({

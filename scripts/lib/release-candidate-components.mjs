@@ -392,6 +392,7 @@ export function classifyReleaseCandidateComponents({
         break;
       case isVerifierRuntimeTestFile(file):
       case file === 'docker/Dockerfile.release-verifier':
+      case file === 'docker/Dockerfile.release-verifier.dockerignore':
       case file === '.github/workflows/smoke-tests.yml':
       case file === '.github/workflows/deploy.yml':
         flags.verifierChanged = true;

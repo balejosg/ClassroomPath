@@ -3,6 +3,11 @@
 .opencode
 docs/**
 scripts/**
+!scripts/
+!scripts/lib/
+!scripts/release-bundle.mjs
+!scripts/lib/release-bundle.mjs
+!scripts/lib/openpath-promotion-contract.mjs
 tests/**
 !tests/
 !tests/helpers/

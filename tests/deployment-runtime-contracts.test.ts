@@ -176,6 +176,14 @@ describe('Deployment runtime contracts', () => {
     assert.ok(verifierDockerfile.includes('--mount=type=cache,target=/root/.npm'));
     assert.ok(verifierDockerfile.includes('npx playwright install --with-deps chromium'));
     assert.ok(verifierDockerignore.includes('scripts/**'));
+    assert.ok(verifierDockerignore.includes('!scripts/'));
+    assert.ok(verifierDockerignore.includes('!scripts/lib/'));
+    assert.ok(verifierDockerignore.includes('!scripts/release-bundle.mjs'));
+    assert.ok(verifierDockerignore.includes('!scripts/lib/release-bundle.mjs'));
+    assert.ok(
+      verifierDockerignore.includes('!scripts/lib/openpath-promotion-contract.mjs'),
+      'the verifier image must retain the bundle CLI and its direct contract imports'
+    );
     assert.ok(verifierDockerignore.includes('tests/**'));
     assert.ok(verifierDockerignore.includes('!tests/smoke.test.ts'));
     assert.ok(verifierDockerignore.includes('!tests/release-gate.test.ts'));
