@@ -210,7 +210,7 @@ void describe('Remote Deploy Bootstrap', () => {
     );
   });
 
-  void test('production remote scripts can resolve helper libraries when ssh-action omits BASH_SOURCE', () => {
+  void test('production remote scripts require an explicit deploy root and resolve helpers when ssh-action omits BASH_SOURCE', () => {
     const deployRemoteContent = readFileSync(productionRemotePath, 'utf-8');
     const rollbackRemoteContent = readFileSync(rollbackRemotePath, 'utf-8');
     const commonHelperContent = readFileSync(
@@ -231,12 +231,10 @@ void describe('Remote Deploy Bootstrap', () => {
         `${scriptName} should guard against missing BASH_SOURCE when appleboy/ssh-action streams the payload`
       );
       assert.ok(
-        content.includes('default_classroompath_deploy_root()') &&
-          content.includes(
-            'CLASSROOMPATH_DEPLOY_ROOT="${CLASSROOMPATH_DEPLOY_ROOT:-$(default_classroompath_deploy_root)}"'
-          ) &&
-          content.includes('APP_DIR="${APP_DIR:-$CLASSROOMPATH_DEPLOY_ROOT/app}"'),
-        `${scriptName} should resolve the production app directory from the deploy root`
+        content.includes(
+          ': "${CLASSROOMPATH_DEPLOY_ROOT:?Set CLASSROOMPATH_DEPLOY_ROOT to the private production deploy root.}"'
+        ) && content.includes('APP_DIR="${APP_DIR:-$CLASSROOMPATH_DEPLOY_ROOT/app}"'),
+        `${scriptName} should require an explicit production deploy root and resolve the app directory from it`
       );
       assert.ok(
         content.includes('SCRIPT_DIR="$APP_DIR/scripts"'),
@@ -456,6 +454,18 @@ void describe('Remote Deploy Bootstrap', () => {
         `${scriptName} should resolve the shared release-state helper`
       );
     }
+  });
+
+  void test('staging deploy keeps pending state compatible with an older remote helper', () => {
+    const content = readFileSync(stagingRemotePath, 'utf-8');
+    const pendingStateFallback =
+      'PENDING_STATE_FILE="${DEPLOYMENT_STATE_PENDING_FILE:-$STATE_DIR/pending-images.env}"';
+
+    assert.strictEqual(
+      content.split(pendingStateFallback).length - 1,
+      2,
+      'staging deploy should use the canonical pending state path when an older helper omits the variable'
+    );
   });
 
   void test('staging verification persistence requires versioned shared helpers instead of inline fallback writers', () => {
