@@ -283,7 +283,9 @@ node "$SCRIPT_DIR/verify-openpath-promotion-contract.mjs" \
   --openpath-sha "$OPENPATH_SHA" \
   --openpath-manifest-file "$openpath_manifest_file" \
   --install-probe-script > "$openpath_install_probe_file"
-bash "$openpath_install_probe_file"
+# The exact OpenPath package contract is published for the APT amd64 lane. The
+# production server platform is arm64, but must not leak into this local probe.
+DOCKER_DEFAULT_PLATFORM=linux/amd64 bash "$openpath_install_probe_file"
 
 export EXPECTED_RELEASE_ID="$RELEASE_ID"
 export EXPECTED_RC_RUN_ID="$RC_RUN_ID"

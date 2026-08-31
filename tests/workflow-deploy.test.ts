@@ -337,7 +337,11 @@ describe('Deploy workflow contracts', () => {
       /git -C upstream\/openpath show "\$TARGET_OPENPATH_SHA:firefox-extension\/manifest\.json"/u
     );
     assert.match(verifyScript, /--install-probe-script > "\$openpath_install_probe_file"/u);
-    assert.match(verifyScript, /bash "\$openpath_install_probe_file"/u);
+    assert.match(
+      verifyScript,
+      /DOCKER_DEFAULT_PLATFORM=linux\/amd64 bash "\$openpath_install_probe_file"/u,
+      'the amd64 OpenPath package probe must not inherit production arm64 image settings'
+    );
 
     // The three-way exit contract is declared once and used for every "gate answered no" path.
     assert.match(verifyScript, /PROMOTION_BLOCKED_EXIT_CODE=10/);
