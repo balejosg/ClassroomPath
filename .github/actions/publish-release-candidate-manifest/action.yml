@@ -127,21 +127,22 @@ runs:
             exit 1
           fi
 
-          child_manifest="$(docker buildx imagetools inspect --raw "${image%@*}@${child_digest}")"
+          child_ref="${image%@*}@${child_digest}"
+          child_manifest="$(docker buildx imagetools inspect --raw "$child_ref")"
           child_config_digest="$(printf '%s\n' "$child_manifest" | jq -er '.config.digest')"
           if [[ ! "$child_config_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "::error::Manifest child config digest for $platform is invalid: $child_config_digest" >&2
             exit 1
           fi
 
-          docker pull --platform "$platform" "$image"
-          actual_platform="$(docker image inspect --platform "$platform" --format '{{.Os}}/{{.Architecture}}' "$image")"
+          docker pull "$child_ref"
+          actual_platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$child_ref")"
           if [ "$actual_platform" != "$platform" ]; then
             echo "::error::Published image platform mismatch. expected=$platform actual=$actual_platform" >&2
             exit 1
           fi
-          revision="$(docker image inspect --platform "$platform" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")"
-          contract_sha256="$(docker image inspect --platform "$platform" --format '{{ index .Config.Labels "eu.classroompath.openpath.contract-sha256" }}' "$image")"
+          revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$child_ref")"
+          contract_sha256="$(docker image inspect --format '{{ index .Config.Labels "eu.classroompath.openpath.contract-sha256" }}' "$child_ref")"
 
           if [ "$revision" != "$EXPECTED_OPENPATH_SOURCE_SHA" ]; then
             echo "::error::Image OpenPath source provenance mismatch for $platform. expected=$EXPECTED_OPENPATH_SOURCE_SHA actual=$revision" >&2

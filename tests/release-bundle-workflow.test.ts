@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { readProjectText } from './helpers/ops-contracts.ts';
+import { readProjectText, readProjectWorkflow } from './helpers/ops-contracts.ts';
 
 describe('Release Bundle v2 workflow contracts', () => {
   test('propagates OpenPath provenance labels through the reusable image action', () => {
@@ -34,10 +34,13 @@ describe('Release Bundle v2 workflow contracts', () => {
 
     assert.match(action, /openpath-source-sha:/u);
     assert.match(action, /openpath-contract-sha256:/u);
-    assert.match(action, /docker pull --platform "\$platform" "\$image"/u);
+    assert.match(action, /child_ref="\$\{image%@\*\}@\$\{child_digest\}"/u);
+    assert.match(action, /docker pull "\$child_ref"/u);
+    assert.match(action, /docker image inspect --format .* "\$child_ref"/u);
     assert.match(action, /docker buildx imagetools inspect --raw "\$image"/u);
     assert.match(action, /for platform in linux\/amd64 linux\/arm64/u);
-    assert.match(action, /docker pull --platform "\$platform" "\$image"/u);
+    assert.doesNotMatch(action, /docker image inspect --platform/u);
+    assert.doesNotMatch(action, /docker pull --platform "\$platform" "\$image"/u);
     assert.match(action, /jq -er/u);
     assert.match(action, /org\.opencontainers\.image\.revision/u);
     assert.match(action, /eu\.classroompath\.openpath\.contract-sha256/u);
@@ -74,5 +77,51 @@ describe('Release Bundle v2 workflow contracts', () => {
     assert.match(workflow, /--output-dir release-bundle/u);
     assert.match(workflow, /STAGING_RELEASE_ID=/u);
     assert.match(workflow, /STAGING_RELEASE_RUN_ID=/u);
+  });
+
+  test('OpenPath installability comes from the exact SHA systemd contract check', () => {
+    const releaseCandidate = readProjectWorkflow('.github/workflows/release-candidate-images.yml');
+    const sync = readProjectWorkflow('.github/workflows/sync-openpath.yml');
+    const expectedChecks =
+      'PublishPrereleasetoAPTRepository/PublishtoAPTRepository(unstable),InstallerContractsSuccess';
+
+    for (const [label, workflow, jobName, stepName] of [
+      [
+        'release candidate',
+        releaseCandidate,
+        'verify-openpath-prerelease-apt',
+        'Wait for OpenPath prerelease APT publish',
+      ],
+      ['OpenPath sync', sync, 'sync', 'Verify OpenPath upstream checks'],
+    ] as const) {
+      const step = workflow.jobs?.[jobName]?.steps?.find(
+        (candidate) => candidate.name === stepName
+      );
+      const env = step?.env ?? {};
+      assert.equal(
+        String(env.OPENPATH_REQUIRED_CHECKS ?? '').replace(/\s+/gu, ''),
+        expectedChecks,
+        `${label} must require the exact OpenPath installer contract check`
+      );
+    }
+
+    const releaseCandidateText = readProjectText('.github/workflows/release-candidate-images.yml');
+    assert.match(releaseCandidateText, /scripts\/verify-openpath-promotion-contract\.mjs/u);
+    assert.match(
+      releaseCandidateText,
+      /--openpath-manifest-file upstream\/openpath\/firefox-extension\/manifest\.json/u
+    );
+    assert.doesNotMatch(releaseCandidateText, /--install-probe-script/u);
+    assert.doesNotMatch(releaseCandidateText, /docker run --rm -i ubuntu:24\.04 bash/u);
+
+    const syncText = readProjectText('.github/workflows/sync-openpath.yml');
+    assert.match(syncText, /scripts\/verify-openpath-promotion-contract\.mjs/u);
+    assert.match(
+      syncText,
+      /git -C upstream\/openpath show[\s\S]*steps\.check\.outputs\.latest[^\n]*:firefox-extension\/manifest\.json/u
+    );
+    assert.match(syncText, /--openpath-manifest-file "\$manifest_file"/u);
+    assert.doesNotMatch(syncText, /--install-probe-script/u);
+    assert.doesNotMatch(syncText, /docker run --rm -i ubuntu:24\.04 bash/u);
   });
 });

@@ -982,6 +982,19 @@ describe('resolveOpenPathRequiredChecks', () => {
     assert.deepEqual(result.requiredChecks, ['CI Success', OPENPATH_PRERELEASE_APT_REQUIRED_CHECK]);
   });
 
+  it('requires release evidence for the OpenPath release-scripts workflow', () => {
+    const result = resolveOpenPathRequiredChecks({
+      changedFiles: ['.github/workflows/release-scripts.yml'] as any,
+    });
+
+    assert.deepEqual(result.requiredChecks, [
+      'CI Success',
+      'E2E Summary',
+      'Installer Contracts Success',
+      OPENPATH_PRERELEASE_APT_REQUIRED_CHECK,
+    ]);
+  });
+
   it('does not require release-script checks for Debian package and E2E workflow changes', () => {
     const result = resolveOpenPathRequiredChecks({
       changedFiles: [

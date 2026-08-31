@@ -146,7 +146,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           OPENPATH_SHA: ${{ needs.derive-release-image-refs.outputs.openpath_sha }}
-          OPENPATH_REQUIRED_CHECKS: Publish Prerelease to APT Repository / Publish to APT Repository (unstable)
+          OPENPATH_REQUIRED_CHECKS: Publish Prerelease to APT Repository / Publish to APT Repository (unstable),Installer Contracts Success
           OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH: true
           OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN: ${{ steps.openpath-dispatch-token.outputs.token }}
           OPENPATH_PRERELEASE_RECOVERY_MODE: rerun-failed-once
@@ -170,13 +170,15 @@ jobs:
           OPENPATH_REQUIRED_CHECKS_FAIL_FAST=true \
             node scripts/openpath-required-checks.mjs wait
 
-      - name: Verify OpenPath Linux agent APT installability
+      - name: Verify OpenPath Linux agent APT provenance
         run: |
           set -euo pipefail
+          # Installer Contracts Success above is the exact-SHA systemd installability evidence;
+          # this step remains the local metadata, bytes, and Firefox-ID verifier.
           node scripts/verify-openpath-promotion-contract.mjs \
             --contract-file openpath-promotion-contract-input/openpath-promotion-contract.json \
             --openpath-sha "${{ needs.derive-release-image-refs.outputs.openpath_sha }}" \
-            --install-probe-script | docker run --rm -i ubuntu:24.04 bash
+            --openpath-manifest-file upstream/openpath/firefox-extension/manifest.json
 
   resolve-previous-release-candidate-manifest:
     name: Resolve Previous Release Candidate Manifest

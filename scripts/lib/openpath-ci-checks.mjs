@@ -31,7 +31,7 @@ export const OPENPATH_HIGH_RISK_REQUIRED_CHECKS = [
       /^tests\/selenium\//,
       /^api\/.*\/token-delivery[^/]*$/,
       /^api\/.*token-delivery[^/]*$/,
-      /^\.github\/workflows\/(?:ci|e2e|installer).*\.ya?ml$/,
+      /^\.github\/workflows\/(?:ci|e2e|installer|prerelease-deb|release-extension|release-scripts).*\.ya?ml$/,
     ],
   },
   {
@@ -42,7 +42,7 @@ export const OPENPATH_HIGH_RISK_REQUIRED_CHECKS = [
       /^firefox-extension\//,
       /^api\/.*\/token-delivery[^/]*$/,
       /^api\/.*token-delivery[^/]*$/,
-      /^\.github\/workflows\/(?:ci|e2e|installer).*\.ya?ml$/,
+      /^\.github\/workflows\/(?:ci|e2e|installer|prerelease-deb|release-extension|release-scripts).*\.ya?ml$/,
     ],
   },
   {

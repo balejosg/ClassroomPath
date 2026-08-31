@@ -618,6 +618,24 @@ describe('Deploy workflow contracts', () => {
     assert.ok(deployWorkflowText.includes('PROMOTION_ELIGIBLE'));
     assert.ok(deployWorkflowText.includes('Verify production release image platforms'));
     assert.ok(deployWorkflowText.includes('verify-release-manifest-platforms.mjs verify'));
+    const resolveReleaseImagesCheckout = findWorkflowStepByName(
+      resolveReleaseImagesJob,
+      'Checkout'
+    );
+    assert.equal(
+      resolveReleaseImagesCheckout?.with?.submodules,
+      'recursive',
+      'release image resolution must checkout the exact OpenPath submodule for Firefox-ID verification'
+    );
+    const resolveReleaseOpenPathVerifier = findWorkflowStepByName(
+      resolveReleaseImagesJob,
+      'Verify OpenPath Linux agent APT pin'
+    );
+    assert.match(
+      String(resolveReleaseOpenPathVerifier?.run ?? ''),
+      /--openpath-manifest-file upstream\/openpath\/firefox-extension\/manifest\.json/u,
+      'release image resolution must verify the Firefox ID from the exact OpenPath checkout'
+    );
     assert.ok(
       String(
         findWorkflowStepByName(resolveReleaseImagesJob, 'Verify production release image platforms')

@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parseOpenPathPromotionContractBytes } from './lib/openpath-promotion-contract.mjs';
@@ -10,6 +12,8 @@ import { parseOpenPathPromotionContractBytes } from './lib/openpath-promotion-co
 const DEFAULT_OPENPATH_APT_BASE_URL =
   'https://raw.githubusercontent.com/balejosg/OpenPath/gh-pages/apt';
 const DEFAULT_OPENPATH_RELEASE_REPOSITORY = 'balejosg/OpenPath';
+const DEFAULT_OPENPATH_FIREFOX_MANIFEST_FILE = 'upstream/openpath/firefox-extension/manifest.json';
+const FIREFOX_POLICY_DEB_PATH = 'usr/local/lib/openpath/lib/firefox-policy.sh';
 
 function parseDebianStanzas(text) {
   return String(text ?? '')
@@ -65,6 +69,55 @@ function buildReleaseAssetUrl({ repository, releaseTag, assetName }) {
 
 function shellSingleQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
+function readManifestGeckoId(manifestBytes) {
+  const manifest = JSON.parse(Buffer.from(manifestBytes).toString('utf8'));
+  const extensionId =
+    manifest?.browser_specific_settings?.gecko?.id ?? manifest?.applications?.gecko?.id ?? '';
+  const normalizedExtensionId = String(extensionId).trim();
+  if (!normalizedExtensionId) {
+    throw new Error('OpenPath Firefox manifest has no Gecko extension ID');
+  }
+  return normalizedExtensionId;
+}
+
+export function parseFirefoxPolicyManagedExtensionId(policyScriptText) {
+  const match = String(policyScriptText ?? '').match(
+    /FIREFOX_MANAGED_EXTENSION_ID="\$\{FIREFOX_MANAGED_EXTENSION_ID:-([^}"]+)\}"/
+  );
+  if (!match) {
+    throw new Error(
+      'OpenPath Linux package firefox-policy.sh has no FIREFOX_MANAGED_EXTENSION_ID default'
+    );
+  }
+  return match[1].trim();
+}
+
+export function extractOpenPathFirefoxManagedExtensionId(debBytes) {
+  const workDir = mkdtempSync(join(tmpdir(), 'classroompath-openpath-deb-'));
+  try {
+    const debPath = join(workDir, 'openpath-dnsmasq.deb');
+    const extractDir = join(workDir, 'extracted');
+    writeFileSync(debPath, debBytes);
+    execFileSync('dpkg-deb', ['-x', debPath, extractDir], {
+      stdio: ['ignore', 'ignore', 'inherit'],
+    });
+    return parseFirefoxPolicyManagedExtensionId(
+      readFileSync(join(extractDir, FIREFOX_POLICY_DEB_PATH), 'utf8')
+    );
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
+  }
+}
+
+function assertFirefoxExtensionIdConsistency({ agentExtensionId, manifestGeckoId }) {
+  if (agentExtensionId !== manifestGeckoId) {
+    throw new Error(
+      `Firefox extension ID mismatch: exact OpenPath Linux package ships '${agentExtensionId}', ` +
+        `but the pinned OpenPath Firefox manifest declares '${manifestGeckoId}'`
+    );
+  }
 }
 
 /** @param {any} options */
@@ -154,6 +207,8 @@ export async function verifyOpenPathPromotionContract({
   releaseRepository = DEFAULT_OPENPATH_RELEASE_REPOSITORY,
   aptPackagesContent,
   linuxArtifactBytes,
+  openpathManifestBytes,
+  extractFirefoxManagedExtensionId = extractOpenPathFirefoxManagedExtensionId,
 } = {}) {
   const parsed = parseOpenPathPromotionContractBytes(contractBytes, { expectedOpenpathSha });
   const linuxAgent = parsed.contract.components.linuxAgent;
@@ -181,6 +236,17 @@ export async function verifyOpenPathPromotionContract({
         artifactSha256
     );
   }
+
+  const firefoxManifestGeckoId = readManifestGeckoId(
+    openpathManifestBytes ?? readFileSync(resolve(DEFAULT_OPENPATH_FIREFOX_MANIFEST_FILE), 'utf8')
+  );
+  const linuxAgentFirefoxExtensionId = await Promise.resolve(
+    extractFirefoxManagedExtensionId(exactArtifactBytes)
+  );
+  assertFirefoxExtensionIdConsistency({
+    agentExtensionId: linuxAgentFirefoxExtensionId,
+    manifestGeckoId: firefoxManifestGeckoId,
+  });
 
   const windows = parsed.contract.components.windowsOfflineInstaller;
   const templateUrl = buildReleaseAssetUrl({
@@ -218,6 +284,8 @@ export async function verifyOpenPathPromotionContract({
     ...parsed,
     openpathSha: parsed.contract.openpathSha,
     linuxAgent,
+    linuxAgentFirefoxExtensionId,
+    firefoxManifestGeckoId,
     windowsOfflineInstaller: parsed.contract.components.windowsOfflineInstaller,
     browserPolicy: parsed.contract.components.browserPolicy,
     aptPackagesUrl,
@@ -234,6 +302,8 @@ function parseArgs(argv) {
     aptBaseUrl: process.env.OPENPATH_APT_BASE_URL?.trim() || DEFAULT_OPENPATH_APT_BASE_URL,
     releaseRepository:
       process.env.OPENPATH_RELEASE_REPOSITORY?.trim() || DEFAULT_OPENPATH_RELEASE_REPOSITORY,
+    openpathManifestFile:
+      process.env.OPENPATH_FIREFOX_MANIFEST_FILE?.trim() || DEFAULT_OPENPATH_FIREFOX_MANIFEST_FILE,
     json: false,
     installProbeScript: false,
   };
@@ -256,6 +326,11 @@ function parseArgs(argv) {
     }
     if (token === '--release-repository') {
       options.releaseRepository = String(argv[index + 1] ?? '').trim();
+      index += 1;
+      continue;
+    }
+    if (token === '--openpath-manifest-file') {
+      options.openpathManifestFile = String(argv[index + 1] ?? '').trim();
       index += 1;
       continue;
     }
@@ -282,6 +357,7 @@ export async function runOpenPathPromotionContractVerifier(argv = process.argv.s
     expectedOpenpathSha: options.openpathSha || undefined,
     aptBaseUrl: options.aptBaseUrl,
     releaseRepository: options.releaseRepository,
+    openpathManifestBytes: readFileSync(resolve(options.openpathManifestFile)),
   });
   if (options.installProbeScript) {
     process.stdout.write(

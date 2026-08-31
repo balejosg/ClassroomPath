@@ -129,6 +129,7 @@ jobs:
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENPATH_REQUIRED_CHECKS: Publish Prerelease to APT Repository / Publish to APT Repository (unstable),Installer Contracts Success
           # Auto-dispatch only when a dispatch token was actually minted (the App
           # is installed). Without it, just wait on the existing checks via
           # GITHUB_TOKEN and sync when they are green.
@@ -143,12 +144,17 @@ jobs:
           OPENPATH_REQUIRED_CHECKS_FAIL_FAST=true \
             node scripts/openpath-required-checks.mjs wait
 
-      - name: Verify OpenPath Linux agent APT installability
+      - name: Verify OpenPath Linux agent APT provenance
         if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
         run: |
           set -euo pipefail
+          # Installer Contracts Success above is the exact-SHA systemd installability evidence;
+          # this step remains the local metadata, bytes, and Firefox-ID verifier.
           contract_file="$(mktemp)"
-          trap 'rm -f "$contract_file"' EXIT
+          manifest_file="$(mktemp)"
+          trap 'rm -f "$contract_file" "$manifest_file"' EXIT
+          git -C upstream/openpath show \
+            "${{ steps.check.outputs.latest }}:firefox-extension/manifest.json" > "$manifest_file"
           node scripts/resolve-openpath-promotion-contract.mjs \
             --openpath-sha "${{ steps.check.outputs.latest }}" \
             --contract-output "$contract_file" \
@@ -156,7 +162,7 @@ jobs:
           node scripts/verify-openpath-promotion-contract.mjs \
             --contract-file "$contract_file" \
             --openpath-sha "${{ steps.check.outputs.latest }}" \
-            --install-probe-script | docker run --rm -i ubuntu:24.04 bash
+            --openpath-manifest-file "$manifest_file"
 
       - name: Update submodule
         if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')

@@ -17,6 +17,13 @@ const templateBytes = Buffer.from('verified template bytes', 'utf8');
 const templateHash = createHash('sha256').update(templateBytes).digest('hex');
 const payloadManifestBytes = Buffer.from('verified payload manifest bytes', 'utf8');
 const payloadManifestHash = createHash('sha256').update(payloadManifestBytes).digest('hex');
+const firefoxManifestBytes = Buffer.from(
+  JSON.stringify({
+    browser_specific_settings: { gecko: { id: 'openpath-block-monitor@openpath' } },
+  }),
+  'utf8'
+);
+const firefoxExtensionId = 'openpath-block-monitor@openpath';
 
 function contract() {
   return {
@@ -107,12 +114,16 @@ describe('OpenPath v2 physical provenance verifier', () => {
           ? templateBytes
           : payloadManifestBytes;
       },
+      openpathManifestBytes: firefoxManifestBytes,
+      extractFirefoxManagedExtensionId: () => firefoxExtensionId,
     });
 
     assert.equal(result.openpathSha, openpathSha);
     assert.equal(result.linuxAgent.packageVersion, packageVersion);
     assert.equal(result.linuxAgent.filename, packageFilename);
     assert.equal(result.linuxAgent.sha256, packageHash);
+    assert.equal(result.linuxAgentFirefoxExtensionId, firefoxExtensionId);
+    assert.equal(result.firefoxManifestGeckoId, firefoxExtensionId);
     assert.match(result.contractSha256, /^[0-9a-f]{64}$/);
     assert.deepEqual(requests, [
       'https://example.test/apt/dists/unstable/main/binary-amd64/Packages',
@@ -143,6 +154,44 @@ describe('OpenPath v2 physical provenance verifier', () => {
         downloadBytes: async () => Buffer.from('tampered package bytes', 'utf8'),
       }),
       /does not match the contract SHA-256/
+    );
+  });
+
+  test('compares the Firefox ID from the exact validated .deb with the pinned OpenPath manifest', async () => {
+    let extractedBytes: Buffer | undefined;
+    const result = await verifyOpenPathPromotionContract({
+      contractBytes: contractBytes(),
+      expectedOpenpathSha: openpathSha,
+      aptPackagesContent: packagesText(),
+      linuxArtifactBytes: packageBytes,
+      openpathManifestBytes: firefoxManifestBytes,
+      extractFirefoxManagedExtensionId: (bytes: Buffer) => {
+        extractedBytes = bytes;
+        return firefoxExtensionId;
+      },
+      downloadReleaseAssetBytes: async (url: string) =>
+        url.endsWith('/OpenPath-Windows-Setup-Template.exe') ? templateBytes : payloadManifestBytes,
+    });
+
+    assert.deepEqual(extractedBytes, packageBytes);
+    assert.equal(result.linuxAgentFirefoxExtensionId, firefoxExtensionId);
+  });
+
+  test('fails closed when the exact .deb Firefox ID differs from the pinned manifest', async () => {
+    await assert.rejects(
+      verifyOpenPathPromotionContract({
+        contractBytes: contractBytes(),
+        expectedOpenpathSha: openpathSha,
+        aptPackagesContent: packagesText(),
+        linuxArtifactBytes: packageBytes,
+        openpathManifestBytes: firefoxManifestBytes,
+        extractFirefoxManagedExtensionId: () => 'wrong-extension@openpath',
+        downloadReleaseAssetBytes: async (url: string) =>
+          url.endsWith('/OpenPath-Windows-Setup-Template.exe')
+            ? templateBytes
+            : payloadManifestBytes,
+      }),
+      /Firefox extension ID mismatch/u
     );
   });
 });
