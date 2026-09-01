@@ -51,6 +51,10 @@ remote_deploy_init_production_helper_paths "$SCRIPT_DIR" "$APP_DIR"
 : "${DEPLOYMENT_STATE_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")}"
 : "${DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-context.sh")}"
 : "${DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-production-runtime.sh")}"
+: "${PRODUCTION_HOST_CONTRACT_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/production-host-contract.sh")}"
+: "${DEPLOYMENT_TRANSACTION_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-transaction.sh")}"
+: "${ROLLBACK_EXECUTOR_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/rollback-executor.sh")}"
+: "${ROLLBACK_READINESS_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/rollback-readiness.sh")}"
 : "${DEPLOY_CONTAINER_PLATFORM_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-container-platform.sh")}"
 
 if [ ! -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
@@ -137,6 +141,37 @@ else
   exit 1
 fi
 
+if production_host_contract_helper_supports_contract "$PRODUCTION_HOST_CONTRACT_HELPER_PATH"; then
+  # shellcheck source=lib/production-host-contract.sh
+  source "$PRODUCTION_HOST_CONTRACT_HELPER_PATH"
+else
+  log_error "Remote production-host-contract helper does not meet the minimum contract"
+  exit 1
+fi
+
+if deployment_transaction_helper_supports_contract "$DEPLOYMENT_TRANSACTION_HELPER_PATH"; then
+  # shellcheck source=lib/deployment-transaction.sh
+  source "$DEPLOYMENT_TRANSACTION_HELPER_PATH"
+else
+  log_error "Remote deployment-transaction helper does not meet the minimum contract"
+  exit 1
+fi
+
+if rollback_executor_helper_supports_contract "$ROLLBACK_EXECUTOR_HELPER_PATH"; then
+  # shellcheck source=lib/rollback-executor.sh
+  source "$ROLLBACK_EXECUTOR_HELPER_PATH"
+else
+  log_error "Remote rollback-executor helper does not meet the minimum contract"
+  exit 1
+fi
+
+if [ ! -f "$ROLLBACK_READINESS_HELPER_PATH" ]; then
+  log_error "Remote rollback-readiness helper not found"
+  exit 1
+fi
+# shellcheck source=lib/rollback-readiness.sh
+source "$ROLLBACK_READINESS_HELPER_PATH"
+
 log_info "Starting ClassroomPath Docker deployment..."
 
 DEPLOY_DIR="$CLASSROOMPATH_DEPLOY_ROOT"
@@ -167,6 +202,12 @@ DEPLOY_PAYLOAD_TARGET_SHA=""
 TARGET_SHA=""
 PRODUCTION_REGISTRY_LOGGED_IN=0
 DEPLOY_DEBUG_FILE="$STATE_DIR/deploy-debug.json"
+DEPLOYMENT_TRANSACTION_FILE="$STATE_DIR/deployment-phase.env"
+PRODUCTION_HOST_CONTRACT_REPORT_FILE="$STATE_DIR/host-contract.json"
+DEPLOYMENT_STATE_USE_VERIFIER=1
+ROLLBACK_READINESS_USE_VERIFIER=1
+export DEPLOYMENT_TRANSACTION_FILE PRODUCTION_HOST_CONTRACT_REPORT_FILE DEPLOYMENT_STATE_USE_VERIFIER
+export ROLLBACK_READINESS_USE_VERIFIER
 
 cleanup_production_deploy_artifacts() {
   local exit_status="$?"
@@ -232,6 +273,16 @@ write_production_deploy_debug_context() {
     printf '  "deployRoot":"%s",\n' "$(json_escape "$DEPLOY_DIR")"
     printf '  "containerPlatform":"%s",\n' "$(json_escape "${CLASSROOMPATH_CONTAINER_PLATFORM:-${PRODUCTION_CONTAINER_PLATFORM:-unknown}}")"
     printf '  "lastFailingPhase":"%s",\n' "$(json_escape "${FAILURE_STAGE:-${DEPLOY_FAILURE_STAGE:-preflight}}")"
+    printf '  "requestedReleaseId":"%s",\n' "$(json_escape "${REQUESTED_RELEASE_ID:-${RELEASE_ID:-}}")"
+    printf '  "candidateReleaseId":"%s",\n' "$(json_escape "${CANDIDATE_RELEASE_ID:-${RELEASE_ID:-}}")"
+    printf '  "previousReleaseId":"%s",\n' "$(json_escape "${PREVIOUS_RELEASE_ID:-}")"
+    printf '  "currentReleaseId":"%s",\n' "$(json_escape "${CURRENT_RELEASE_ID:-}")"
+    printf '  "mutationBoundaryReached":%s,\n' "$( [ "${MUTATION_BOUNDARY_REACHED:-0}" = "1" ] && printf true || printf false )"
+    printf '  "failurePoint":"%s",\n' "$(json_escape "${FAILURE_POINT:-}")"
+    printf '  "failureCategory":"%s",\n' "$(json_escape "${FAILURE_CATEGORY:-}")"
+    printf '  "rollbackPhase":"%s",\n' "$(json_escape "${ROLLBACK_PHASE:-NOT_STARTED}")"
+    printf '  "rollbackAttempted":%s,\n' "$( [ "${ROLLBACK_ATTEMPTED:-0}" = "1" ] && printf true || printf false )"
+    printf '  "rollbackResult":"%s",\n' "$(json_escape "${ROLLBACK_RESULT:-not_attempted}")"
     printf '  "exitStatus":%s,\n' "$failed_status"
     printf '  "helperContracts":{'
     helper_contract_status_json "remoteBootstrap" "$REMOTE_BOOTSTRAP_HELPER_PATH"
@@ -247,6 +298,12 @@ write_production_deploy_debug_context() {
     helper_contract_status_json "deploymentState" "$DEPLOYMENT_STATE_HELPER_PATH"
     printf ','
     helper_contract_status_json "releaseExecution" "$RELEASE_EXECUTION_HELPER_PATH"
+    printf ','
+    helper_contract_status_json "productionHostContract" "$PRODUCTION_HOST_CONTRACT_HELPER_PATH"
+    printf ','
+    helper_contract_status_json "deploymentTransaction" "$DEPLOYMENT_TRANSACTION_HELPER_PATH"
+    printf ','
+    helper_contract_status_json "rollbackExecutor" "$ROLLBACK_EXECUTOR_HELPER_PATH"
     printf '},\n'
     printf '  "commands":{'
     command_status_json bash
@@ -269,11 +326,21 @@ capture_production_deploy_failure() {
   local failed_status="$?"
 
   trap - ERR
+  if [ "${DEPLOYMENT_PHASE:-}" != "$DEPLOYMENT_PHASE_COMMITTED" ] &&
+    [ "${DEPLOYMENT_PHASE:-}" != "$DEPLOYMENT_PHASE_ROLLED_BACK" ]; then
+    deployment_transaction_mark_failure \
+      "${FAILURE_POINT:-executor-failure}" \
+      "${FAILURE_CATEGORY:-remote-connectivity}" \
+      "${FAILURE_MESSAGE:-production executor returned a non-zero status}" \
+      "${DEPLOYMENT_STAGE:-${FAILURE_STAGE:-FAILED}}" || true
+  fi
   write_production_deploy_debug_context "$failed_status" || true
   return "$failed_status"
 }
 
 trap capture_production_deploy_failure ERR
+
+deployment_transaction_init "$DEPLOYMENT_TRANSACTION_FILE" "" ""
 
 login_production_registry() {
   if [ "${PRODUCTION_REGISTRY_LOGGED_IN:-0}" = "1" ]; then
@@ -318,6 +385,16 @@ load_production_deploy_payload() {
   local openpath_contract_b64=""
   local payload_image_source=""
   local payload_deployment_mode=""
+
+  FAILURE_POINT="host-contract"
+  FAILURE_CATEGORY="host-contract"
+  FAILURE_MESSAGE="production host contract validation failed"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  production_host_contract_validate \
+    "$CLASSROOMPATH_DEPLOY_ROOT" \
+    "${PRODUCTION_HOST_DISK_THRESHOLD_PERCENT:-80}" \
+    "$PRODUCTION_HOST_CONTRACT_REPORT_FILE" || return 1
+  deployment_transaction_mark_stage "PREFLIGHT" || return 1
 
   if [ -n "${DEPLOY_PAYLOAD_B64:-}" ]; then
     DEPLOY_PAYLOAD_FILE="$(mktemp)"
@@ -419,6 +496,13 @@ prepare_production_checkout() {
   source "$DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH"
   # shellcheck source=lib/deploy-production-runtime.sh
   source "$DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH"
+
+  ROLLBACK_READINESS_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/rollback-readiness.sh")"
+  if [ ! -f "$ROLLBACK_READINESS_HELPER_PATH" ]; then
+    die "Checked-out rollback-readiness helper not found" 1
+  fi
+  # shellcheck source=lib/rollback-readiness.sh
+  source "$ROLLBACK_READINESS_HELPER_PATH"
 }
 
 load_production_release_manifest() {
@@ -432,7 +516,27 @@ classify_migration_risk_without_node() {
 }
 
 classify_production_migration_risk() {
-  deployment_state_capture_previous_release
+  FAILURE_POINT="rollback-preflight"
+  FAILURE_CATEGORY="rollback-preflight"
+  FAILURE_MESSAGE="rollback executor preflight failed"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  deployment_state_capture_previous_release || return 1
+
+  PREVIOUS_RELEASE_ID="$(rollback_executor_previous_release_id || true)"
+  CURRENT_RELEASE_ID="$(tr -d '\r\n' < "$DEPLOYMENT_STATE_CURRENT_POINTER_FILE" 2>/dev/null || true)"
+  CANDIDATE_RELEASE_ID="${RELEASE_ID:-}"
+  REQUESTED_RELEASE_ID="${RELEASE_ID:-}"
+  deployment_transaction_set_release_identity \
+    "$PREVIOUS_RELEASE_ID" \
+    "$CANDIDATE_RELEASE_ID" \
+    "$CURRENT_RELEASE_ID" || return 1
+  rollback_executor_preflight || return 1
+  # rollback_executor_preflight reads the stored previous projection. Restore
+  # the candidate projection before forward runtime preparation continues.
+  deployment_transaction_set_release_identity \
+    "$PREVIOUS_RELEASE_ID" \
+    "$CANDIDATE_RELEASE_ID" \
+    "$CURRENT_RELEASE_ID" || return 1
 
   if command -v node >/dev/null 2>&1; then
     release_execution_classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"
@@ -449,6 +553,11 @@ classify_production_migration_risk() {
 }
 
 run_production_database_migrations() {
+  FAILURE_POINT="migration"
+  FAILURE_CATEGORY="migration"
+  FAILURE_MESSAGE="production migration or switch preparation failed"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  deployment_transaction_transition "$DEPLOYMENT_PHASE_SWITCHING" "SWITCH" || return 1
   release_execution_mark_stage migrations
 
   cleanup_production_disk_if_needed

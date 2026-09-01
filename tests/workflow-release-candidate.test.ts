@@ -426,6 +426,7 @@ describe('Release candidate workflow contracts', () => {
         'resolve-openpath-firefox-release-assets',
         'resolve-previous-release-candidate-manifest',
         'verify-openpath-prerelease-apt',
+        'verify-release-verifier-package',
       ].sort()
     );
 

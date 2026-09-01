@@ -566,6 +566,61 @@ jobs:
           path: deploy-debug.json
           retention-days: 7
 
+  production-deploy-diagnostics:
+    name: Production Deploy Diagnostics
+    runs-on: ubuntu-latest
+    needs: [deploy-production, resolve-release-images]
+    if: always() && needs.deploy-production.result == 'failure'
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Collect read-only post-switch diagnostic
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set +e
+          source scripts/lib/github-actions-remote.sh
+          github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-diagnostic
+          deploy_root_assignment="$(printf 'CLASSROOMPATH_DEPLOY_ROOT=%q' "$DEPLOY_ROOT")"
+          diagnostic_path="${DEPLOY_ROOT%/}/release-state/post-switch-diagnostic.json"
+          remote_command="$deploy_root_assignment; state_file=\"${DEPLOY_ROOT%/}/release-state/deployment-phase.env\"; mutation_boundary_reached=\$(grep '^MUTATION_BOUNDARY_REACHED=' \"\$state_file\" 2>/dev/null | sed 's/^[^=]*=//'); if [ \"\$mutation_boundary_reached\" = 1 ] && [ -x \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\" ]; then bash \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\" || true; fi; if [ -s \"$diagnostic_path\" ]; then cat \"$diagnostic_path\"; else printf '%s\\n' '{\"mode\":\"diagnostic-unavailable\",\"mutation_boundary_reached\":false}'; fi"
+          github_actions_remote_ssh \
+            ~/.ssh/classroompath-production-diagnostic \
+            "${DEPLOY_PORT:-22}" \
+            "$DEPLOY_USER" \
+            "$DEPLOY_HOST" \
+            "$remote_command" > production-deployment-diagnostic.json
+          exit 0
+
+      - name: Upload production deploy diagnostics
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-deploy-diagnostics-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: production-deployment-diagnostic.json
+          retention-days: 14
+
+      - name: Report failure diagnostic smoke
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          echo "Failure diagnostic smoke is read-only and preserves the original deploy failure."
+          grep -E '"mutation_boundary_reached"|"deploymentPhase"|"rollbackResult"' production-deployment-diagnostic.json || true
+
   smoke-test-production:
     name: Smoke Test Production
     runs-on: ubuntu-latest

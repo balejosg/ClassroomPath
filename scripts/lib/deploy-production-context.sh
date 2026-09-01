@@ -77,6 +77,16 @@ verify_release_bundle_in_verifier_image() {
     return 1
   fi
 
+  if ! docker run --rm --entrypoint node "$verifier_image" \
+    /app/scripts/release-verifier-package.mjs check >/dev/null; then
+    FAILURE_POINT="verifier-command-missing"
+    FAILURE_CATEGORY="verifier-packaging"
+    FAILURE_MESSAGE="immutable verifier package contract is incomplete"
+    export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+    log_error "Immutable Release Bundle verifier package contract failed"
+    return 1
+  fi
+
   output_dir="$(mktemp -d)"
   verified_runtime_path="$output_dir/runtime.env"
   if ! chmod 644 "$RELEASE_BUNDLE_FILE" "$OPENPATH_CONTRACT_FILE" ||

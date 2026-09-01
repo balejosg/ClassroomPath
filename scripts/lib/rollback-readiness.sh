@@ -4,35 +4,44 @@
 
 rollback_readiness_json_is_ready() {
   local response="$1"
-  local node_bin="${NODE_BIN:-}"
+  local verifier_image="${CLASSROOMPATH_VERIFIER_IMAGE:-}"
+  local compact_response=""
 
-  if [ -z "$node_bin" ]; then
-    node_bin="$(command -v node 2>/dev/null || true)"
+  # Production supplies the exact verifier image from the stored Release
+  # Bundle. The small shell fallback exists only for bootstrap diagnostics and
+  # tests that intentionally omit Docker; it is deliberately strict about the
+  # top-level object and the semantic ready=true field.
+  if [ "${ROLLBACK_READINESS_USE_VERIFIER:-0}" = "1" ] && [ -n "$verifier_image" ]; then
+    if ! [[ "$verifier_image" =~ @sha256:[0-9a-f]{64}$ ]]; then
+      log_error "Rollback readiness requires an immutable verifier image"
+      return 1
+    fi
+    printf '%s' "$response" |
+      docker run --rm -i --entrypoint node "$verifier_image" -e '
+        let input = "";
+        process.stdin.setEncoding("utf8");
+        process.stdin.on("data", (chunk) => { input += chunk; });
+        process.stdin.on("end", () => {
+          try {
+            const parsed = JSON.parse(input);
+            const valid = parsed !== null &&
+              typeof parsed === "object" &&
+              !Array.isArray(parsed) &&
+              parsed.ready === true;
+            process.exit(valid ? 0 : 1);
+          } catch {
+            process.exit(1);
+          }
+        });
+      '
+    return $?
   fi
 
-  if [ -z "$node_bin" ]; then
-    log_error "Node is required to validate the rollback readiness JSON contract"
-    return 1
-  fi
-
-  printf '%s' "$response" |
-    "$node_bin" -e '
-      let input = "";
-      process.stdin.setEncoding("utf8");
-      process.stdin.on("data", (chunk) => { input += chunk; });
-      process.stdin.on("end", () => {
-        try {
-          const parsed = JSON.parse(input);
-          const valid = parsed !== null &&
-            typeof parsed === "object" &&
-            !Array.isArray(parsed) &&
-            parsed.ready === true;
-          process.exit(valid ? 0 : 1);
-        } catch {
-          process.exit(1);
-        }
-      });
-    '
+  compact_response="$(printf '%s' "$response" | tr -d '[:space:]')"
+  case "$compact_response" in
+    '{"ready":true}'|'{"ready":true,'*'}') return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 rollback_wait_for_health_and_readiness() {

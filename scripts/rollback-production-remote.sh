@@ -38,6 +38,10 @@ source "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH"
 remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"
 remote_deploy_init_production_helper_paths "$SCRIPT_DIR" "$APP_DIR"
 
+: "${PRODUCTION_HOST_CONTRACT_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/production-host-contract.sh")}"
+: "${DEPLOYMENT_TRANSACTION_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-transaction.sh")}"
+: "${ROLLBACK_EXECUTOR_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/rollback-executor.sh")}"
+
 if [ ! -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
   printf 'Remote helper contract helper not found: %s\n' "$REMOTE_HELPER_CONTRACTS_PATH" >&2
   exit 1
@@ -100,6 +104,30 @@ else
   exit 1
 fi
 
+if production_host_contract_helper_supports_contract "$PRODUCTION_HOST_CONTRACT_HELPER_PATH"; then
+  # shellcheck source=lib/production-host-contract.sh
+  source "$PRODUCTION_HOST_CONTRACT_HELPER_PATH"
+else
+  log_error "Remote production-host-contract helper does not meet the minimum contract"
+  exit 1
+fi
+
+if deployment_transaction_helper_supports_contract "$DEPLOYMENT_TRANSACTION_HELPER_PATH"; then
+  # shellcheck source=lib/deployment-transaction.sh
+  source "$DEPLOYMENT_TRANSACTION_HELPER_PATH"
+else
+  log_error "Remote deployment-transaction helper does not meet the minimum contract"
+  exit 1
+fi
+
+if rollback_executor_helper_supports_contract "$ROLLBACK_EXECUTOR_HELPER_PATH"; then
+  # shellcheck source=lib/rollback-executor.sh
+  source "$ROLLBACK_EXECUTOR_HELPER_PATH"
+else
+  log_error "Remote rollback-executor helper does not meet the minimum contract"
+  exit 1
+fi
+
 refresh_rollback_checked_out_helpers() {
   remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"
   remote_deploy_init_production_helper_paths "$SCRIPT_DIR" "$APP_DIR"
@@ -124,17 +152,39 @@ refresh_rollback_checked_out_helpers() {
 
 DEPLOY_DIR="$CLASSROOMPATH_DEPLOY_ROOT"
 STATE_DIR="$DEPLOY_DIR/release-state"
+DEPLOYMENT_TRANSACTION_FILE="$STATE_DIR/deployment-phase.env"
+PRODUCTION_HOST_CONTRACT_REPORT_FILE="$STATE_DIR/rollback-host-contract.json"
+DEPLOYMENT_STATE_USE_VERIFIER=1
+ROLLBACK_READINESS_USE_VERIFIER=1
+export DEPLOYMENT_TRANSACTION_FILE PRODUCTION_HOST_CONTRACT_REPORT_FILE DEPLOYMENT_STATE_USE_VERIFIER
+export ROLLBACK_READINESS_USE_VERIFIER
 deployment_state_init_paths "$STATE_DIR"
 
-# The v2 path delegates to scripts/lib/release-bundle-state.mjs. It is the
-# authoritative rollback source; the legacy snapshot remains only as a
-# fail-closed migration fallback.
+# The v2 path delegates to the stable rollback executor and
+# scripts/lib/release-bundle-state.mjs. It is the authoritative rollback
+# source; the legacy snapshot remains only as a fail-closed migration fallback.
 if deployment_state_v2_pointer_present previous; then
-  if ! deployment_state_load_previous_release; then
+  if ! production_host_contract_validate \
+    "$CLASSROOMPATH_DEPLOY_ROOT" \
+    "${PRODUCTION_HOST_DISK_THRESHOLD_PERCENT:-80}" \
+    "$PRODUCTION_HOST_CONTRACT_REPORT_FILE"; then
+    exit 1
+  fi
+  if [ -f "$DEPLOYMENT_TRANSACTION_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090 # bounded transaction marker written atomically
+    . "$DEPLOYMENT_TRANSACTION_FILE"
+    set +a
+  else
+    deployment_transaction_init "$DEPLOYMENT_TRANSACTION_FILE" "" "" || exit 1
+  fi
+  if ! rollback_executor_preflight; then
     log_error "Previous production Release Bundle v2 state could not be verified"
     exit 1
   fi
+  ROLLBACK_USES_V2=1
 else
+  ROLLBACK_USES_V2=0
   if ! release_state_require_snapshot_fields "$DEPLOYMENT_STATE_PREVIOUS_FILE" current-runtime; then
     log_error "Previous production release snapshot is incompatible with the current runtime contract"
     exit 1
@@ -150,6 +200,11 @@ else
   fi
 
   deployment_state_load_previous_release
+fi
+
+if [ "${ROLLBACK_USES_V2:-0}" = "1" ] && [ "${MUTATION_BOUNDARY_REACHED:-0}" != "1" ]; then
+  log_info "Production deploy failed before the mutation boundary; no rollback is required"
+  exit 0
 fi
 
 if [ -z "${APP_SHA:-}" ] || [ -z "${IMAGE_SOURCE:-}" ] || [ -z "${RELEASE_ID:-}" ] || [ -z "${RC_RUN_ID:-}" ] || [ -z "${OPENPATH_SHA:-}" ] || [ -z "${OPENPATH_CONTRACT_SHA256:-}" ] || [ -z "${CLASSROOMPATH_GATEWAY_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ] || [ -z "${OPENPATH_FIREFOX_ASSETS_IMAGE:-}" ] || [ -z "${OPENPATH_API_IMAGE:-}" ] || [ -z "${OPENPATH_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_VERSION:-}" ] || [ -z "${OPENPATH_LINUX_AGENT_APT_SUITE:-}" ] || [ -z "${CLASSROOMPATH_SPA_IMAGE:-}" ] || [ -z "${CLASSROOMPATH_VERIFIER_IMAGE:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}" ] || [ -z "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}" ]; then
@@ -197,12 +252,8 @@ if [ -n "${MIGRATION_RISK_LEVEL:-}" ] || [ -n "${DB_MIGRATED:-}" ] || [ -n "${PR
 fi
 
 cd "$APP_DIR"
-if ! git fetch origin --tags --prune; then
-  log_error "Unable to fetch release tags for production rollback"
-  exit 1
-fi
-if ! git fetch origin main --prune; then
-  log_error "Unable to fetch origin/main for production rollback"
+if ! git cat-file -e "$APP_SHA^{commit}"; then
+  log_error "Previous production release commit is not present locally; refusing remote re-resolution"
   exit 1
 fi
 if ! git checkout --detach "$APP_SHA"; then
@@ -226,13 +277,19 @@ if [ "$checked_out_openpath_sha" != "$OPENPATH_SHA" ]; then
   log_error "Checked-out OpenPath gitlink $checked_out_openpath_sha does not match Release Bundle OpenPath SHA $OPENPATH_SHA"
   exit 1
 fi
-if ! refresh_rollback_checked_out_helpers; then
-  log_error "Unable to load the previous production release helpers"
-  exit 1
-fi
+# Do not refresh helpers from the checked-out candidate/previous tree here.
+# The stable rollback executor and the verifier selected from the durable
+# previous bundle remain authoritative across the whole recovery operation.
 if ! require_windows_offline_installer_runtime_pin; then
   log_error "Previous production release does not meet the canonical installer contract"
   exit 1
+fi
+
+if [ "${ROLLBACK_USES_V2:-0}" = "1" ]; then
+  if ! rollback_executor_begin; then
+    log_error "Unable to mark the rollback transaction as ROLLING_BACK"
+    exit 1
+  fi
 fi
 
 if ! echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin; then
@@ -306,12 +363,27 @@ if ! rollback_wait_for_health_and_readiness \
   "${PRODUCTION_ROLLBACK_CURL_TIMEOUT_SECONDS:-10}"; then
   log_error "Rollback health/readiness contract failed"
   docker logs classroompath-gateway --tail 50 || true
+  if [ "${ROLLBACK_USES_V2:-0}" = "1" ]; then
+    rollback_executor_mark_failure "READINESS" "rollback-readiness" "rollback-execution" \
+      "previous release failed health or readiness" || true
+  fi
   exit 1
 fi
 
 if ! deployment_state_activate_previous_release; then
   log_error "Rollback passed health/readiness, but the previous release state could not be activated"
+  if [ "${ROLLBACK_USES_V2:-0}" = "1" ]; then
+    rollback_executor_mark_failure "ACTIVATION" "rollback-activation" "rollback-execution" \
+      "previous release state activation failed" || true
+  fi
   exit 1
+fi
+
+if [ "${ROLLBACK_USES_V2:-0}" = "1" ]; then
+  if ! rollback_executor_mark_success; then
+    log_error "Rollback activated the previous release but could not persist ROLLED_BACK"
+    exit 1
+  fi
 fi
 
 log_success "Rollback health and readiness checks passed"

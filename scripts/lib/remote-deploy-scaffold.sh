@@ -23,6 +23,10 @@ remote_deploy_init_production_helper_paths() {
   DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deployment-state.sh")"
   DEPLOY_PRODUCTION_CONTEXT_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deploy-production-context.sh")"
   DEPLOY_PRODUCTION_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deploy-production-runtime.sh")"
+  PRODUCTION_HOST_CONTRACT_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/production-host-contract.sh")"
+  DEPLOYMENT_TRANSACTION_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deployment-transaction.sh")"
+  ROLLBACK_EXECUTOR_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/rollback-executor.sh")"
+  ROLLBACK_READINESS_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/rollback-readiness.sh")"
 }
 
 remote_deploy_reload_checked_out_helpers() {
@@ -47,6 +51,11 @@ remote_deploy_reload_checked_out_helpers() {
     # shellcheck disable=SC1090
     source "$DEPLOY_HOST_PREFLIGHT_HELPER_PATH"
   fi
+
+  PRODUCTION_HOST_CONTRACT_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/production-host-contract.sh")"
+  DEPLOYMENT_TRANSACTION_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-transaction.sh")"
+  ROLLBACK_EXECUTOR_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/rollback-executor.sh")"
+  ROLLBACK_READINESS_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/rollback-readiness.sh")"
 
   refresh_deployed_release_helpers
 }

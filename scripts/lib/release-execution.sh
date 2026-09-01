@@ -77,6 +77,17 @@ release_execution_write_deploy_context() {
   DEPLOY_FAILURE_STAGE="${DEPLOY_FAILURE_STAGE:-${FAILURE_STAGE:-preflight}}" \
   ROLLBACK_ATTEMPTED="${ROLLBACK_ATTEMPTED:-0}" \
   ROLLBACK_RESULT="${ROLLBACK_RESULT:-not_attempted}" \
+  DEPLOYMENT_PHASE="${DEPLOYMENT_PHASE:-}" \
+  DEPLOYMENT_STAGE="${DEPLOYMENT_STAGE:-}" \
+  MUTATION_BOUNDARY_REACHED="${MUTATION_BOUNDARY_REACHED:-0}" \
+  REQUESTED_RELEASE_ID="${REQUESTED_RELEASE_ID:-}" \
+  CANDIDATE_RELEASE_ID="${CANDIDATE_RELEASE_ID:-}" \
+  CURRENT_RELEASE_ID="${CURRENT_RELEASE_ID:-}" \
+  PREVIOUS_RELEASE_ID="${PREVIOUS_RELEASE_ID:-}" \
+  FAILURE_POINT="${FAILURE_POINT:-}" \
+  FAILURE_CATEGORY="${FAILURE_CATEGORY:-}" \
+  FAILURE_MESSAGE="${FAILURE_MESSAGE:-}" \
+  ROLLBACK_PHASE="${ROLLBACK_PHASE:-NOT_STARTED}" \
     write_deploy_context_state "$state_path"
 }
 
@@ -86,6 +97,16 @@ release_execution_mark_stage() {
   stage="$(release_execution_normalize_stage "$1")" || return 1
   FAILURE_STAGE="$stage"
   DEPLOY_FAILURE_STAGE="$stage"
+
+  if declare -f deployment_transaction_mark_stage >/dev/null 2>&1; then
+    case "$stage" in
+      preflight) deployment_transaction_mark_stage PREFLIGHT ;;
+      migrations|startup) deployment_transaction_mark_stage SWITCH ;;
+      readiness|verification) deployment_transaction_mark_stage VERIFY ;;
+      completed) deployment_transaction_mark_stage COMMIT ;;
+      failed) deployment_transaction_mark_stage FAILED ;;
+    esac
+  fi
 
   if [ -n "${DEPLOY_CONTEXT_FILE:-}" ] && declare -f write_deploy_context_state >/dev/null 2>&1; then
     release_execution_write_deploy_context "$DEPLOY_CONTEXT_FILE"

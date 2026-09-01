@@ -36,7 +36,9 @@ deployment_state_v2_pointer_present() {
 }
 
 deployment_state_cli_available() {
-  command -v node >/dev/null 2>&1 && [ -f "$(deployment_state_bundle_cli_path)" ]
+  [ "${DEPLOYMENT_STATE_USE_VERIFIER:-0}" != "1" ] &&
+    command -v node >/dev/null 2>&1 &&
+    [ -f "$(deployment_state_bundle_cli_path)" ]
 }
 
 deployment_state_verifier_image() {

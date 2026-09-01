@@ -9,6 +9,9 @@ DEPLOYMENT_STATE_HELPER_MIN_CONTRACT_VERSION=1
 RELEASE_RUNTIME_HELPER_MIN_CONTRACT_VERSION=1
 RELEASE_EXECUTION_HELPER_MIN_CONTRACT_VERSION=2
 RELEASE_RISK_POLICY_HELPER_MIN_CONTRACT_VERSION=1
+PRODUCTION_HOST_CONTRACT_HELPER_MIN_CONTRACT_VERSION=1
+DEPLOYMENT_TRANSACTION_HELPER_MIN_CONTRACT_VERSION=1
+ROLLBACK_EXECUTOR_HELPER_MIN_CONTRACT_VERSION=1
 
 remote_helper_path_supports_all() {
   local helper_path="${1:-}"
@@ -146,6 +149,30 @@ release_execution_helper_supports_contract() {
   release_risk_policy_helper_supports_contract "$helper_dir/release-risk-policy.sh"
 }
 
+production_host_contract_helper_supports_contract() {
+  local helper_path="${1:-}"
+  remote_helper_contract_version_at_least \
+    "$helper_path" \
+    PRODUCTION_HOST_CONTRACT_HELPER_CONTRACT_VERSION \
+    "$PRODUCTION_HOST_CONTRACT_HELPER_MIN_CONTRACT_VERSION"
+}
+
+deployment_transaction_helper_supports_contract() {
+  local helper_path="${1:-}"
+  remote_helper_contract_version_at_least \
+    "$helper_path" \
+    DEPLOYMENT_TRANSACTION_HELPER_CONTRACT_VERSION \
+    "$DEPLOYMENT_TRANSACTION_HELPER_MIN_CONTRACT_VERSION"
+}
+
+rollback_executor_helper_supports_contract() {
+  local helper_path="${1:-}"
+  remote_helper_contract_version_at_least \
+    "$helper_path" \
+    ROLLBACK_EXECUTOR_HELPER_CONTRACT_VERSION \
+    "$ROLLBACK_EXECUTOR_HELPER_MIN_CONTRACT_VERSION"
+}
+
 refresh_deployed_release_helpers() {
   RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
   RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
@@ -190,5 +217,20 @@ refresh_deployed_release_helpers() {
   if [ -n "${RELEASE_EXECUTION_HELPER_PATH:-}" ] && release_execution_helper_supports_contract "$RELEASE_EXECUTION_HELPER_PATH"; then
     # shellcheck disable=SC1090
     source "$RELEASE_EXECUTION_HELPER_PATH"
+  fi
+
+  if [ -n "${PRODUCTION_HOST_CONTRACT_HELPER_PATH:-}" ] && production_host_contract_helper_supports_contract "$PRODUCTION_HOST_CONTRACT_HELPER_PATH"; then
+    # shellcheck disable=SC1090
+    source "$PRODUCTION_HOST_CONTRACT_HELPER_PATH"
+  fi
+
+  if [ -n "${DEPLOYMENT_TRANSACTION_HELPER_PATH:-}" ] && deployment_transaction_helper_supports_contract "$DEPLOYMENT_TRANSACTION_HELPER_PATH"; then
+    # shellcheck disable=SC1090
+    source "$DEPLOYMENT_TRANSACTION_HELPER_PATH"
+  fi
+
+  if [ -n "${ROLLBACK_EXECUTOR_HELPER_PATH:-}" ] && rollback_executor_helper_supports_contract "$ROLLBACK_EXECUTOR_HELPER_PATH"; then
+    # shellcheck disable=SC1090
+    source "$ROLLBACK_EXECUTOR_HELPER_PATH"
   fi
 }

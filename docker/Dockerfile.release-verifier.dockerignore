@@ -6,7 +6,10 @@ scripts/**
 !scripts/
 !scripts/lib/
 !scripts/release-bundle.mjs
+!scripts/release-state-cli.mjs
+!scripts/release-verifier-package.mjs
 !scripts/lib/release-bundle.mjs
+!scripts/lib/release-verifier-contract.mjs
 !scripts/lib/openpath-promotion-contract.mjs
 !scripts/lib/release-bundle-state.mjs
 !scripts/lib/release-state-contract.mjs

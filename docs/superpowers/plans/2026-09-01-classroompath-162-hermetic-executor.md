@@ -79,7 +79,7 @@
 
 - Modify: `.github/workflows/deploy.yml`
 - Modify: `scripts/deploy-production-remote.sh`
-- Create or modify: `scripts/production-deployment-diagnostic.mjs`
+- Create or modify: `scripts/production-deployment-diagnostic.sh`
 - Test: `tests/workflow-deploy.test.ts`
 - Test: `tests/production-executor-hermetic.test.ts`
 

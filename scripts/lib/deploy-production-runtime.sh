@@ -61,20 +61,19 @@ apply_production_runtime_deploy_impl() {
   prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "${TARGET_SHA:-current}"
 
   log_info "Pulling immutable release images..."
+  FAILURE_POINT="docker-pull"
+  FAILURE_CATEGORY="image-pull"
+  FAILURE_MESSAGE="immutable production image pull failed"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
   docker compose pull gateway api windows-offline-installer-provision spa
 
-  log_info "Stopping existing containers..."
-  docker compose down --remove-orphans || true
-  docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
-  docker rm -f classroompath-production-api-1 classroompath-production-gateway-1 classroompath-production-spa-1 2>/dev/null || true
-
-  log_info "Starting containers from immutable images..."
-  docker compose up -d --force-recreate --no-build
-
-  if [ "${PRODUCTION_DEPLOY_PLAN:-}" != "release-candidate" ]; then
-    die "Unknown production deploy plan: ${PRODUCTION_DEPLOY_PLAN:-unset}" 1
-  fi
-
+  # Persist the candidate bundle and runtime projection before stopping the
+  # known-good containers. This makes every post-switch state recoverable and
+  # moves verifier/state failures to the pre-mutation side of the boundary.
+  FAILURE_POINT="state-persistence"
+  FAILURE_CATEGORY="state-write"
+  FAILURE_MESSAGE="candidate release state persistence failed before switch"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
   write_release_runtime_state \
     "${DEPLOYMENT_STATE_PENDING_FILE:-$STATE_DIR/pending-images.env}" \
     "$TARGET_SHA" \
@@ -102,6 +101,31 @@ apply_production_runtime_deploy_impl() {
     "$OPENPATH_CONTRACT_FILE" \
     "$RELEASE_ID" \
     "$RC_RUN_ID"
+
+  FAILURE_POINT="container-stop"
+  FAILURE_CATEGORY="container-switch"
+  FAILURE_MESSAGE="stopping the previous production containers failed"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  log_info "Stopping existing containers..."
+  docker compose down --remove-orphans
+  docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
+  docker rm -f classroompath-production-api-1 classroompath-production-gateway-1 classroompath-production-spa-1 2>/dev/null || true
+
+  FAILURE_POINT="container-start"
+  FAILURE_CATEGORY="container-switch"
+  FAILURE_MESSAGE="starting the candidate production containers failed"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  log_info "Starting containers from immutable images..."
+  docker compose up -d --force-recreate --no-build
+
+  if declare -f deployment_transaction_transition >/dev/null 2>&1; then
+    deployment_transaction_transition "$DEPLOYMENT_PHASE_ACTIVATED_UNVERIFIED" "SWITCH" || return 1
+  fi
+
+  if [ "${PRODUCTION_DEPLOY_PLAN:-}" != "release-candidate" ]; then
+    die "Unknown production deploy plan: ${PRODUCTION_DEPLOY_PLAN:-unset}" 1
+  fi
+
 }
 
 start_production_runtime_impl() {
@@ -109,7 +133,26 @@ start_production_runtime_impl() {
   apply_production_runtime_deploy_impl
 }
 
+production_readiness_failure_point() {
+  local response="${1:-}"
+  local compact_response=""
+
+  compact_response="$(printf '%s' "$response" | tr -d '[:space:]')"
+  case "$compact_response" in
+    '{"ready":false}'|'{"ready":false,'*'}')
+      printf '%s\n' 'ready-false'
+      ;;
+    *)
+      printf '%s\n' 'malformed-ready'
+      ;;
+  esac
+}
+
 wait_for_production_runtime_readiness_impl() {
+  FAILURE_POINT="health"
+  FAILURE_CATEGORY="health"
+  FAILURE_MESSAGE="candidate gateway health check failed"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
   log_info "Waiting for services to be healthy..."
   timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done' || {
     log_warn "Timeout waiting for container health checks"
@@ -132,20 +175,40 @@ wait_for_production_runtime_readiness_impl() {
   fi
 
   release_execution_mark_stage readiness
+  FAILURE_POINT="ready-false"
+  FAILURE_CATEGORY="readiness"
+  FAILURE_MESSAGE="candidate readiness did not satisfy semantic ready=true"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
   log_info "Checking full application readiness..."
 
   local ready_check=""
   for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
     ready_check=$(curl -sf http://localhost:3001/cp/ready 2>/dev/null || echo '{"ready":false}')
-    if echo "$ready_check" | grep -q '"ready":true'; then
+    if rollback_readiness_json_is_ready "$ready_check"; then
       log_success "Application readiness OK"
-      release_execution_mark_stage completed
+      if declare -f deployment_transaction_transition >/dev/null 2>&1; then
+        deployment_transaction_transition "$DEPLOYMENT_PHASE_VERIFIED" "VERIFY" || return 1
+      fi
       deployment_state_activate_v2_release "$RELEASE_ID"
       deployment_state_publish_pending_release
+      if declare -f deployment_transaction_transition >/dev/null 2>&1; then
+        deployment_transaction_transition "$DEPLOYMENT_PHASE_COMMITTED" "COMMIT" || return 1
+      fi
+      release_execution_mark_stage completed
       log_success "Deployment successful"
-      docker logs classroompath-gateway --tail 5
+      docker logs classroompath-gateway --tail 5 || true
       return 0
     fi
+
+    FAILURE_POINT="$(production_readiness_failure_point "$ready_check")"
+    if [ "$FAILURE_POINT" = "malformed-ready" ]; then
+      FAILURE_CATEGORY="readiness-contract"
+      FAILURE_MESSAGE="candidate readiness response was not valid JSON with ready=true"
+    else
+      FAILURE_CATEGORY="readiness"
+      FAILURE_MESSAGE="candidate readiness did not satisfy semantic ready=true"
+    fi
+    export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
 
     if [ "$i" -lt 12 ]; then
       log_warn "Application not ready (attempt $i/12), waiting 5s..."

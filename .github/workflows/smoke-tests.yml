@@ -91,7 +91,7 @@ jobs:
   resolve-production-release:
     name: Resolve Exact Production Release
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'production' || github.event.inputs.environment == 'both')
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'production' || github.event.inputs.environment == 'both'))
     outputs:
       release_id: ${{ steps.state.outputs.release_id }}
       rc_run_id: ${{ steps.state.outputs.rc_run_id }}
@@ -178,7 +178,7 @@ jobs:
 
   smoke-test-production:
     needs: resolve-production-release
-    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'production' || github.event.inputs.environment == 'both')
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'production' || github.event.inputs.environment == 'both'))
     uses: ./.github/workflows/reusable-smoke-test.yml
     with:
       environment_name: production
