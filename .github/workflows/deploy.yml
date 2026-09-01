@@ -482,37 +482,100 @@ jobs:
       bundle_base64: ${{ steps.recovery-artifact.outputs.bundle_base64 }}
       artifact_sha256: ${{ steps.recovery-artifact.outputs.artifact_sha256 }}
       executor_sha256: ${{ steps.recovery-artifact.outputs.executor_sha256 }}
+      recovery_sha: ${{ steps.recovery-artifact.outputs.recovery_sha }}
       source_sha: ${{ steps.recovery-artifact.outputs.source_sha }}
+      source_version: ${{ steps.recovery-artifact.outputs.source_version }}
+      contract_version: ${{ steps.recovery-artifact.outputs.contract_version }}
       diagnostic_fallback_base64: ${{ steps.recovery-artifact.outputs.diagnostic_fallback_base64 }}
 
     steps:
+      - name: Validate independent recovery authority
+        shell: bash
+        env:
+          PRODUCTION_RECOVERY_SHA: ${{ vars.PRODUCTION_RECOVERY_SHA }}
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PRODUCTION_RECOVERY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::PRODUCTION_RECOVERY_SHA must be a configured full lowercase 40-character Git SHA"
+            exit 1
+          fi
+          if [ "$PRODUCTION_RECOVERY_SHA" = "$CANDIDATE_SHA" ]; then
+            echo "::error::PRODUCTION_RECOVERY_SHA must differ from the candidate SHA"
+            exit 1
+          fi
+
       - name: Checkout recovery source
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ vars.PRODUCTION_RECOVERY_SHA }}
+          path: recovery-source
+          fetch-depth: 1
 
       - name: Package and identify exact recovery artifact
         id: recovery-artifact
         shell: bash
+        env:
+          PRODUCTION_RECOVERY_SHA: ${{ vars.PRODUCTION_RECOVERY_SHA }}
+          CANDIDATE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          recovery_source_sha="$(cd recovery-source && git rev-parse HEAD)"
+          recovery_package_script="recovery-source/scripts/package-production-recovery-bundle.sh"
+          test -f "$recovery_package_script"
+          if [ "$recovery_source_sha" != "$PRODUCTION_RECOVERY_SHA" ]; then
+            echo "::error::Recovery checkout does not resolve to PRODUCTION_RECOVERY_SHA"
+            exit 1
+          fi
+          if [ "$recovery_source_sha" = "$CANDIDATE_SHA" ]; then
+            echo "::error::Recovery source and candidate SHA must differ"
+            exit 1
+          fi
           recovery_bundle_path="$RUNNER_TEMP/production-recovery-bundle.tgz"
-          bash scripts/package-production-recovery-bundle.sh "$recovery_bundle_path" >/dev/null
+          recovery_evidence_path="$RUNNER_TEMP/production-recovery-authority.env"
+          bash recovery-source/scripts/production-recovery-authority.sh validate \
+            --recovery-sha "$PRODUCTION_RECOVERY_SHA" \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --source-root recovery-source
+          bash recovery-source/scripts/production-recovery-authority.sh package \
+            --recovery-sha "$PRODUCTION_RECOVERY_SHA" \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --source-root recovery-source \
+            --output "$recovery_bundle_path" \
+            --evidence "$recovery_evidence_path"
           artifact_sha256="$(sha256sum "$recovery_bundle_path" | awk '{print $1}')"
           executor_sha256="$(tar -xOf "$recovery_bundle_path" production-recovery-executor.sh | sha256sum | awk '{print $1}')"
+          source_sha="$(sed -n 's/^PRODUCTION_RECOVERY_SOURCE_SHA=//p' "$recovery_evidence_path" | head -n 1)"
+          source_version="$(sed -n 's/^PRODUCTION_RECOVERY_SOURCE_VERSION=//p' "$recovery_evidence_path" | head -n 1)"
+          contract_version="$(sed -n 's/^PRODUCTION_RECOVERY_CONTRACT_VERSION=//p' "$recovery_evidence_path" | head -n 1)"
+          test "$source_sha" = "$PRODUCTION_RECOVERY_SHA"
+          test "$source_version" = 1
+          test "$contract_version" = 1
+          PRODUCTION_RECOVERY_SHA="$PRODUCTION_RECOVERY_SHA" \
+          PRODUCTION_RECOVERY_SOURCE_SHA="$source_sha" \
+          PRODUCTION_RECOVERY_SOURCE_VERSION="$source_version" \
+          PRODUCTION_RECOVERY_CONTRACT_VERSION="$contract_version" \
+          CANDIDATE_SHA="$CANDIDATE_SHA" \
+            bash recovery-source/scripts/production-recovery-authority.sh preflight \
+              --recovery-sha "$PRODUCTION_RECOVERY_SHA" \
+              --artifact "$recovery_bundle_path" \
+              --evidence "$recovery_evidence_path"
           test "$(tar -tzf "$recovery_bundle_path" | grep -c '^production-recovery-executor\\.sh$')" -eq 1
           test "$(tar -tzf "$recovery_bundle_path" | grep -c '^lib/')" -ge 1
           printf 'bundle_base64=%s\n' "$(base64 "$recovery_bundle_path" | tr -d '\n')" >> "$GITHUB_OUTPUT"
           printf 'artifact_sha256=%s\n' "$artifact_sha256" >> "$GITHUB_OUTPUT"
           printf 'executor_sha256=%s\n' "$executor_sha256" >> "$GITHUB_OUTPUT"
-          printf 'source_sha=%s\n' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-          printf 'diagnostic_fallback_base64=%s\n' "$(base64 scripts/lib/production-deployment-diagnostic-fallback.sh | tr -d '\n')" >> "$GITHUB_OUTPUT"
+          printf 'recovery_sha=%s\n' "$PRODUCTION_RECOVERY_SHA" >> "$GITHUB_OUTPUT"
+          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+          printf 'source_version=%s\n' "$source_version" >> "$GITHUB_OUTPUT"
+          printf 'contract_version=%s\n' "$contract_version" >> "$GITHUB_OUTPUT"
+          printf 'diagnostic_fallback_base64=%s\n' "$(base64 recovery-source/scripts/lib/production-deployment-diagnostic-fallback.sh | tr -d '\n')" >> "$GITHUB_OUTPUT"
 
       - name: Upload stable rollback transport wrapper
         uses: actions/upload-artifact@v7
         with:
           name: production-recovery-transport-${{ github.run_id }}
-          path: scripts/rollback-production-remote.sh
+          path: recovery-source/scripts/rollback-production-remote.sh
           retention-days: 14
 
   deploy-production:
@@ -559,9 +622,12 @@ jobs:
           RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}
           DEPLOY_PAYLOAD_B64: ${{ needs.resolve-release-images.outputs.payload_base64 }}
           PRODUCTION_RECOVERY_BUNDLE_B64: ${{ needs.prepare-production-recovery.outputs.bundle_base64 }}
+          PRODUCTION_RECOVERY_SHA: ${{ needs.prepare-production-recovery.outputs.recovery_sha }}
           PRODUCTION_RECOVERY_ARTIFACT_SHA256: ${{ needs.prepare-production-recovery.outputs.artifact_sha256 }}
           PRODUCTION_RECOVERY_EXECUTOR_SHA256: ${{ needs.prepare-production-recovery.outputs.executor_sha256 }}
           PRODUCTION_RECOVERY_SOURCE_SHA: ${{ needs.prepare-production-recovery.outputs.source_sha }}
+          PRODUCTION_RECOVERY_SOURCE_VERSION: ${{ needs.prepare-production-recovery.outputs.source_version }}
+          PRODUCTION_RECOVERY_CONTRACT_VERSION: ${{ needs.prepare-production-recovery.outputs.contract_version }}
           PRODUCTION_CONTAINER_PLATFORM: ${{ needs.resolve-release-images.outputs.production_container_platform }}
           PRODUCTION_DB_BACKUP_COMMAND: ${{ secrets.PRODUCTION_DB_BACKUP_COMMAND }}
           PRODUCTION_DB_BACKUP_ID: ${{ secrets.PRODUCTION_DB_BACKUP_ID }}
@@ -590,7 +656,7 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 20m
-          envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64,DEPLOY_REF,DEPLOY_SHA,RELEASE_MANIFEST_B64,PRODUCTION_RECOVERY_BUNDLE_B64,PRODUCTION_RECOVERY_ARTIFACT_SHA256,PRODUCTION_RECOVERY_EXECUTOR_SHA256,PRODUCTION_RECOVERY_SOURCE_SHA,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID,CLASSROOMPATH_DEPLOY_ROOT,CP_BILLING_MODE,CP_PLATFORM_ADMIN_EMAILS,CP_CLIENT_CANARY_ADMIN_TOKEN,VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY,VAPID_CONTACT,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_ANNUAL_PRICE_1_10,STRIPE_ANNUAL_PRICE_11_25,STRIPE_ANNUAL_PRICE_26_50,STRIPE_ANNUAL_PRICE_51_100,STRIPE_ONBOARDING_PRICE_1_25,STRIPE_ONBOARDING_PRICE_26_100,STRIPE_PILOT_PRICE,CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA,CP_EMAIL_PREFLIGHT_MODE
+          envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64,DEPLOY_REF,DEPLOY_SHA,RELEASE_MANIFEST_B64,PRODUCTION_RECOVERY_BUNDLE_B64,PRODUCTION_RECOVERY_SHA,PRODUCTION_RECOVERY_ARTIFACT_SHA256,PRODUCTION_RECOVERY_EXECUTOR_SHA256,PRODUCTION_RECOVERY_SOURCE_SHA,PRODUCTION_RECOVERY_SOURCE_VERSION,PRODUCTION_RECOVERY_CONTRACT_VERSION,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID,CLASSROOMPATH_DEPLOY_ROOT,CP_BILLING_MODE,CP_PLATFORM_ADMIN_EMAILS,CP_CLIENT_CANARY_ADMIN_TOKEN,VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY,VAPID_CONTACT,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_ANNUAL_PRICE_1_10,STRIPE_ANNUAL_PRICE_11_25,STRIPE_ANNUAL_PRICE_26_50,STRIPE_ANNUAL_PRICE_51_100,STRIPE_ONBOARDING_PRICE_1_25,STRIPE_ONBOARDING_PRICE_26_100,STRIPE_PILOT_PRICE,CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA,CP_EMAIL_PREFLIGHT_MODE
           script_path: scripts/deploy-production-remote.sh
 
       - name: Download deploy debug artifact
@@ -651,7 +717,7 @@ jobs:
           deploy_root_assignment="$(printf 'CLASSROOMPATH_DEPLOY_ROOT=%q' "$DEPLOY_ROOT")"
           fallback_b64_assignment="$(printf 'PRODUCTION_DIAGNOSTIC_FALLBACK_B64=%q' "$PRODUCTION_DIAGNOSTIC_FALLBACK_B64")"
           diagnostic_path="${DEPLOY_ROOT%/}/release-state/post-switch-diagnostic.json"
-          remote_command="$deploy_root_assignment; $fallback_b64_assignment; state_file=\"${DEPLOY_ROOT%/}/release-state/deployment-phase.env\"; diagnostic_path=\"$diagnostic_path\"; fallback_path=\$(mktemp); printf '%s' \"\$PRODUCTION_DIAGNOSTIC_FALLBACK_B64\" | base64 --decode > \"\$fallback_path\"; chmod 700 \"\$fallback_path\"; mutation_boundary_reached=\$(grep '^MUTATION_BOUNDARY_REACHED=' \"\$state_file\" 2>/dev/null | sed 's/^[^=]*=//'); expected_marker='\"mutation_boundary_reached\":false'; if [ \"\$mutation_boundary_reached\" = 1 ]; then expected_marker='\"mutation_boundary_reached\":true'; fi; rm -f \"\$diagnostic_path\"; diagnostic_status=1; if [ \"\$mutation_boundary_reached\" = 1 ] && [ -x \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\" ]; then if bash \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\"; then diagnostic_status=0; else diagnostic_status=\$?; fi; fi; if [ \"\$diagnostic_status\" -ne 0 ] || [ ! -s \"\$diagnostic_path\" ] || ! grep -Fq \"\$expected_marker\" \"\$diagnostic_path\"; then bash \"\$fallback_path\" \"\$state_file\" \"\$diagnostic_path\" || true; fi; if [ -s \"\$diagnostic_path\" ]; then cat \"\$diagnostic_path\"; else bash \"\$fallback_path\" \"\$state_file\" \"\$diagnostic_path\" && cat \"\$diagnostic_path\"; fi; rm -f \"\$fallback_path\""
+          remote_command="$deploy_root_assignment; $fallback_b64_assignment; state_file=\"${DEPLOY_ROOT%/}/release-state/deployment-phase.env\"; diagnostic_path=\"$diagnostic_path\"; fallback_path=\$(mktemp); printf '%s' \"\$PRODUCTION_DIAGNOSTIC_FALLBACK_B64\" | base64 --decode > \"\$fallback_path\"; chmod 700 \"\$fallback_path\"; mutation_boundary_reached=\$(grep '^MUTATION_BOUNDARY_REACHED=' \"\$state_file\" 2>/dev/null | sed 's/^[^=]*=//'); expected_marker='\"mutation_boundary_reached\":false'; if [ \"\$mutation_boundary_reached\" = 1 ]; then expected_marker='\"mutation_boundary_reached\":true'; fi; rm -f \"\$diagnostic_path\"; diagnostic_status=1; candidate_diagnostic_valid=0; if [ \"\$mutation_boundary_reached\" = 1 ] && [ -x \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\" ]; then if bash \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\"; then diagnostic_status=0; if [ -s \"\$diagnostic_path\" ] && grep -Fq \"\$expected_marker\" \"\$diagnostic_path\"; then candidate_diagnostic_valid=1; fi; else diagnostic_status=\$?; fi; fi; if [ \"\$candidate_diagnostic_valid\" -ne 1 ]; then bash \"\$fallback_path\" \"\$state_file\" \"\$diagnostic_path\" || true; fi; if [ -s \"\$diagnostic_path\" ]; then cat \"\$diagnostic_path\"; else bash \"\$fallback_path\" \"\$state_file\" \"\$diagnostic_path\" && cat \"\$diagnostic_path\"; fi; rm -f \"\$fallback_path\""
           github_actions_remote_ssh \
             ~/.ssh/classroompath-production-diagnostic \
             "${DEPLOY_PORT:-22}" \
@@ -1090,11 +1156,15 @@ jobs:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLASSROOMPATH_DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
+          CANDIDATE_SHA: ${{ github.sha }}
           PRODUCTION_CONTAINER_PLATFORM: ${{ needs.resolve-release-images.outputs.production_container_platform }}
           PRODUCTION_RECOVERY_BUNDLE_B64: ${{ needs.prepare-production-recovery.outputs.bundle_base64 }}
+          PRODUCTION_RECOVERY_SHA: ${{ needs.prepare-production-recovery.outputs.recovery_sha }}
           PRODUCTION_RECOVERY_ARTIFACT_SHA256: ${{ needs.prepare-production-recovery.outputs.artifact_sha256 }}
           PRODUCTION_RECOVERY_EXECUTOR_SHA256: ${{ needs.prepare-production-recovery.outputs.executor_sha256 }}
           PRODUCTION_RECOVERY_SOURCE_SHA: ${{ needs.prepare-production-recovery.outputs.source_sha }}
+          PRODUCTION_RECOVERY_SOURCE_VERSION: ${{ needs.prepare-production-recovery.outputs.source_version }}
+          PRODUCTION_RECOVERY_CONTRACT_VERSION: ${{ needs.prepare-production-recovery.outputs.contract_version }}
         uses: appleboy/ssh-action@v1.2.4
         with:
           host: ${{ steps.resolve.outputs.ip }}
@@ -1103,5 +1173,5 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 15m
-          envs: GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_DEPLOY_ROOT,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_RECOVERY_BUNDLE_B64,PRODUCTION_RECOVERY_ARTIFACT_SHA256,PRODUCTION_RECOVERY_EXECUTOR_SHA256,PRODUCTION_RECOVERY_SOURCE_SHA
+          envs: GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_DEPLOY_ROOT,CANDIDATE_SHA,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_RECOVERY_BUNDLE_B64,PRODUCTION_RECOVERY_SHA,PRODUCTION_RECOVERY_ARTIFACT_SHA256,PRODUCTION_RECOVERY_EXECUTOR_SHA256,PRODUCTION_RECOVERY_SOURCE_SHA,PRODUCTION_RECOVERY_SOURCE_VERSION,PRODUCTION_RECOVERY_CONTRACT_VERSION
           script_path: scripts/rollback-production-remote.sh

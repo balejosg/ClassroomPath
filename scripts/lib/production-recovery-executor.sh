@@ -20,6 +20,139 @@ else
 fi
 
 RECOVERY_LIB_DIR="$SCRIPT_DIR/lib"
+PRODUCTION_RECOVERY_AUTHORITY_PREFLIGHT_ONLY="${PRODUCTION_RECOVERY_AUTHORITY_PREFLIGHT_ONLY:-0}"
+if [ "${1:-}" = "--authority-preflight-only" ]; then
+  PRODUCTION_RECOVERY_AUTHORITY_PREFLIGHT_ONLY=1
+fi
+
+recovery_executor_error() {
+  printf '[ERROR] %s\n' "$*" >&2
+}
+
+recovery_executor_metadata_value() {
+  local metadata_path="$1"
+  local field_name="$2"
+
+  [ -f "$metadata_path" ] || return 1
+  awk -F= -v expected_field="$field_name" '
+    $1 == expected_field {
+      value = $2
+      sub(/[[:space:]]+#.*$/, "", value)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      print value
+      found = 1
+      exit
+    }
+    END {
+      if (!found) exit 1
+    }
+  ' "$metadata_path"
+}
+
+recovery_executor_contract_value() {
+  local contract_path="$1"
+  local field_name="$2"
+
+  recovery_executor_metadata_value "$contract_path" "$field_name"
+}
+
+recovery_executor_require_full_sha() {
+  local label="$1"
+  local value="${2:-}"
+
+  if [[ ! "$value" =~ ^[0-9a-f]{40}$ ]]; then
+    recovery_executor_error "$label must be a full lowercase Git SHA-1 (40 hexadecimal characters)"
+    return 1
+  fi
+}
+
+validate_recovery_authority_metadata() {
+  local authority_metadata_path="$RECOVERY_LIB_DIR/recovery-authority.env"
+  local contract_path="$RECOVERY_LIB_DIR/production-recovery-contract.sh"
+  local recovery_sha="${PRODUCTION_RECOVERY_SHA:-}"
+  local source_sha="${PRODUCTION_RECOVERY_SOURCE_SHA:-}"
+  local candidate_sha="${CANDIDATE_SHA:-}"
+  local metadata_source_sha=""
+  local metadata_contract_version=""
+  local metadata_source_version=""
+  local contract_helper_version=""
+  local contract_version=""
+  local source_version=""
+  local expected_executor_sha256="${PRODUCTION_RECOVERY_EXECUTOR_SHA256:-}"
+  local actual_executor_sha256=""
+
+  recovery_executor_require_full_sha PRODUCTION_RECOVERY_SHA "$recovery_sha" || return 1
+  recovery_executor_require_full_sha PRODUCTION_RECOVERY_SOURCE_SHA "$source_sha" || return 1
+  if [ "$recovery_sha" != "$source_sha" ]; then
+    recovery_executor_error 'PRODUCTION_RECOVERY_SOURCE_SHA must match PRODUCTION_RECOVERY_SHA'
+    return 1
+  fi
+  if [ -n "$candidate_sha" ]; then
+    recovery_executor_require_full_sha CANDIDATE_SHA "$candidate_sha" || return 1
+    if [ "$candidate_sha" = "$recovery_sha" ]; then
+      recovery_executor_error 'CANDIDATE_SHA must differ from PRODUCTION_RECOVERY_SHA'
+      return 1
+    fi
+  fi
+  if [ ! -f "$authority_metadata_path" ]; then
+    recovery_executor_error "Recovery authority metadata not found: $authority_metadata_path"
+    return 1
+  fi
+  if [ ! -f "$contract_path" ]; then
+    recovery_executor_error "Recovery contract not found: $contract_path"
+    return 1
+  fi
+
+  metadata_source_sha="$(recovery_executor_metadata_value \
+    "$authority_metadata_path" PRODUCTION_RECOVERY_SOURCE_SHA || true)"
+  metadata_contract_version="$(recovery_executor_metadata_value \
+    "$authority_metadata_path" PRODUCTION_RECOVERY_CONTRACT_VERSION || true)"
+  metadata_source_version="$(recovery_executor_metadata_value \
+    "$authority_metadata_path" PRODUCTION_RECOVERY_SOURCE_VERSION || true)"
+  contract_helper_version="$(recovery_executor_contract_value \
+    "$contract_path" PRODUCTION_RECOVERY_CONTRACT_HELPER_CONTRACT_VERSION || true)"
+  contract_version="$(recovery_executor_contract_value \
+    "$contract_path" PRODUCTION_RECOVERY_CONTRACT_VERSION || true)"
+  source_version="$(recovery_executor_contract_value \
+    "$contract_path" PRODUCTION_RECOVERY_SOURCE_VERSION || true)"
+
+  if [ "$metadata_source_sha" != "$recovery_sha" ]; then
+    recovery_executor_error 'Recovery authority metadata source SHA does not match PRODUCTION_RECOVERY_SHA'
+    return 1
+  fi
+  if [ "$contract_helper_version" != "1" ] || [ "$contract_version" != "1" ] ||
+    [ "$source_version" != "1" ] || [ "$metadata_contract_version" != "$contract_version" ] ||
+    [ "$metadata_source_version" != "$source_version" ]; then
+    recovery_executor_error 'Recovery contract/version metadata is incompatible or inconsistent'
+    return 1
+  fi
+  if [ -n "${PRODUCTION_RECOVERY_CONTRACT_VERSION:-}" ] &&
+    [ "$PRODUCTION_RECOVERY_CONTRACT_VERSION" != "$metadata_contract_version" ]; then
+    recovery_executor_error 'PRODUCTION_RECOVERY_CONTRACT_VERSION does not match the exact recovery artifact'
+    return 1
+  fi
+  if [ -n "${PRODUCTION_RECOVERY_SOURCE_VERSION:-}" ] &&
+    [ "$PRODUCTION_RECOVERY_SOURCE_VERSION" != "$metadata_source_version" ]; then
+    recovery_executor_error 'PRODUCTION_RECOVERY_SOURCE_VERSION does not match the exact recovery artifact'
+    return 1
+  fi
+  if [ -n "$expected_executor_sha256" ]; then
+    if [[ ! "$expected_executor_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+      recovery_executor_error 'PRODUCTION_RECOVERY_EXECUTOR_SHA256 is invalid'
+      return 1
+    fi
+    actual_executor_sha256="$(sha256sum "$SCRIPT_SOURCE" | awk '{ print $1; exit }')"
+    if [ "$actual_executor_sha256" != "$expected_executor_sha256" ]; then
+      recovery_executor_error 'Recovery executor bytes do not match PRODUCTION_RECOVERY_EXECUTOR_SHA256'
+      return 1
+    fi
+  fi
+
+  export PRODUCTION_RECOVERY_SOURCE_SHA="$metadata_source_sha"
+  export PRODUCTION_RECOVERY_CONTRACT_VERSION="$metadata_contract_version"
+  export PRODUCTION_RECOVERY_SOURCE_VERSION="$metadata_source_version"
+}
+
 REMOTE_BOOTSTRAP_HELPER_PATH="$RECOVERY_LIB_DIR/remote-bootstrap.sh"
 
 if [ ! -f "$REMOTE_BOOTSTRAP_HELPER_PATH" ]; then
@@ -134,6 +267,13 @@ if rollback_executor_helper_supports_contract "$ROLLBACK_EXECUTOR_HELPER_PATH"; 
 else
   log_error "Remote rollback-executor helper does not meet the minimum contract"
   exit 1
+fi
+
+validate_recovery_authority_metadata || exit 1
+
+if [ "$PRODUCTION_RECOVERY_AUTHORITY_PREFLIGHT_ONLY" = "1" ]; then
+  log_info "Exact production recovery authority preflight passed; no host state was read or mutated"
+  exit 0
 fi
 
 DEPLOY_DIR="$CLASSROOMPATH_DEPLOY_ROOT"

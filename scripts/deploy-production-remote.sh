@@ -177,6 +177,7 @@ DEPLOY_RELEASE_BUNDLE_B64=""
 DEPLOY_OPENPATH_CONTRACT_B64=""
 DEPLOY_PAYLOAD_TARGET_SHA=""
 TARGET_SHA=""
+CANDIDATE_SHA="${CANDIDATE_SHA:-}"
 PRODUCTION_REGISTRY_LOGGED_IN=0
 DEPLOY_DEBUG_FILE="$STATE_DIR/deploy-debug.json"
 DEPLOYMENT_TRANSACTION_FILE="$STATE_DIR/deployment-phase.env"
@@ -248,6 +249,11 @@ write_production_deploy_debug_context() {
     printf '{\n'
     printf '  "deployStage":"%s",\n' "$(json_escape "${DEPLOY_FAILURE_STAGE:-${FAILURE_STAGE:-preflight}}")"
     printf '  "targetSha":"%s",\n' "$(json_escape "${TARGET_SHA:-${DEPLOY_SHA:-unknown}}")"
+    printf '  "candidateSha":"%s",\n' "$(json_escape "${CANDIDATE_SHA:-${TARGET_SHA:-}}")"
+    printf '  "recoverySourceSha":"%s",\n' "$(json_escape "${RECOVERY_SOURCE_SHA:-${PRODUCTION_RECOVERY_SOURCE_SHA:-}}")"
+    printf '  "recoveryContractVersion":"%s",\n' "$(json_escape "${RECOVERY_CONTRACT_VERSION:-${PRODUCTION_RECOVERY_CONTRACT_VERSION:-}}")"
+    printf '  "recoveryArtifactSha256":"%s",\n' "$(json_escape "${RECOVERY_ARTIFACT_SHA256:-${PRODUCTION_RECOVERY_ARTIFACT_SHA256:-}}")"
+    printf '  "recoveryExecutorSha256":"%s",\n' "$(json_escape "${RECOVERY_EXECUTOR_SHA256:-${PRODUCTION_RECOVERY_EXECUTOR_SHA256:-}}")"
     printf '  "deployRoot":"%s",\n' "$(json_escape "$DEPLOY_DIR")"
     printf '  "containerPlatform":"%s",\n' "$(json_escape "${CLASSROOMPATH_CONTAINER_PLATFORM:-${PRODUCTION_CONTAINER_PLATFORM:-unknown}}")"
     printf '  "lastFailingPhase":"%s",\n' "$(json_escape "${FAILURE_STAGE:-${DEPLOY_FAILURE_STAGE:-preflight}}")"
@@ -507,6 +513,11 @@ prepare_production_checkout() {
 
   git checkout --detach "$TARGET_SHA"
   git reset --hard "$TARGET_SHA"
+  CANDIDATE_SHA="$(git rev-parse HEAD)"
+  if [[ ! "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+    die "Checked-out candidate does not resolve to a full Git SHA: $CANDIDATE_SHA" 1
+  fi
+  export CANDIDATE_SHA
   git submodule deinit -f --all || true
   git submodule update --init --recursive --force
   load_checked_out_remote_deploy_scaffold

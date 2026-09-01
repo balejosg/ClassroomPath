@@ -18,7 +18,6 @@ import test from 'node:test';
 const projectRoot = resolve(import.meta.dirname, '..');
 const productionDeployScript = resolve(projectRoot, 'scripts/deploy-production-remote.sh');
 const productionRollbackScript = resolve(projectRoot, 'scripts/rollback-production-remote.sh');
-const recoveryBundleScript = resolve(projectRoot, 'scripts/package-production-recovery-bundle.sh');
 const previousReleaseFixtureDir = resolve(
   projectRoot,
   'tests/fixtures/production-remote-previous-release'
@@ -183,6 +182,31 @@ fi
   );
 }
 
+function createRecoverySourceFixture(tempDir: string) {
+  const sourceRoot = join(tempDir, 'recovery-source');
+  cpSync(join(projectRoot, 'scripts'), join(sourceRoot, 'scripts'), { recursive: true });
+  execFileSync('git', ['init', '--quiet', sourceRoot]);
+  execFileSync('git', ['-C', sourceRoot, 'config', 'user.email', 'fixture@example.invalid']);
+  execFileSync('git', ['-C', sourceRoot, 'config', 'user.name', 'Recovery Fixture']);
+  execFileSync('git', ['-C', sourceRoot, 'add', 'scripts']);
+  execFileSync('git', ['-C', sourceRoot, 'commit', '--quiet', '-m', 'recovery fixture']);
+  const recoverySha = execFileSync('git', ['-C', sourceRoot, 'rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+  }).trim();
+  return { sourceRoot, recoverySha };
+}
+
+function packageRecoverySourceFixture(sourceRoot: string, recoverySha: string, bundlePath: string) {
+  execFileSync(
+    'bash',
+    [join(sourceRoot, 'scripts/package-production-recovery-bundle.sh'), bundlePath],
+    {
+      cwd: sourceRoot,
+      env: { ...process.env, PRODUCTION_RECOVERY_SHA: recoverySha },
+    }
+  );
+}
+
 function createPreviousRuntime(releaseId: string) {
   return [
     `RELEASE_ID=${releaseId}`,
@@ -304,6 +328,8 @@ test('real rollback entrypoint restores the previous release with candidate help
   const bundlePath = join(tempDir, 'recovery.tgz');
   const previousId = 'a'.repeat(64);
   const currentId = 'c'.repeat(64);
+  const candidateSha = '2'.repeat(40);
+  const { sourceRoot: recoverySourceRoot, recoverySha } = createRecoverySourceFixture(tempDir);
   const candidateHelperNames = [
     'common.sh',
     'remote-bootstrap.sh',
@@ -338,6 +364,7 @@ test('real rollback entrypoint restores the previous release with candidate help
       'DEPLOYMENT_PHASE=FAILED',
       'DEPLOYMENT_STAGE=VERIFY',
       'MUTATION_BOUNDARY_REACHED=1',
+      `CANDIDATE_SHA=${candidateSha}`,
       `CURRENT_RELEASE_ID=${currentId}`,
       `CANDIDATE_RELEASE_ID=${currentId}`,
       `PREVIOUS_RELEASE_ID=${previousId}`,
@@ -358,12 +385,19 @@ test('real rollback entrypoint restores the previous release with candidate help
       `#!/usr/bin/env bash\nprintf '%s\\n' '${helperName}' >> "$CANDIDATE_HELPER_TRACE_FILE"\nreturn 97\n`
     );
   }
+  writeExecutable(
+    join(appDir, 'scripts/package-production-recovery-bundle.sh'),
+    `#!/usr/bin/env bash
+printf '%s\n' package-production-recovery-bundle.sh >> "$CANDIDATE_HELPER_TRACE_FILE"
+exit 97
+`
+  );
   cpSync(productionRollbackScript, join(streamedDir, 'rollback-production-remote.sh'));
   chmodSync(join(streamedDir, 'rollback-production-remote.sh'), 0o755);
   createFakeGit(binDir);
   createFakeDocker(binDir, 'rollback');
   createFakeCurl(binDir);
-  execFileSync('bash', [recoveryBundleScript, bundlePath], { cwd: projectRoot });
+  packageRecoverySourceFixture(recoverySourceRoot, recoverySha, bundlePath);
   const artifactSha256 = execFileSync('sha256sum', [bundlePath], { encoding: 'utf8' })
     .trim()
     .split(/\s+/u)[0];
@@ -391,7 +425,11 @@ test('real rollback entrypoint restores the previous release with candidate help
       `PRODUCTION_RECOVERY_ARTIFACT_SHA256=${artifactSha256}`,
       `PRODUCTION_RECOVERY_EXECUTOR_SHA256=${executorSha256}`,
       `PRODUCTION_RECOVERY_ARTIFACT_PATH=${durableArtifactPath}`,
-      'PRODUCTION_RECOVERY_SOURCE_SHA=60204c30805ab01f910e496a4443dd722448ff75',
+      `PRODUCTION_RECOVERY_SHA=${recoverySha}`,
+      `PRODUCTION_RECOVERY_SOURCE_SHA=${recoverySha}`,
+      'PRODUCTION_RECOVERY_SOURCE_VERSION=1',
+      'PRODUCTION_RECOVERY_CONTRACT_VERSION=1',
+      `PRODUCTION_RECOVERY_CANDIDATE_SHA=${candidateSha}`,
       'PRODUCTION_RECOVERY_PREFLIGHT=passed',
       '',
     ].join('\n'),
@@ -412,13 +450,18 @@ test('real rollback entrypoint restores the previous release with candidate help
       PATH: `${binDir}:/usr/bin:/bin`,
       PRODUCTION_CONTAINER_PLATFORM: 'linux/amd64',
       PRODUCTION_HOST_NETWORK_CHECK_COMMAND: 'true',
+      CANDIDATE_SHA: candidateSha,
       PRODUCTION_RECOVERY_ARTIFACT_SHA256: artifactSha256,
       PRODUCTION_RECOVERY_EXECUTOR_SHA256: executorSha256,
+      PRODUCTION_RECOVERY_SHA: recoverySha,
+      PRODUCTION_RECOVERY_SOURCE_SHA: recoverySha,
+      PRODUCTION_RECOVERY_SOURCE_VERSION: '1',
+      PRODUCTION_RECOVERY_CONTRACT_VERSION: '1',
       PRODUCTION_ROLLBACK_CURL_TIMEOUT_SECONDS: '1',
       PRODUCTION_ROLLBACK_PUBLIC_URL: 'http://localhost:3001',
       PRODUCTION_ROLLBACK_READINESS_ATTEMPTS: '1',
       PRODUCTION_ROLLBACK_READINESS_DELAY_SECONDS: '0',
-      TARGET_SHA: '2'.repeat(40),
+      TARGET_SHA: candidateSha,
       TRACE_FILE: traceFile,
     });
     const output = `${result.stdout}\n${result.stderr}`;
@@ -437,6 +480,76 @@ test('real rollback entrypoint restores the previous release with candidate help
   }
 });
 
+test('real rollback rejects transmitted bytes that differ from the persisted R artifact', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-recovery-byte-mismatch-'));
+  const deployRoot = join(tempDir, 'deploy');
+  const appDir = join(deployRoot, 'app');
+  const streamedDir = join(tempDir, 'streamed');
+  const bundlePath = join(tempDir, 'recovery.tgz');
+  const previousId = 'a'.repeat(64);
+  const candidateSha = '2'.repeat(40);
+  const { sourceRoot: recoverySourceRoot, recoverySha } = createRecoverySourceFixture(tempDir);
+
+  mkdirSync(join(appDir, 'scripts'), { recursive: true });
+  mkdirSync(streamedDir, { recursive: true });
+  packageRecoverySourceFixture(recoverySourceRoot, recoverySha, bundlePath);
+  const artifactSha256 = execFileSync('sha256sum', [bundlePath], { encoding: 'utf8' })
+    .trim()
+    .split(/\s+/u)[0];
+  const executorSha256 = createHash('sha256')
+    .update(execFileSync('tar', ['-xOf', bundlePath, 'production-recovery-executor.sh']))
+    .digest('hex');
+  const durableArtifactPath = join(
+    deployRoot,
+    'recovery/releases',
+    artifactSha256,
+    'production-recovery-bundle.tgz'
+  );
+  mkdirSync(join(deployRoot, 'recovery/releases', artifactSha256), { recursive: true });
+  cpSync(bundlePath, durableArtifactPath);
+  const identityPath = join(deployRoot, 'recovery/current-artifact.env');
+  const identity = [
+    'PRODUCTION_RECOVERY_ARTIFACT_VERSION=1',
+    `PRODUCTION_RECOVERY_SHA=${recoverySha}`,
+    `PRODUCTION_RECOVERY_ARTIFACT_SHA256=${artifactSha256}`,
+    `PRODUCTION_RECOVERY_EXECUTOR_SHA256=${executorSha256}`,
+    `PRODUCTION_RECOVERY_ARTIFACT_PATH=${durableArtifactPath}`,
+    `PRODUCTION_RECOVERY_SOURCE_SHA=${recoverySha}`,
+    'PRODUCTION_RECOVERY_SOURCE_VERSION=1',
+    'PRODUCTION_RECOVERY_CONTRACT_VERSION=1',
+    `PRODUCTION_RECOVERY_CANDIDATE_SHA=${candidateSha}`,
+    'PRODUCTION_RECOVERY_PREFLIGHT=passed',
+    '',
+  ].join('\n');
+  writeFileSync(identityPath, identity, 'utf8');
+  cpSync(productionRollbackScript, join(streamedDir, 'rollback-production-remote.sh'));
+
+  try {
+    const alteredBytes = Buffer.concat([readFileSync(bundlePath), Buffer.from('\n', 'utf8')]);
+    const result = runBashFromStdin(join(streamedDir, 'rollback-production-remote.sh'), {
+      ...process.env,
+      APP_DIR: appDir,
+      CANDIDATE_SHA: candidateSha,
+      CLASSROOMPATH_DEPLOY_ROOT: deployRoot,
+      PATH: '/usr/bin:/bin',
+      PRODUCTION_RECOVERY_BUNDLE_B64: alteredBytes.toString('base64'),
+      PRODUCTION_RECOVERY_ARTIFACT_SHA256: artifactSha256,
+      PRODUCTION_RECOVERY_EXECUTOR_SHA256: executorSha256,
+      PRODUCTION_RECOVERY_SHA: recoverySha,
+    });
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    assert.notEqual(result.status, 0);
+    assert.match(
+      output,
+      /Transmitted recovery bytes do not match the persisted recovery artifact/u
+    );
+    assert.equal(readFileSync(identityPath, 'utf8'), identity);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('exact recovery bytes are preflighted and persisted before the mutation boundary', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-recovery-artifact-'));
   const deployRoot = join(tempDir, 'deploy');
@@ -446,6 +559,8 @@ test('exact recovery bytes are preflighted and persisted before the mutation bou
   const candidateHelperTraceFile = join(tempDir, 'candidate-helper-read.log');
   const bundlePath = join(tempDir, 'recovery.tgz');
   const previousId = 'a'.repeat(64);
+  const candidateSha = '2'.repeat(40);
+  const { sourceRoot: recoverySourceRoot, recoverySha } = createRecoverySourceFixture(tempDir);
 
   mkdirSync(join(appDir, 'scripts/lib'), { recursive: true });
   mkdirSync(join(deployRoot, 'release-state/releases', previousId), { recursive: true });
@@ -459,6 +574,7 @@ test('exact recovery bytes are preflighted and persisted before the mutation bou
       'DEPLOYMENT_PHASE=PREPARED',
       'DEPLOYMENT_STAGE=PREFLIGHT',
       'MUTATION_BOUNDARY_REACHED=0',
+      `CANDIDATE_SHA=${candidateSha}`,
       `CURRENT_RELEASE_ID=${previousId}`,
       `PREVIOUS_RELEASE_ID=${previousId}`,
       'ROLLBACK_ATTEMPTED=0',
@@ -477,7 +593,7 @@ test('exact recovery bytes are preflighted and persisted before the mutation bou
     `#!/usr/bin/env bash\nprintf '%s\\n' candidate >> "\${CANDIDATE_HELPER_TRACE_FILE:?}"\nreturn 97\n`
   );
   createFakeDocker(binDir, 'rollback');
-  execFileSync('bash', [recoveryBundleScript, bundlePath], { cwd: projectRoot });
+  packageRecoverySourceFixture(recoverySourceRoot, recoverySha, bundlePath);
   const artifactSha256 = execFileSync('sha256sum', [bundlePath], { encoding: 'utf8' })
     .trim()
     .split(/\s+/u)[0];
@@ -520,11 +636,16 @@ test('exact recovery bytes are preflighted and persisted before the mutation bou
           CALLS_FILE: callsFile,
           CANDIDATE_HELPER_TRACE_FILE: candidateHelperTraceFile,
           CLASSROOMPATH_DEPLOY_ROOT: deployRoot,
+          CANDIDATE_SHA: candidateSha,
           PATH: `${binDir}:/usr/bin:/bin`,
           PRODUCTION_HOST_NETWORK_CHECK_COMMAND: 'true',
           PRODUCTION_RECOVERY_ARTIFACT_SHA256: artifactSha256,
           PRODUCTION_RECOVERY_BUNDLE_B64: readFileSync(bundlePath).toString('base64'),
-          PRODUCTION_RECOVERY_SOURCE_SHA: '60204c30805ab01f910e496a4443dd722448ff75',
+          PRODUCTION_RECOVERY_EXECUTOR_SHA256: executorSha256,
+          PRODUCTION_RECOVERY_SHA: recoverySha,
+          PRODUCTION_RECOVERY_SOURCE_SHA: recoverySha,
+          PRODUCTION_RECOVERY_SOURCE_VERSION: '1',
+          PRODUCTION_RECOVERY_CONTRACT_VERSION: '1',
         },
       }
     );
@@ -554,10 +675,19 @@ test('exact recovery bytes are preflighted and persisted before the mutation bou
     assert.match(readFileSync(identityPath, 'utf8'), /PRODUCTION_RECOVERY_PREFLIGHT=passed/u);
     assert.match(
       readFileSync(identityPath, 'utf8'),
-      /PRODUCTION_RECOVERY_SOURCE_SHA=60204c30805ab01f910e496a4443dd722448ff75/u
+      new RegExp(`PRODUCTION_RECOVERY_SOURCE_SHA=${recoverySha}`, 'u')
     );
+    assert.match(
+      readFileSync(identityPath, 'utf8'),
+      new RegExp(`PRODUCTION_RECOVERY_SHA=${recoverySha}`, 'u')
+    );
+    assert.match(readFileSync(identityPath, 'utf8'), /PRODUCTION_RECOVERY_SOURCE_VERSION=1/u);
+    assert.match(readFileSync(identityPath, 'utf8'), /PRODUCTION_RECOVERY_CONTRACT_VERSION=1/u);
     assert.equal(readFileSync(persistedArchive).equals(readFileSync(bundlePath)), true);
     assert.match(transaction, /^MUTATION_BOUNDARY_REACHED=0$/mu);
+    assert.match(transaction, new RegExp(`CANDIDATE_SHA=${candidateSha}`, 'u'));
+    assert.match(transaction, new RegExp(`RECOVERY_SOURCE_SHA=${recoverySha}`, 'u'));
+    assert.match(transaction, /RECOVERY_CONTRACT_VERSION=1/u);
     assert.match(transaction, new RegExp(`RECOVERY_ARTIFACT_SHA256=${artifactSha256}`, 'u'));
     assert.match(
       rollbackPlan,
@@ -578,7 +708,6 @@ test('recovery artifact fault injection fails closed before persistence or mutat
     {
       name: 'hash-mismatch',
       expectedHash: 'f'.repeat(64),
-      expectedExecutorHash: '',
       bundle: 'complete',
       pointer: true,
       failure: /hash mismatch/u,
@@ -586,7 +715,6 @@ test('recovery artifact fault injection fails closed before persistence or mutat
     {
       name: 'executor-hash-mismatch',
       expectedHash: '',
-      expectedExecutorHash: 'f'.repeat(64),
       bundle: 'complete',
       pointer: true,
       failure: /recovery executor hash mismatch/u,
@@ -594,7 +722,6 @@ test('recovery artifact fault injection fails closed before persistence or mutat
     {
       name: 'incomplete-package',
       expectedHash: '',
-      expectedExecutorHash: '',
       bundle: 'incomplete',
       pointer: true,
       failure: /incomplete/u,
@@ -602,10 +729,25 @@ test('recovery artifact fault injection fails closed before persistence or mutat
     {
       name: 'missing-previous-pointer',
       expectedHash: '',
-      expectedExecutorHash: '',
       bundle: 'complete',
       pointer: false,
       failure: /Release state file not found/u,
+    },
+    {
+      name: 'source-sha-mismatch',
+      expectedHash: '',
+      bundle: 'complete',
+      pointer: true,
+      sourceSha: 'b'.repeat(40),
+      failure: /must match PRODUCTION_RECOVERY_SHA/u,
+    },
+    {
+      name: 'contract-version-mismatch',
+      expectedHash: '',
+      bundle: 'complete',
+      pointer: true,
+      contractVersion: '99',
+      failure: /contract\/version is missing or incompatible/u,
     },
   ] as const;
 
@@ -616,6 +758,8 @@ test('recovery artifact fault injection fails closed before persistence or mutat
     const binDir = join(tempDir, 'bin');
     const bundlePath = join(tempDir, 'recovery.tgz');
     const previousId = 'a'.repeat(64);
+    const candidateSha = '2'.repeat(40);
+    const { sourceRoot: recoverySourceRoot, recoverySha } = createRecoverySourceFixture(tempDir);
 
     mkdirSync(join(appDir, 'scripts/lib'), { recursive: true });
     mkdirSync(binDir, { recursive: true });
@@ -628,6 +772,7 @@ test('recovery artifact fault injection fails closed before persistence or mutat
         'DEPLOYMENT_PHASE=PREPARED',
         'DEPLOYMENT_STAGE=PREFLIGHT',
         'MUTATION_BOUNDARY_REACHED=0',
+        `CANDIDATE_SHA=${candidateSha}`,
         '',
       ].join('\n'),
       'utf8'
@@ -644,7 +789,7 @@ test('recovery artifact fault injection fails closed before persistence or mutat
     }
 
     if (scenario.bundle === 'complete') {
-      execFileSync('bash', [recoveryBundleScript, bundlePath], { cwd: projectRoot });
+      packageRecoverySourceFixture(recoverySourceRoot, recoverySha, bundlePath);
     } else {
       const incompleteRoot = join(tempDir, 'incomplete');
       mkdirSync(incompleteRoot, { recursive: true });
@@ -663,6 +808,14 @@ test('recovery artifact fault injection fails closed before persistence or mutat
       .trim()
       .split(/\s+/u)[0];
     const expectedHash = scenario.expectedHash || actualHash;
+    const actualExecutorHash =
+      scenario.bundle === 'complete'
+        ? createHash('sha256')
+            .update(execFileSync('tar', ['-xOf', bundlePath, 'production-recovery-executor.sh']))
+            .digest('hex')
+        : 'f'.repeat(64);
+    const expectedExecutorHash =
+      scenario.name === 'executor-hash-mismatch' ? 'f'.repeat(64) : actualExecutorHash;
     const shellScript = [
       'set -euo pipefail',
       'source "$1"',
@@ -698,9 +851,16 @@ test('recovery artifact fault injection fails closed before persistence or mutat
             CLASSROOMPATH_DEPLOY_ROOT: deployRoot,
             PATH: `${binDir}:/usr/bin:/bin`,
             PRODUCTION_HOST_NETWORK_CHECK_COMMAND: 'true',
+            CANDIDATE_SHA: candidateSha,
             PRODUCTION_RECOVERY_ARTIFACT_SHA256: expectedHash,
             PRODUCTION_RECOVERY_BUNDLE_B64: readFileSync(bundlePath).toString('base64'),
-            PRODUCTION_RECOVERY_EXECUTOR_SHA256: scenario.expectedExecutorHash || undefined,
+            PRODUCTION_RECOVERY_EXECUTOR_SHA256: expectedExecutorHash,
+            PRODUCTION_RECOVERY_SHA: recoverySha,
+            PRODUCTION_RECOVERY_SOURCE_SHA:
+              ('sourceSha' in scenario && scenario.sourceSha) || recoverySha,
+            PRODUCTION_RECOVERY_SOURCE_VERSION: '1',
+            PRODUCTION_RECOVERY_CONTRACT_VERSION:
+              ('contractVersion' in scenario && scenario.contractVersion) || '1',
           },
         }
       );
@@ -778,14 +938,18 @@ if [ "$mutation_boundary_reached" = 1 ]; then
 fi
 rm -f "$diagnostic_path"
 diagnostic_status=1
+candidate_diagnostic_valid=0
 if [ "$mutation_boundary_reached" = 1 ] && [ -x "$candidate_path" ]; then
   if bash "$candidate_path" "$state_file" "$diagnostic_path"; then
     diagnostic_status=0
+    if [ -s "$diagnostic_path" ] && grep -Fq "$expected_marker" "$diagnostic_path"; then
+      candidate_diagnostic_valid=1
+    fi
   else
     diagnostic_status=$?
   fi
 fi
-if [ "$diagnostic_status" -ne 0 ] || [ ! -s "$diagnostic_path" ] || ! grep -Fq "$expected_marker" "$diagnostic_path"; then
+if [ "$candidate_diagnostic_valid" -ne 1 ]; then
   bash "$fallback_path" "$state_file" "$diagnostic_path" || true
 fi
 if [ -s "$diagnostic_path" ]; then

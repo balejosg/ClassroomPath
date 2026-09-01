@@ -26,8 +26,9 @@ test('production deployment collects read-only diagnostics after a possible swit
   assert.match(deployWorkflow, /PRODUCTION_DIAGNOSTIC_FALLBACK_B64/u);
   assert.match(deployWorkflow, /prepare-production-recovery\.outputs\.diagnostic_fallback_base64/u);
   assert.match(deployWorkflow, /diagnostic_status/u);
+  assert.match(deployWorkflow, /candidate_diagnostic_valid/u);
   assert.match(deployWorkflow, /production-deployment-diagnostic\.sh.*diagnostic_status=0/u);
-  assert.match(deployWorkflow, /diagnostic_status=0; else diagnostic_status=/u);
+  assert.match(deployWorkflow, /candidate_diagnostic_valid=1/u);
   assert.match(deployWorkflow, /mutation_boundary_reached/u);
   assert.doesNotMatch(
     deployWorkflow,

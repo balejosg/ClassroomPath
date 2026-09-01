@@ -47,6 +47,11 @@ requested_release_id="$(fallback_state_value REQUESTED_RELEASE_ID || true)"
 current_release_id="$(fallback_state_value CURRENT_RELEASE_ID || true)"
 candidate_release_id="$(fallback_state_value CANDIDATE_RELEASE_ID || true)"
 previous_release_id="$(fallback_state_value PREVIOUS_RELEASE_ID || true)"
+candidate_sha="$(fallback_state_value CANDIDATE_SHA || true)"
+recovery_source_sha="$(fallback_state_value RECOVERY_SOURCE_SHA || true)"
+recovery_contract_version="$(fallback_state_value RECOVERY_CONTRACT_VERSION || true)"
+recovery_artifact_sha256="$(fallback_state_value RECOVERY_ARTIFACT_SHA256 || true)"
+recovery_executor_sha256="$(fallback_state_value RECOVERY_EXECUTOR_SHA256 || true)"
 
 if [ "${marker:-}" = "1" ]; then
   mutation_boundary_reached=true
@@ -63,6 +68,11 @@ tmp_file="$(mktemp "$output_file.tmp.XXXXXX")" || exit 1
   printf '  "currentReleaseId":"%s",\n' "$(fallback_json_escape "$current_release_id")"
   printf '  "candidateReleaseId":"%s",\n' "$(fallback_json_escape "$candidate_release_id")"
   printf '  "previousReleaseId":"%s",\n' "$(fallback_json_escape "$previous_release_id")"
+  printf '  "candidateSha":"%s",\n' "$(fallback_json_escape "$candidate_sha")"
+  printf '  "recoverySourceSha":"%s",\n' "$(fallback_json_escape "$recovery_source_sha")"
+  printf '  "recoveryContractVersion":"%s",\n' "$(fallback_json_escape "$recovery_contract_version")"
+  printf '  "recoveryArtifactSha256":"%s",\n' "$(fallback_json_escape "$recovery_artifact_sha256")"
+  printf '  "recoveryExecutorSha256":"%s",\n' "$(fallback_json_escape "$recovery_executor_sha256")"
   printf '  "deploymentPhase":"%s",\n' "$(fallback_json_escape "$phase")"
   printf '  "deploymentStage":"%s",\n' "$(fallback_json_escape "$stage")"
   printf '  "mutation_boundary_reached":%s,\n' "$mutation_boundary_reached"

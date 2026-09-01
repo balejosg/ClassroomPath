@@ -1,0 +1,128 @@
+name: Production Recovery Authority
+
+on:
+  workflow_dispatch:
+    inputs:
+      recovery_sha:
+        description: Full 40-character Git SHA to approve as the independent production recovery authority
+        required: true
+        type: string
+      promote:
+        description: Promote the already preflighted recovery authority to PRODUCTION_RECOVERY_SHA
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  validate-package-preflight:
+    name: Validate, package, hash, and preflight recovery authority
+    runs-on: ubuntu-latest
+    outputs:
+      recovery_sha: ${{ steps.authority.outputs.recovery_sha }}
+      artifact_sha256: ${{ steps.authority.outputs.artifact_sha256 }}
+      executor_sha256: ${{ steps.authority.outputs.executor_sha256 }}
+      contract_version: ${{ steps.authority.outputs.contract_version }}
+      source_version: ${{ steps.authority.outputs.source_version }}
+    steps:
+      - name: Validate requested recovery SHA
+        shell: bash
+        env:
+          PRODUCTION_RECOVERY_SHA: ${{ inputs.recovery_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PRODUCTION_RECOVERY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::recovery_sha must be a full lowercase 40-character Git SHA"
+            exit 1
+          fi
+
+      - name: Checkout exact recovery source R
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.recovery_sha }}
+          path: recovery-source
+          fetch-depth: 1
+
+      - name: Validate exact recovery checkout
+        shell: bash
+        env:
+          PRODUCTION_RECOVERY_SHA: ${{ inputs.recovery_sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(cd recovery-source && git rev-parse HEAD)"
+          test "$actual_sha" = "$PRODUCTION_RECOVERY_SHA"
+          bash recovery-source/scripts/production-recovery-authority.sh validate \
+            --recovery-sha "$PRODUCTION_RECOVERY_SHA" \
+            --source-root recovery-source
+
+      - name: Package and hash exact recovery R
+        id: authority
+        shell: bash
+        env:
+          PRODUCTION_RECOVERY_SHA: ${{ inputs.recovery_sha }}
+        run: |
+          set -euo pipefail
+          # The exact R authority CLI invokes package-production-recovery-bundle.sh from R.
+          artifact_path="$RUNNER_TEMP/production-recovery-bundle.tgz"
+          evidence_path="$RUNNER_TEMP/production-recovery-authority.env"
+          bash recovery-source/scripts/production-recovery-authority.sh package \
+            --recovery-sha "$PRODUCTION_RECOVERY_SHA" \
+            --source-root recovery-source \
+            --output "$artifact_path" \
+            --evidence "$evidence_path"
+          artifact_sha256="$(sha256sum "$artifact_path" | awk '{print $1}')"
+          executor_sha256="$(tar -xOf "$artifact_path" production-recovery-executor.sh | sha256sum | awk '{print $1}')"
+          source_sha="$(sed -n 's/^PRODUCTION_RECOVERY_SOURCE_SHA=//p' "$evidence_path" | head -n 1)"
+          contract_version="$(sed -n 's/^PRODUCTION_RECOVERY_CONTRACT_VERSION=//p' "$evidence_path" | head -n 1)"
+          source_version="$(sed -n 's/^PRODUCTION_RECOVERY_SOURCE_VERSION=//p' "$evidence_path" | head -n 1)"
+          test "$source_sha" = "$PRODUCTION_RECOVERY_SHA"
+          test "$artifact_sha256" = "$(sed -n 's/^PRODUCTION_RECOVERY_ARTIFACT_SHA256=//p' "$evidence_path" | head -n 1)"
+          test "$executor_sha256" = "$(sed -n 's/^PRODUCTION_RECOVERY_EXECUTOR_SHA256=//p' "$evidence_path" | head -n 1)"
+          printf 'recovery_sha=%s\n' "$PRODUCTION_RECOVERY_SHA" >> "$GITHUB_OUTPUT"
+          printf 'artifact_sha256=%s\n' "$artifact_sha256" >> "$GITHUB_OUTPUT"
+          printf 'executor_sha256=%s\n' "$executor_sha256" >> "$GITHUB_OUTPUT"
+          printf 'contract_version=%s\n' "$contract_version" >> "$GITHUB_OUTPUT"
+          printf 'source_version=%s\n' "$source_version" >> "$GITHUB_OUTPUT"
+          cp "$artifact_path" production-recovery-bundle.tgz
+          cp "$evidence_path" production-recovery-authority.env
+
+      - name: Preflight exact packaged recovery R
+        shell: bash
+        env:
+          PRODUCTION_RECOVERY_SHA: ${{ inputs.recovery_sha }}
+        run: |
+          set -euo pipefail
+          bash recovery-source/scripts/production-recovery-authority.sh preflight \
+            --recovery-sha "$PRODUCTION_RECOVERY_SHA" \
+            --artifact production-recovery-bundle.tgz \
+            --evidence production-recovery-authority.env
+          grep -Fx 'PREFLIGHT=passed' production-recovery-authority.env
+
+      - name: Upload approved recovery authority evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-recovery-authority-${{ inputs.recovery_sha }}
+          path: |
+            production-recovery-bundle.tgz
+            production-recovery-authority.env
+          retention-days: 30
+
+  promote:
+    name: Promote approved recovery authority
+    needs: validate-package-preflight
+    if: inputs.promote == true
+    runs-on: ubuntu-latest
+    environment: production-recovery-authority
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Promote R as the explicit production recovery authority
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCTION_RECOVERY_SHA: ${{ needs.validate-package-preflight.outputs.recovery_sha }}
+        run: |
+          set -euo pipefail
+          gh variable set PRODUCTION_RECOVERY_SHA --body "$PRODUCTION_RECOVERY_SHA"

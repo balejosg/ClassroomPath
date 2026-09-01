@@ -1,7 +1,9 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
+import { createHash } from 'node:crypto';
 import {
   chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -84,6 +86,97 @@ describe('Deployment staging and promotion contracts', () => {
     projectRoot,
     'scripts/lib/production-recovery-executor.sh'
   );
+  const productionRecoveryAuthorityPath = resolve(
+    projectRoot,
+    'scripts/production-recovery-authority.sh'
+  );
+
+  function prepareDurableRecoveryFixture(
+    tempDir: string,
+    deployRoot: string,
+    candidateSha: string
+  ) {
+    const sourceRoot = resolve(tempDir, 'recovery-source');
+    const bundlePath = resolve(tempDir, 'recovery.tgz');
+    const evidencePath = resolve(tempDir, 'recovery-authority.env');
+
+    cpSync(resolve(projectRoot, 'scripts'), resolve(sourceRoot, 'scripts'), {
+      recursive: true,
+    });
+    execFileSync('git', ['init', '--quiet', sourceRoot]);
+    execFileSync('git', ['-C', sourceRoot, 'config', 'user.email', 'fixture@example.invalid']);
+    execFileSync('git', ['-C', sourceRoot, 'config', 'user.name', 'Recovery Fixture']);
+    execFileSync('git', ['-C', sourceRoot, 'add', 'scripts']);
+    execFileSync('git', ['-C', sourceRoot, 'commit', '--quiet', '-m', 'recovery fixture']);
+    const recoverySha = execFileSync('git', ['-C', sourceRoot, 'rev-parse', 'HEAD'], {
+      encoding: 'utf8',
+    }).trim();
+
+    execFileSync(
+      'bash',
+      [
+        productionRecoveryAuthorityPath,
+        'package',
+        '--recovery-sha',
+        recoverySha,
+        '--source-root',
+        sourceRoot,
+        '--output',
+        bundlePath,
+        '--evidence',
+        evidencePath,
+        '--candidate-sha',
+        candidateSha,
+      ],
+      { cwd: projectRoot, env: { ...process.env } }
+    );
+    execFileSync(
+      'bash',
+      [
+        productionRecoveryAuthorityPath,
+        'preflight',
+        '--recovery-sha',
+        recoverySha,
+        '--artifact',
+        bundlePath,
+        '--evidence',
+        evidencePath,
+      ],
+      { cwd: projectRoot, env: { ...process.env } }
+    );
+
+    const artifactSha256 = createHash('sha256').update(readFileSync(bundlePath)).digest('hex');
+    const executorSha256 = createHash('sha256')
+      .update(execFileSync('tar', ['-xOf', bundlePath, 'production-recovery-executor.sh']))
+      .digest('hex');
+    const durableArtifactPath = resolve(
+      deployRoot,
+      'recovery/releases',
+      artifactSha256,
+      'production-recovery-bundle.tgz'
+    );
+    mkdirSync(dirname(durableArtifactPath), { recursive: true });
+    cpSync(bundlePath, durableArtifactPath);
+    writeFileSync(
+      resolve(deployRoot, 'recovery/current-artifact.env'),
+      [
+        'PRODUCTION_RECOVERY_ARTIFACT_VERSION=1',
+        `PRODUCTION_RECOVERY_SHA=${recoverySha}`,
+        `PRODUCTION_RECOVERY_SOURCE_SHA=${recoverySha}`,
+        'PRODUCTION_RECOVERY_SOURCE_VERSION=1',
+        'PRODUCTION_RECOVERY_CONTRACT_VERSION=1',
+        `PRODUCTION_RECOVERY_ARTIFACT_SHA256=${artifactSha256}`,
+        `PRODUCTION_RECOVERY_EXECUTOR_SHA256=${executorSha256}`,
+        `PRODUCTION_RECOVERY_ARTIFACT_PATH=${durableArtifactPath}`,
+        `PRODUCTION_RECOVERY_CANDIDATE_SHA=${candidateSha}`,
+        'PRODUCTION_RECOVERY_PREFLIGHT=passed',
+        '',
+      ].join('\n'),
+      'utf8'
+    );
+
+    return { recoverySha, artifactSha256, executorSha256 };
+  }
 
   function runRollbackReadinessHarness({
     healthHttpStatus = 200,
@@ -315,6 +408,7 @@ printf 'status=%s result=%s current=%s\n' "$status" "$ROLLBACK_RESULT" "$current
     const previousStatePath = resolve(stateDir, 'previous-images.env');
     const currentStatePath = resolve(stateDir, 'current-images.env');
     const apiImage = `openpath-api@sha256:${'a'.repeat(64)}`;
+    const candidateSha = '2'.repeat(40);
 
     mkdirSync(resolve(appDir, 'config'), { recursive: true });
     mkdirSync(resolve(appDir, 'docker'), { recursive: true });
@@ -346,6 +440,7 @@ printf 'status=%s result=%s current=%s\n' "$status" "$ROLLBACK_RESULT" "$current
       ].join('\n'),
       'utf-8'
     );
+    const recovery = prepareDurableRecoveryFixture(tempDir, tempDir, candidateSha);
 
     const result = spawnSync(
       'bash',
@@ -356,6 +451,13 @@ export CLASSROOMPATH_DEPLOY_ROOT="$1"
 export APP_DIR="$1/app"
 export OPENPATH_LINUX_AGENT_APT_SUITE="$2"
 export CALLS_FILE="$1/mutations.log"
+export CANDIDATE_SHA="$5"
+export PRODUCTION_RECOVERY_SHA="$4"
+export PRODUCTION_RECOVERY_SOURCE_SHA="$4"
+export PRODUCTION_RECOVERY_SOURCE_VERSION=1
+export PRODUCTION_RECOVERY_CONTRACT_VERSION=1
+export PRODUCTION_RECOVERY_ARTIFACT_SHA256="$6"
+export PRODUCTION_RECOVERY_EXECUTOR_SHA256="$7"
 git() { printf 'git %s\n' "$*" >>"$CALLS_FILE"; return 97; }
 docker() { printf 'docker %s\n' "$*" >>"$CALLS_FILE"; return 97; }
 curl() { printf 'curl %s\n' "$*" >>"$CALLS_FILE"; return 97; }
@@ -366,6 +468,10 @@ bash "$3"
         tempDir,
         staleAptSuite,
         productionRollbackScriptPath,
+        recovery.recoverySha,
+        candidateSha,
+        recovery.artifactSha256,
+        recovery.executorSha256,
       ],
       { cwd: projectRoot, encoding: 'utf-8' }
     );
@@ -387,6 +493,7 @@ bash "$3"
     const previousStatePath = resolve(stateDir, 'previous-images.env');
     const currentStatePath = resolve(stateDir, 'current-images.env');
     const apiImage = `openpath-api@sha256:${'a'.repeat(64)}`;
+    const candidateSha = '2'.repeat(40);
 
     mkdirSync(resolve(appDir, 'config'), { recursive: true });
     mkdirSync(resolve(appDir, 'docker'), { recursive: true });
@@ -427,6 +534,7 @@ bash "$3"
       ].join('\n'),
       'utf-8'
     );
+    const recovery = prepareDurableRecoveryFixture(tempDir, tempDir, candidateSha);
 
     const result = spawnSync(
       'bash',
@@ -445,6 +553,13 @@ export PRODUCTION_ROLLBACK_READINESS_DELAY_SECONDS=0
 export PRODUCTION_ROLLBACK_CURL_TIMEOUT_SECONDS=1
 export NODE_BIN="$3"
 export CALLS_FILE="$1/mutations.log"
+export CANDIDATE_SHA="$5"
+export PRODUCTION_RECOVERY_SHA="$4"
+export PRODUCTION_RECOVERY_SOURCE_SHA="$4"
+export PRODUCTION_RECOVERY_SOURCE_VERSION=1
+export PRODUCTION_RECOVERY_CONTRACT_VERSION=1
+export PRODUCTION_RECOVERY_ARTIFACT_SHA256="$6"
+export PRODUCTION_RECOVERY_EXECUTOR_SHA256="$7"
     git() {
       printf 'git %s\n' "$*" >>"$CALLS_FILE"
       if [ "$1" = rev-parse ]; then
@@ -498,6 +613,10 @@ bash "$2"
         tempDir,
         productionRollbackScriptPath,
         process.execPath,
+        recovery.recoverySha,
+        candidateSha,
+        recovery.artifactSha256,
+        recovery.executorSha256,
       ],
       { cwd: projectRoot, encoding: 'utf-8' }
     );

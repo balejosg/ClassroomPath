@@ -4,6 +4,8 @@
 
 PRODUCTION_RECOVERY_ARTIFACT_HELPER_CONTRACT_VERSION=1
 PRODUCTION_RECOVERY_ARTIFACT_CONTRACT_VERSION=1
+PRODUCTION_RECOVERY_SUPPORTED_CONTRACT_VERSION=1
+PRODUCTION_RECOVERY_SUPPORTED_SOURCE_VERSION=1
 
 PRODUCTION_RECOVERY_ARTIFACT_REQUIRED_FILES=(
   production-recovery-executor.sh
@@ -19,6 +21,8 @@ PRODUCTION_RECOVERY_ARTIFACT_REQUIRED_FILES=(
   lib/rollback-executor.sh
   lib/rollback-readiness.sh
   lib/deploy-container-platform.sh
+  lib/production-recovery-contract.sh
+  lib/recovery-authority.env
 )
 
 production_recovery_artifact_error() {
@@ -48,7 +52,7 @@ production_recovery_artifact_archive_has_safe_paths() {
   while IFS= read -r archive_entry; do
     [ -n "$archive_entry" ] || continue
     case "$archive_entry" in
-      production-recovery-executor.sh|lib|lib/*.sh|lib/)
+      production-recovery-executor.sh|lib|lib/*.sh|lib/*.env|lib/)
         ;;
       *)
         production_recovery_artifact_error \
@@ -57,6 +61,37 @@ production_recovery_artifact_archive_has_safe_paths() {
         ;;
     esac
   done <<< "$archive_entries"
+}
+
+production_recovery_artifact_metadata_value() {
+  local metadata_path="$1"
+  local field_name="$2"
+
+  [ -f "$metadata_path" ] || return 1
+  awk -F= -v expected_field="$field_name" '
+    $1 == expected_field {
+      value = $2
+      sub(/[[:space:]]+#.*$/, "", value)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      print value
+      found = 1
+      exit
+    }
+    END {
+      if (!found) exit 1
+    }
+  ' "$metadata_path"
+}
+
+production_recovery_artifact_require_full_sha() {
+  local label="$1"
+  local value="${2:-}"
+
+  if [[ ! "$value" =~ ^[0-9a-f]{40}$ ]]; then
+    production_recovery_artifact_error \
+      "$label must be a full lowercase Git SHA-1 (40 hexadecimal characters)"
+    return 1
+  fi
 }
 
 production_recovery_artifact_bundle_is_complete() {
@@ -78,16 +113,23 @@ production_recovery_artifact_write_identity() {
   local executor_sha256="$3"
   local artifact_path="$4"
   local source_sha="${5:-}"
+  local source_version="${6:-}"
+  local contract_version="${7:-}"
+  local candidate_sha="${8:-}"
   local identity_tmp=""
 
   mkdir -p "$(dirname "$identity_path")"
   identity_tmp="$(mktemp "$identity_path.tmp.XXXXXX")" || return 1
   {
     printf 'PRODUCTION_RECOVERY_ARTIFACT_VERSION=%q\n' "$PRODUCTION_RECOVERY_ARTIFACT_CONTRACT_VERSION"
+    printf 'PRODUCTION_RECOVERY_SHA=%q\n' "$source_sha"
     printf 'PRODUCTION_RECOVERY_ARTIFACT_SHA256=%q\n' "$artifact_sha256"
     printf 'PRODUCTION_RECOVERY_EXECUTOR_SHA256=%q\n' "$executor_sha256"
     printf 'PRODUCTION_RECOVERY_ARTIFACT_PATH=%q\n' "$artifact_path"
     printf 'PRODUCTION_RECOVERY_SOURCE_SHA=%q\n' "$source_sha"
+    printf 'PRODUCTION_RECOVERY_SOURCE_VERSION=%q\n' "$source_version"
+    printf 'PRODUCTION_RECOVERY_CONTRACT_VERSION=%q\n' "$contract_version"
+    printf 'PRODUCTION_RECOVERY_CANDIDATE_SHA=%q\n' "$candidate_sha"
     printf 'PRODUCTION_RECOVERY_PREFLIGHT=%q\n' passed
   } > "$identity_tmp"
   chmod 600 "$identity_tmp"
@@ -101,9 +143,13 @@ production_recovery_artifact_prepare() {
   local deploy_root="${CLASSROOMPATH_DEPLOY_ROOT:-}"
   local app_dir="${APP_DIR:-${deploy_root%/}/app}"
   local bundle_base64="${PRODUCTION_RECOVERY_BUNDLE_B64:-}"
+  local recovery_sha="${PRODUCTION_RECOVERY_SHA:-}"
   local expected_sha256="${PRODUCTION_RECOVERY_ARTIFACT_SHA256:-}"
   local expected_executor_sha256="${PRODUCTION_RECOVERY_EXECUTOR_SHA256:-}"
   local source_sha="${PRODUCTION_RECOVERY_SOURCE_SHA:-}"
+  local source_version="${PRODUCTION_RECOVERY_SOURCE_VERSION:-}"
+  local contract_version="${PRODUCTION_RECOVERY_CONTRACT_VERSION:-}"
+  local candidate_sha="${CANDIDATE_SHA:-}"
   local staging_dir=""
   local archive_path=""
   local extracted_dir=""
@@ -113,6 +159,14 @@ production_recovery_artifact_prepare() {
   local release_root=""
   local release_tmp=""
   local identity_path=""
+  local authority_metadata_path=""
+  local contract_file_path=""
+  local metadata_source_sha=""
+  local metadata_source_version=""
+  local metadata_contract_version=""
+  local contract_helper_version=""
+  local contract_file_version=""
+  local contract_file_source_version=""
 
   if [ -z "$deploy_root" ]; then
     production_recovery_artifact_error 'CLASSROOMPATH_DEPLOY_ROOT is required for recovery artifact preparation'
@@ -123,15 +177,33 @@ production_recovery_artifact_prepare() {
       'PRODUCTION_RECOVERY_BUNDLE_B64 is required before the mutation boundary'
     return 1
   fi
+  production_recovery_artifact_require_full_sha PRODUCTION_RECOVERY_SHA "$recovery_sha" || return 1
+  production_recovery_artifact_require_full_sha PRODUCTION_RECOVERY_SOURCE_SHA "$source_sha" || return 1
+  production_recovery_artifact_require_full_sha CANDIDATE_SHA "$candidate_sha" || return 1
+  if [ "$recovery_sha" != "$source_sha" ]; then
+    production_recovery_artifact_error \
+      'PRODUCTION_RECOVERY_SOURCE_SHA must match PRODUCTION_RECOVERY_SHA'
+    return 1
+  fi
+  if [ "$recovery_sha" = "$candidate_sha" ]; then
+    production_recovery_artifact_error \
+      'PRODUCTION_RECOVERY_SHA must differ from CANDIDATE_SHA'
+    return 1
+  fi
   if [[ ! "$expected_sha256" =~ ^[0-9a-f]{64}$ ]]; then
     production_recovery_artifact_error \
       'PRODUCTION_RECOVERY_ARTIFACT_SHA256 must identify the exact recovery bytes'
     return 1
   fi
-  if [ -n "$expected_executor_sha256" ] &&
-    [[ ! "$expected_executor_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+  if [[ ! "$expected_executor_sha256" =~ ^[0-9a-f]{64}$ ]]; then
     production_recovery_artifact_error \
       'PRODUCTION_RECOVERY_EXECUTOR_SHA256 must identify the exact recovery entrypoint'
+    return 1
+  fi
+  if [ "$contract_version" != "$PRODUCTION_RECOVERY_SUPPORTED_CONTRACT_VERSION" ] ||
+    [ "$source_version" != "$PRODUCTION_RECOVERY_SUPPORTED_SOURCE_VERSION" ]; then
+    production_recovery_artifact_error \
+      'Recovery contract/version is missing or incompatible with this deploy executor'
     return 1
   fi
   if ! declare -f deployment_transaction_set_recovery_artifact >/dev/null 2>&1; then
@@ -175,14 +247,39 @@ production_recovery_artifact_prepare() {
     return 1
   fi
 
+  authority_metadata_path="$extracted_dir/lib/recovery-authority.env"
+  contract_file_path="$extracted_dir/lib/production-recovery-contract.sh"
+  metadata_source_sha="$(production_recovery_artifact_metadata_value \
+    "$authority_metadata_path" PRODUCTION_RECOVERY_SOURCE_SHA || true)"
+  metadata_source_version="$(production_recovery_artifact_metadata_value \
+    "$authority_metadata_path" PRODUCTION_RECOVERY_SOURCE_VERSION || true)"
+  metadata_contract_version="$(production_recovery_artifact_metadata_value \
+    "$authority_metadata_path" PRODUCTION_RECOVERY_CONTRACT_VERSION || true)"
+  contract_helper_version="$(production_recovery_artifact_metadata_value \
+    "$contract_file_path" PRODUCTION_RECOVERY_CONTRACT_HELPER_CONTRACT_VERSION || true)"
+  contract_file_version="$(production_recovery_artifact_metadata_value \
+    "$contract_file_path" PRODUCTION_RECOVERY_CONTRACT_VERSION || true)"
+  contract_file_source_version="$(production_recovery_artifact_metadata_value \
+    "$contract_file_path" PRODUCTION_RECOVERY_SOURCE_VERSION || true)"
+  if [ "$metadata_source_sha" != "$recovery_sha" ] ||
+    [ "$metadata_source_version" != "$source_version" ] ||
+    [ "$metadata_contract_version" != "$contract_version" ] ||
+    [ "$contract_helper_version" != "1" ] ||
+    [ "$contract_file_version" != "$contract_version" ] ||
+    [ "$contract_file_source_version" != "$source_version" ]; then
+    production_recovery_artifact_error \
+      'Recovery artifact source or contract/version metadata is incompatible or inconsistent'
+    rm -rf "$staging_dir"
+    return 1
+  fi
+
   executor_sha256="$(production_recovery_artifact_hash_file \
     "$extracted_dir/production-recovery-executor.sh")" || {
     production_recovery_artifact_error 'Unable to hash the recovery executor entrypoint'
     rm -rf "$staging_dir"
     return 1
   }
-  if [ -n "$expected_executor_sha256" ] &&
-    [ "$executor_sha256" != "$expected_executor_sha256" ]; then
+  if [ "$executor_sha256" != "$expected_executor_sha256" ]; then
     production_recovery_artifact_error \
       "Production recovery executor hash mismatch: expected=$expected_executor_sha256 actual=$executor_sha256"
     rm -rf "$staging_dir"
@@ -195,8 +292,14 @@ production_recovery_artifact_prepare() {
   if ! (
     CLASSROOMPATH_DEPLOY_ROOT="$deploy_root" \
     APP_DIR="$app_dir" \
+    CANDIDATE_SHA="$candidate_sha" \
+    PRODUCTION_RECOVERY_SHA="$recovery_sha" \
+    PRODUCTION_RECOVERY_SOURCE_SHA="$source_sha" \
+    PRODUCTION_RECOVERY_SOURCE_VERSION="$source_version" \
+    PRODUCTION_RECOVERY_CONTRACT_VERSION="$contract_version" \
     PRODUCTION_RECOVERY_PREFLIGHT_ONLY=1 \
     PRODUCTION_RECOVERY_ARTIFACT_SHA256="$artifact_sha256" \
+    PRODUCTION_RECOVERY_EXECUTOR_SHA256="$executor_sha256" \
       bash "$extracted_dir/production-recovery-executor.sh" --preflight-only
   ); then
     production_recovery_artifact_error 'Exact production recovery artifact preflight failed'
@@ -235,7 +338,10 @@ production_recovery_artifact_prepare() {
     "$artifact_sha256" \
     "$executor_sha256" \
     "$release_root/production-recovery-bundle.tgz" \
-    "$source_sha"; then
+    "$source_sha" \
+    "$source_version" \
+    "$contract_version" \
+    "$candidate_sha"; then
     production_recovery_artifact_error \
       'Unable to persist the production recovery artifact identity'
     rm -rf "$staging_dir"
@@ -246,15 +352,21 @@ production_recovery_artifact_prepare() {
   RECOVERY_ARTIFACT_SHA256="$artifact_sha256"
   RECOVERY_EXECUTOR_SHA256="$executor_sha256"
   RECOVERY_ARTIFACT_PATH="$release_root/production-recovery-bundle.tgz"
+  RECOVERY_SOURCE_SHA="$source_sha"
+  RECOVERY_SOURCE_VERSION="$source_version"
+  RECOVERY_CONTRACT_VERSION="$contract_version"
   RECOVERY_ARTIFACT_SOURCE_SHA="$source_sha"
   export RECOVERY_ARTIFACT_VERSION RECOVERY_ARTIFACT_SHA256 RECOVERY_EXECUTOR_SHA256
-  export RECOVERY_ARTIFACT_PATH RECOVERY_ARTIFACT_SOURCE_SHA
+  export RECOVERY_ARTIFACT_PATH RECOVERY_SOURCE_SHA RECOVERY_SOURCE_VERSION
+  export RECOVERY_CONTRACT_VERSION RECOVERY_ARTIFACT_SOURCE_SHA
   if ! deployment_transaction_set_recovery_artifact \
     "$RECOVERY_ARTIFACT_VERSION" \
     "$RECOVERY_ARTIFACT_SHA256" \
     "$RECOVERY_EXECUTOR_SHA256" \
     "$RECOVERY_ARTIFACT_PATH" \
-    "$RECOVERY_ARTIFACT_SOURCE_SHA"; then
+    "$RECOVERY_ARTIFACT_SOURCE_SHA" \
+    "$RECOVERY_SOURCE_VERSION" \
+    "$RECOVERY_CONTRACT_VERSION"; then
     production_recovery_artifact_error \
       'Unable to persist recovery artifact identity in the deployment transaction'
     rm -rf "$staging_dir"
