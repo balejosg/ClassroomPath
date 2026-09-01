@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   chmodSync,
   cpSync,
@@ -18,6 +19,14 @@ const projectRoot = resolve(import.meta.dirname, '..');
 const productionDeployScript = resolve(projectRoot, 'scripts/deploy-production-remote.sh');
 const productionRollbackScript = resolve(projectRoot, 'scripts/rollback-production-remote.sh');
 const recoveryBundleScript = resolve(projectRoot, 'scripts/package-production-recovery-bundle.sh');
+const previousReleaseFixtureDir = resolve(
+  projectRoot,
+  'tests/fixtures/production-remote-previous-release'
+);
+const productionRecoveryArtifactHelper = resolve(
+  projectRoot,
+  'scripts/lib/production-recovery-artifact.sh'
+);
 const diagnosticFallbackScript = resolve(
   projectRoot,
   'scripts/lib/production-deployment-diagnostic-fallback.sh'
@@ -199,94 +208,12 @@ function createPreviousRuntime(releaseId: string) {
   ].join('\n');
 }
 
-function removeShellFunction(source: string, functionName: string, nextFunctionName: string) {
-  const startMarker = `\n${functionName}() {`;
-  const endMarker = `\n${nextFunctionName}() {`;
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker, start + startMarker.length);
-
-  assert.ok(start >= 0, `fixture function not found: ${functionName}`);
-  assert.ok(end > start, `fixture function boundary not found: ${functionName}`);
-  return `${source.slice(0, start)}${source.slice(end)}`;
-}
-
 function createPreviousReleaseFixture(appDir: string) {
-  let previousRevision = '';
-
-  try {
-    previousRevision = execFileSync('git', ['rev-parse', 'HEAD^'], {
-      cwd: projectRoot,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-      .toString()
-      .trim();
-  } catch {
-    // CI may provide only a shallow checkout. The deterministic fixture below
-    // preserves the old bootstrap contract without relying on repository history.
-  }
-
-  if (previousRevision) {
-    const previousArchive = execFileSync('git', ['archive', '--format=tar', previousRevision], {
-      cwd: projectRoot,
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    const extraction = spawnSync('tar', ['-xf', '-', '-C', appDir], {
-      cwd: projectRoot,
-      input: previousArchive,
-      encoding: 'utf8',
-    });
-    assert.equal(
-      extraction.status,
-      0,
-      `unable to extract previous release fixture: ${extraction.stderr}`
-    );
-    return;
-  }
-
-  const appLibDir = join(appDir, 'scripts/lib');
-  mkdirSync(appLibDir, { recursive: true });
-  cpSync(resolve(projectRoot, 'scripts/lib'), appLibDir, { recursive: true });
-  cpSync(resolve(projectRoot, 'config'), join(appDir, 'config'), { recursive: true });
-  cpSync(resolve(projectRoot, 'docker'), join(appDir, 'docker'), { recursive: true });
-
-  for (const helperName of [
-    'production-deployment-diagnostic-fallback.sh',
-    'production-executor-scenario.mjs',
-    'production-host-contract.sh',
-    'production-host-contract.mjs',
-    'production-recovery-executor.sh',
-    'deployment-transaction.sh',
-    'release-verifier-contract.mjs',
-    'rollback-executor.sh',
-    'rollback-executor.mjs',
-    'rollback-readiness.sh',
-  ]) {
-    rmSync(join(appLibDir, helperName), { force: true });
-  }
-
-  const scaffoldPath = join(appLibDir, 'remote-deploy-scaffold.sh');
-  writeFileSync(
-    scaffoldPath,
-    removeShellFunction(
-      readFileSync(scaffoldPath, 'utf8'),
-      'remote_deploy_init_production_helper_paths',
-      'remote_deploy_reload_checked_out_helpers'
-    ),
-    'utf8'
+  assert.ok(
+    existsSync(previousReleaseFixtureDir),
+    'the N→N+1 predecessor must be a tracked versioned fixture, not derived from HEAD^'
   );
-
-  const helperContractsPath = join(appLibDir, 'remote-helper-contracts.sh');
-  let helperContracts = readFileSync(helperContractsPath, 'utf8');
-  helperContracts = helperContracts.replace(
-    /^PRODUCTION_HOST_CONTRACT_HELPER_MIN_CONTRACT_VERSION=.*\nDEPLOYMENT_TRANSACTION_HELPER_MIN_CONTRACT_VERSION=.*\nROLLBACK_EXECUTOR_HELPER_MIN_CONTRACT_VERSION=.*\n/m,
-    ''
-  );
-  helperContracts = removeShellFunction(
-    helperContracts,
-    'production_host_contract_helper_supports_contract',
-    'refresh_deployed_release_helpers'
-  );
-  writeFileSync(helperContractsPath, helperContracts, 'utf8');
+  cpSync(previousReleaseFixtureDir, appDir, { recursive: true });
 }
 
 test('real production bootstrap reaches checkout and post-checkout preflight from a previous-release tree', () => {
@@ -354,7 +281,7 @@ test('real production bootstrap reaches checkout and post-checkout preflight fro
     const trace = existsSync(traceFile) ? readFileSync(traceFile, 'utf8') : '';
 
     assert.notEqual(result.status, 0, 'fixture must stop before registry/payload side effects');
-    assert.match(trace, /git checkout --detach/u);
+    assert.match(trace, /git checkout --detach/u, `${output}\n${trace}`);
     assert.match(output, /Production host contract passed/u);
     assert.doesNotMatch(
       output,
@@ -437,6 +364,39 @@ test('real rollback entrypoint restores the previous release with candidate help
   createFakeDocker(binDir, 'rollback');
   createFakeCurl(binDir);
   execFileSync('bash', [recoveryBundleScript, bundlePath], { cwd: projectRoot });
+  const artifactSha256 = execFileSync('sha256sum', [bundlePath], { encoding: 'utf8' })
+    .trim()
+    .split(/\s+/u)[0];
+  const executorSha256 = createHash('sha256')
+    .update(execFileSync('tar', ['-xOf', bundlePath, 'production-recovery-executor.sh']))
+    .digest('hex');
+  const transactionPath = join(deployRoot, 'release-state/deployment-phase.env');
+  writeFileSync(
+    transactionPath,
+    `${readFileSync(transactionPath, 'utf8')}RECOVERY_ARTIFACT_SHA256=${artifactSha256}\n`,
+    'utf8'
+  );
+  const durableArtifactPath = join(
+    deployRoot,
+    'recovery/releases',
+    artifactSha256,
+    'production-recovery-bundle.tgz'
+  );
+  mkdirSync(join(deployRoot, 'recovery/releases', artifactSha256), { recursive: true });
+  cpSync(bundlePath, durableArtifactPath);
+  writeFileSync(
+    join(deployRoot, 'recovery/current-artifact.env'),
+    [
+      'PRODUCTION_RECOVERY_ARTIFACT_VERSION=1',
+      `PRODUCTION_RECOVERY_ARTIFACT_SHA256=${artifactSha256}`,
+      `PRODUCTION_RECOVERY_EXECUTOR_SHA256=${executorSha256}`,
+      `PRODUCTION_RECOVERY_ARTIFACT_PATH=${durableArtifactPath}`,
+      'PRODUCTION_RECOVERY_SOURCE_SHA=60204c30805ab01f910e496a4443dd722448ff75',
+      'PRODUCTION_RECOVERY_PREFLIGHT=passed',
+      '',
+    ].join('\n'),
+    'utf8'
+  );
 
   try {
     const result = runBashFromStdin(join(streamedDir, 'rollback-production-remote.sh'), {
@@ -452,7 +412,8 @@ test('real rollback entrypoint restores the previous release with candidate help
       PATH: `${binDir}:/usr/bin:/bin`,
       PRODUCTION_CONTAINER_PLATFORM: 'linux/amd64',
       PRODUCTION_HOST_NETWORK_CHECK_COMMAND: 'true',
-      PRODUCTION_RECOVERY_BUNDLE_B64: readFileSync(bundlePath).toString('base64'),
+      PRODUCTION_RECOVERY_ARTIFACT_SHA256: artifactSha256,
+      PRODUCTION_RECOVERY_EXECUTOR_SHA256: executorSha256,
       PRODUCTION_ROLLBACK_CURL_TIMEOUT_SECONDS: '1',
       PRODUCTION_ROLLBACK_PUBLIC_URL: 'http://localhost:3001',
       PRODUCTION_ROLLBACK_READINESS_ATTEMPTS: '1',
@@ -473,6 +434,292 @@ test('real rollback entrypoint restores the previous release with candidate help
     assert.ok(!existsSync(candidateHelperTraceFile), 'candidate helper code must not be sourced');
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('exact recovery bytes are preflighted and persisted before the mutation boundary', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-recovery-artifact-'));
+  const deployRoot = join(tempDir, 'deploy');
+  const appDir = join(deployRoot, 'app');
+  const binDir = join(tempDir, 'bin');
+  const callsFile = join(tempDir, 'calls.log');
+  const candidateHelperTraceFile = join(tempDir, 'candidate-helper-read.log');
+  const bundlePath = join(tempDir, 'recovery.tgz');
+  const previousId = 'a'.repeat(64);
+
+  mkdirSync(join(appDir, 'scripts/lib'), { recursive: true });
+  mkdirSync(join(deployRoot, 'release-state/releases', previousId), { recursive: true });
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(join(deployRoot, 'release-state/previous'), `${previousId}\n`, 'utf8');
+  writeFileSync(join(deployRoot, 'release-state/current'), `${previousId}\n`, 'utf8');
+  writeFileSync(
+    join(deployRoot, 'release-state/deployment-phase.env'),
+    [
+      'DEPLOYMENT_TRANSACTION_VERSION=1',
+      'DEPLOYMENT_PHASE=PREPARED',
+      'DEPLOYMENT_STAGE=PREFLIGHT',
+      'MUTATION_BOUNDARY_REACHED=0',
+      `CURRENT_RELEASE_ID=${previousId}`,
+      `PREVIOUS_RELEASE_ID=${previousId}`,
+      'ROLLBACK_ATTEMPTED=0',
+      'ROLLBACK_RESULT=not_attempted',
+      '',
+    ].join('\n'),
+    'utf8'
+  );
+  writeFileSync(
+    join(deployRoot, 'release-state/releases', previousId, 'runtime.env'),
+    createPreviousRuntime(previousId),
+    'utf8'
+  );
+  writeExecutable(
+    join(appDir, 'scripts/lib/common.sh'),
+    `#!/usr/bin/env bash\nprintf '%s\\n' candidate >> "\${CANDIDATE_HELPER_TRACE_FILE:?}"\nreturn 97\n`
+  );
+  createFakeDocker(binDir, 'rollback');
+  execFileSync('bash', [recoveryBundleScript, bundlePath], { cwd: projectRoot });
+  const artifactSha256 = execFileSync('sha256sum', [bundlePath], { encoding: 'utf8' })
+    .trim()
+    .split(/\s+/u)[0];
+  const executorSha256 = createHash('sha256')
+    .update(execFileSync('tar', ['-xOf', bundlePath, 'production-recovery-executor.sh']))
+    .digest('hex');
+
+  const shellScript = [
+    'set -euo pipefail',
+    'source "$1"',
+    'source "$2"',
+    'source "$4"',
+    'deployment_state_init_paths "$3/release-state"',
+    'DEPLOYMENT_TRANSACTION_FILE="$3/release-state/deployment-phase.env"',
+    'export DEPLOYMENT_TRANSACTION_FILE',
+    'set -a; . "$DEPLOYMENT_TRANSACTION_FILE"; set +a',
+    'DEPLOYMENT_STATE_USE_VERIFIER=1',
+    'export DEPLOYMENT_STATE_USE_VERIFIER',
+    'production_recovery_artifact_prepare',
+  ].join('\n');
+
+  try {
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        shellScript,
+        'recovery-artifact-test',
+        productionRecoveryArtifactHelper,
+        resolve(projectRoot, 'scripts/lib/deployment-transaction.sh'),
+        deployRoot,
+        resolve(projectRoot, 'scripts/lib/deployment-state.sh'),
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          APP_DIR: appDir,
+          CALLS_FILE: callsFile,
+          CANDIDATE_HELPER_TRACE_FILE: candidateHelperTraceFile,
+          CLASSROOMPATH_DEPLOY_ROOT: deployRoot,
+          PATH: `${binDir}:/usr/bin:/bin`,
+          PRODUCTION_HOST_NETWORK_CHECK_COMMAND: 'true',
+          PRODUCTION_RECOVERY_ARTIFACT_SHA256: artifactSha256,
+          PRODUCTION_RECOVERY_BUNDLE_B64: readFileSync(bundlePath).toString('base64'),
+          PRODUCTION_RECOVERY_SOURCE_SHA: '60204c30805ab01f910e496a4443dd722448ff75',
+        },
+      }
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+
+    const identityPath = join(deployRoot, 'recovery/current-artifact.env');
+    const persistedArchive = join(
+      deployRoot,
+      'recovery/releases',
+      artifactSha256,
+      'production-recovery-bundle.tgz'
+    );
+    const transaction = readFileSync(
+      join(deployRoot, 'release-state/deployment-phase.env'),
+      'utf8'
+    );
+    const rollbackPlan = readFileSync(join(deployRoot, 'release-state/rollback-plan.env'), 'utf8');
+
+    assert.match(
+      readFileSync(identityPath, 'utf8'),
+      new RegExp(`PRODUCTION_RECOVERY_ARTIFACT_SHA256=${artifactSha256}`, 'u')
+    );
+    assert.match(
+      readFileSync(identityPath, 'utf8'),
+      new RegExp(`PRODUCTION_RECOVERY_EXECUTOR_SHA256=${executorSha256}`, 'u')
+    );
+    assert.match(readFileSync(identityPath, 'utf8'), /PRODUCTION_RECOVERY_PREFLIGHT=passed/u);
+    assert.match(
+      readFileSync(identityPath, 'utf8'),
+      /PRODUCTION_RECOVERY_SOURCE_SHA=60204c30805ab01f910e496a4443dd722448ff75/u
+    );
+    assert.equal(readFileSync(persistedArchive).equals(readFileSync(bundlePath)), true);
+    assert.match(transaction, /^MUTATION_BOUNDARY_REACHED=0$/mu);
+    assert.match(transaction, new RegExp(`RECOVERY_ARTIFACT_SHA256=${artifactSha256}`, 'u'));
+    assert.match(
+      rollbackPlan,
+      new RegExp(`ROLLBACK_RECOVERY_ARTIFACT_SHA256=${artifactSha256}`, 'u')
+    );
+    assert.equal(
+      existsSync(candidateHelperTraceFile),
+      false,
+      'recovery preflight must not read executable code from APP_DIR'
+    );
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('recovery artifact fault injection fails closed before persistence or mutation', () => {
+  const scenarios = [
+    {
+      name: 'hash-mismatch',
+      expectedHash: 'f'.repeat(64),
+      expectedExecutorHash: '',
+      bundle: 'complete',
+      pointer: true,
+      failure: /hash mismatch/u,
+    },
+    {
+      name: 'executor-hash-mismatch',
+      expectedHash: '',
+      expectedExecutorHash: 'f'.repeat(64),
+      bundle: 'complete',
+      pointer: true,
+      failure: /recovery executor hash mismatch/u,
+    },
+    {
+      name: 'incomplete-package',
+      expectedHash: '',
+      expectedExecutorHash: '',
+      bundle: 'incomplete',
+      pointer: true,
+      failure: /incomplete/u,
+    },
+    {
+      name: 'missing-previous-pointer',
+      expectedHash: '',
+      expectedExecutorHash: '',
+      bundle: 'complete',
+      pointer: false,
+      failure: /Release state file not found/u,
+    },
+  ] as const;
+
+  for (const scenario of scenarios) {
+    const tempDir = mkdtempSync(join(tmpdir(), `classroompath-recovery-fault-${scenario.name}-`));
+    const deployRoot = join(tempDir, 'deploy');
+    const appDir = join(deployRoot, 'app');
+    const binDir = join(tempDir, 'bin');
+    const bundlePath = join(tempDir, 'recovery.tgz');
+    const previousId = 'a'.repeat(64);
+
+    mkdirSync(join(appDir, 'scripts/lib'), { recursive: true });
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(join(deployRoot, 'release-state'), { recursive: true });
+    createFakeDocker(binDir, 'rollback');
+    writeFileSync(
+      join(deployRoot, 'release-state/deployment-phase.env'),
+      [
+        'DEPLOYMENT_TRANSACTION_VERSION=1',
+        'DEPLOYMENT_PHASE=PREPARED',
+        'DEPLOYMENT_STAGE=PREFLIGHT',
+        'MUTATION_BOUNDARY_REACHED=0',
+        '',
+      ].join('\n'),
+      'utf8'
+    );
+    if (scenario.pointer) {
+      mkdirSync(join(deployRoot, 'release-state/releases', previousId), { recursive: true });
+      writeFileSync(join(deployRoot, 'release-state/previous'), `${previousId}\n`, 'utf8');
+      writeFileSync(join(deployRoot, 'release-state/current'), `${previousId}\n`, 'utf8');
+      writeFileSync(
+        join(deployRoot, 'release-state/releases', previousId, 'runtime.env'),
+        createPreviousRuntime(previousId),
+        'utf8'
+      );
+    }
+
+    if (scenario.bundle === 'complete') {
+      execFileSync('bash', [recoveryBundleScript, bundlePath], { cwd: projectRoot });
+    } else {
+      const incompleteRoot = join(tempDir, 'incomplete');
+      mkdirSync(incompleteRoot, { recursive: true });
+      writeExecutable(
+        join(incompleteRoot, 'production-recovery-executor.sh'),
+        '#!/usr/bin/env bash\nexit 0\n'
+      );
+      execFileSync(
+        'tar',
+        ['-czf', bundlePath, '-C', incompleteRoot, 'production-recovery-executor.sh'],
+        { cwd: projectRoot }
+      );
+    }
+
+    const actualHash = execFileSync('sha256sum', [bundlePath], { encoding: 'utf8' })
+      .trim()
+      .split(/\s+/u)[0];
+    const expectedHash = scenario.expectedHash || actualHash;
+    const shellScript = [
+      'set -euo pipefail',
+      'source "$1"',
+      'source "$2"',
+      'source "$4"',
+      'deployment_state_init_paths "$3/release-state"',
+      'DEPLOYMENT_TRANSACTION_FILE="$3/release-state/deployment-phase.env"',
+      'export DEPLOYMENT_TRANSACTION_FILE',
+      'set -a; . "$DEPLOYMENT_TRANSACTION_FILE"; set +a',
+      'DEPLOYMENT_STATE_USE_VERIFIER=1',
+      'export DEPLOYMENT_STATE_USE_VERIFIER',
+      'production_recovery_artifact_prepare',
+    ].join('\n');
+
+    try {
+      const result = spawnSync(
+        'bash',
+        [
+          '-c',
+          shellScript,
+          'recovery-artifact-fault-test',
+          productionRecoveryArtifactHelper,
+          resolve(projectRoot, 'scripts/lib/deployment-transaction.sh'),
+          deployRoot,
+          resolve(projectRoot, 'scripts/lib/deployment-state.sh'),
+        ],
+        {
+          cwd: projectRoot,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            APP_DIR: appDir,
+            CLASSROOMPATH_DEPLOY_ROOT: deployRoot,
+            PATH: `${binDir}:/usr/bin:/bin`,
+            PRODUCTION_HOST_NETWORK_CHECK_COMMAND: 'true',
+            PRODUCTION_RECOVERY_ARTIFACT_SHA256: expectedHash,
+            PRODUCTION_RECOVERY_BUNDLE_B64: readFileSync(bundlePath).toString('base64'),
+            PRODUCTION_RECOVERY_EXECUTOR_SHA256: scenario.expectedExecutorHash || undefined,
+          },
+        }
+      );
+
+      assert.notEqual(result.status, 0, `${scenario.name} unexpectedly succeeded`);
+      assert.match(`${result.stdout}\n${result.stderr}`, scenario.failure, scenario.name);
+      assert.match(
+        readFileSync(join(deployRoot, 'release-state/deployment-phase.env'), 'utf8'),
+        /^MUTATION_BOUNDARY_REACHED=0$/mu,
+        scenario.name
+      );
+      assert.equal(
+        existsSync(join(deployRoot, 'recovery/current-artifact.env')),
+        false,
+        `${scenario.name} must not persist recovery identity`
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   }
 });
 
@@ -510,8 +757,14 @@ test('post-switch diagnostic selection falls back for missing, failing, or stale
 
   mkdirSync(join(tempDir, 'app', 'scripts'), { recursive: true });
   mkdirSync(join(tempDir, 'stable'), { recursive: true });
-  cpSync(diagnosticFallbackScript, fallbackPath);
-  chmodSync(fallbackPath, 0o755);
+  const fallbackTracePath = join(tempDir, 'fallback-invocations.log');
+  writeExecutable(
+    fallbackPath,
+    `#!/usr/bin/env bash
+printf '%s\\n' invoked >> "\${FALLBACK_TRACE_FILE:?}"
+exec bash ${JSON.stringify(diagnosticFallbackScript)} "$@"
+`
+  );
 
   const selector = String.raw`set +e
 state_file="$1"
@@ -526,7 +779,11 @@ fi
 rm -f "$diagnostic_path"
 diagnostic_status=1
 if [ "$mutation_boundary_reached" = 1 ] && [ -x "$candidate_path" ]; then
-  bash "$candidate_path" "$state_file" "$diagnostic_path" || diagnostic_status=$?
+  if bash "$candidate_path" "$state_file" "$diagnostic_path"; then
+    diagnostic_status=0
+  else
+    diagnostic_status=$?
+  fi
 fi
 if [ "$diagnostic_status" -ne 0 ] || [ ! -s "$diagnostic_path" ] || ! grep -Fq "$expected_marker" "$diagnostic_path"; then
   bash "$fallback_path" "$state_file" "$diagnostic_path" || true
@@ -557,6 +814,12 @@ rm -f "$diagnostic_path"`;
         candidate:
           '#!/usr/bin/env bash\nprintf \'%s\\n\' \'{"mutation_boundary_reached":false}\' > "$2"\n',
       },
+      {
+        name: 'candidate-success',
+        marker: '1',
+        candidate:
+          '#!/usr/bin/env bash\nprintf \'%s\\n\' \'{"mutation_boundary_reached":true,"mode":"candidate-rich"}\' > "$2"\n',
+      },
       { name: 'pre-switch', marker: '0', candidate: null },
       {
         name: 'pre-switch-stale',
@@ -571,19 +834,32 @@ rm -f "$diagnostic_path"`;
         'utf8'
       );
       rmSync(candidatePath, { force: true });
+      rmSync(fallbackTracePath, { force: true });
       if (scenario.candidate) writeExecutable(candidatePath, scenario.candidate);
       if (scenario.existingOutput) writeFileSync(outputFile, scenario.existingOutput, 'utf8');
 
       const result = spawnSync(
         'bash',
         ['-c', selector, 'diagnostic-selector', stateFile, outputFile, candidatePath, fallbackPath],
-        { cwd: projectRoot, encoding: 'utf8' }
+        {
+          cwd: projectRoot,
+          encoding: 'utf8',
+          env: { ...process.env, FALLBACK_TRACE_FILE: fallbackTracePath },
+        }
       );
       assert.equal(result.status, 0, `${scenario.name}: ${result.stdout}\n${result.stderr}`);
       const diagnostic = JSON.parse(result.stdout) as Record<string, unknown>;
       assert.equal(diagnostic.mutation_boundary_reached, scenario.marker === '1', scenario.name);
-      if (scenario.marker === '1') {
+      if (scenario.marker === '1' && scenario.name !== 'candidate-success') {
         assert.equal(diagnostic.mode, 'minimal-post-switch-diagnostic', scenario.name);
+      }
+      if (scenario.name === 'candidate-success') {
+        assert.equal(diagnostic.mode, 'candidate-rich');
+        assert.equal(
+          existsSync(fallbackTracePath),
+          false,
+          'fallback must not execute when the candidate diagnostic is successful and current'
+        );
       }
     }
   } finally {

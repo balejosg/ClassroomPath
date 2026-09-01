@@ -75,6 +75,7 @@ void describe('Remote Deploy Bootstrap', () => {
       resolve(projectRoot, 'scripts/lib/release-state.sh'),
       resolve(projectRoot, 'scripts/lib/deployment-state.sh'),
       resolve(projectRoot, 'scripts/lib/release-runtime.sh'),
+      resolve(projectRoot, 'scripts/lib/production-recovery-artifact.sh'),
     ]) {
       const content = readFileSync(helperPath, 'utf-8');
       assert.match(
@@ -553,6 +554,7 @@ void describe('Remote Deploy Bootstrap', () => {
           'prepare_production_checkout',
           'load_production_release_manifest',
           'classify_production_migration_risk',
+          'production_recovery_artifact_prepare',
           'cleanup_production_disk_if_needed',
           'run_production_database_migrations',
           'start_production_runtime',

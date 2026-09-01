@@ -470,11 +470,62 @@ jobs:
       diagnostic_mode: ${{ 'false' }}
     secrets: inherit
 
+  prepare-production-recovery:
+    name: Prepare Production Recovery Artifact
+    runs-on: ubuntu-latest
+    needs: resolve-release-images
+    if: needs.resolve-release-images.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+
+    outputs:
+      bundle_base64: ${{ steps.recovery-artifact.outputs.bundle_base64 }}
+      artifact_sha256: ${{ steps.recovery-artifact.outputs.artifact_sha256 }}
+      executor_sha256: ${{ steps.recovery-artifact.outputs.executor_sha256 }}
+      source_sha: ${{ steps.recovery-artifact.outputs.source_sha }}
+      diagnostic_fallback_base64: ${{ steps.recovery-artifact.outputs.diagnostic_fallback_base64 }}
+
+    steps:
+      - name: Checkout recovery source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Package and identify exact recovery artifact
+        id: recovery-artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          recovery_bundle_path="$RUNNER_TEMP/production-recovery-bundle.tgz"
+          bash scripts/package-production-recovery-bundle.sh "$recovery_bundle_path" >/dev/null
+          artifact_sha256="$(sha256sum "$recovery_bundle_path" | awk '{print $1}')"
+          executor_sha256="$(tar -xOf "$recovery_bundle_path" production-recovery-executor.sh | sha256sum | awk '{print $1}')"
+          test "$(tar -tzf "$recovery_bundle_path" | grep -c '^production-recovery-executor\\.sh$')" -eq 1
+          test "$(tar -tzf "$recovery_bundle_path" | grep -c '^lib/')" -ge 1
+          printf 'bundle_base64=%s\n' "$(base64 "$recovery_bundle_path" | tr -d '\n')" >> "$GITHUB_OUTPUT"
+          printf 'artifact_sha256=%s\n' "$artifact_sha256" >> "$GITHUB_OUTPUT"
+          printf 'executor_sha256=%s\n' "$executor_sha256" >> "$GITHUB_OUTPUT"
+          printf 'source_sha=%s\n' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          printf 'diagnostic_fallback_base64=%s\n' "$(base64 scripts/lib/production-deployment-diagnostic-fallback.sh | tr -d '\n')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload stable rollback transport wrapper
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-recovery-transport-${{ github.run_id }}
+          path: scripts/rollback-production-remote.sh
+          retention-days: 14
+
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: [resolve-release-images, verify-staging-release-state, windows-staging-bootstrap-canary]
-    if: always() && needs.resolve-release-images.result == 'success' && needs.verify-staging-release-state.result == 'success' && (needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk != 'true' || needs.windows-staging-bootstrap-canary.result == 'success') && startsWith(github.ref, 'refs/tags/v')
+    needs:
+      [
+        resolve-release-images,
+        verify-staging-release-state,
+        windows-staging-bootstrap-canary,
+        prepare-production-recovery,
+      ]
+    if: always() && needs.resolve-release-images.result == 'success' && needs.verify-staging-release-state.result == 'success' && needs.prepare-production-recovery.result == 'success' && (needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk != 'true' || needs.windows-staging-bootstrap-canary.result == 'success') && startsWith(github.ref, 'refs/tags/v')
     environment: production
     permissions:
       contents: read
@@ -507,6 +558,10 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}
           DEPLOY_PAYLOAD_B64: ${{ needs.resolve-release-images.outputs.payload_base64 }}
+          PRODUCTION_RECOVERY_BUNDLE_B64: ${{ needs.prepare-production-recovery.outputs.bundle_base64 }}
+          PRODUCTION_RECOVERY_ARTIFACT_SHA256: ${{ needs.prepare-production-recovery.outputs.artifact_sha256 }}
+          PRODUCTION_RECOVERY_EXECUTOR_SHA256: ${{ needs.prepare-production-recovery.outputs.executor_sha256 }}
+          PRODUCTION_RECOVERY_SOURCE_SHA: ${{ needs.prepare-production-recovery.outputs.source_sha }}
           PRODUCTION_CONTAINER_PLATFORM: ${{ needs.resolve-release-images.outputs.production_container_platform }}
           PRODUCTION_DB_BACKUP_COMMAND: ${{ secrets.PRODUCTION_DB_BACKUP_COMMAND }}
           PRODUCTION_DB_BACKUP_ID: ${{ secrets.PRODUCTION_DB_BACKUP_ID }}
@@ -535,7 +590,7 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 20m
-          envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64,DEPLOY_REF,DEPLOY_SHA,RELEASE_MANIFEST_B64,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID,CLASSROOMPATH_DEPLOY_ROOT,CP_BILLING_MODE,CP_PLATFORM_ADMIN_EMAILS,CP_CLIENT_CANARY_ADMIN_TOKEN,VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY,VAPID_CONTACT,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_ANNUAL_PRICE_1_10,STRIPE_ANNUAL_PRICE_11_25,STRIPE_ANNUAL_PRICE_26_50,STRIPE_ANNUAL_PRICE_51_100,STRIPE_ONBOARDING_PRICE_1_25,STRIPE_ONBOARDING_PRICE_26_100,STRIPE_PILOT_PRICE,CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA,CP_EMAIL_PREFLIGHT_MODE
+          envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64,DEPLOY_REF,DEPLOY_SHA,RELEASE_MANIFEST_B64,PRODUCTION_RECOVERY_BUNDLE_B64,PRODUCTION_RECOVERY_ARTIFACT_SHA256,PRODUCTION_RECOVERY_EXECUTOR_SHA256,PRODUCTION_RECOVERY_SOURCE_SHA,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID,CLASSROOMPATH_DEPLOY_ROOT,CP_BILLING_MODE,CP_PLATFORM_ADMIN_EMAILS,CP_CLIENT_CANARY_ADMIN_TOKEN,VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY,VAPID_CONTACT,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_ANNUAL_PRICE_1_10,STRIPE_ANNUAL_PRICE_11_25,STRIPE_ANNUAL_PRICE_26_50,STRIPE_ANNUAL_PRICE_51_100,STRIPE_ONBOARDING_PRICE_1_25,STRIPE_ONBOARDING_PRICE_26_100,STRIPE_PILOT_PRICE,CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA,CP_EMAIL_PREFLIGHT_MODE
           script_path: scripts/deploy-production-remote.sh
 
       - name: Download deploy debug artifact
@@ -569,7 +624,7 @@ jobs:
   production-deploy-diagnostics:
     name: Production Deploy Diagnostics
     runs-on: ubuntu-latest
-    needs: [deploy-production, resolve-release-images]
+    needs: [deploy-production, resolve-release-images, prepare-production-recovery]
     if: always() && needs.deploy-production.result == 'failure'
     permissions:
       contents: read
@@ -577,14 +632,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Prepare stable post-switch diagnostic fallback
-        id: diagnostic-fallback
-        shell: bash
-        run: |
-          set -euo pipefail
-          fallback_base64="$(base64 scripts/lib/production-deployment-diagnostic-fallback.sh | tr -d '\n')"
-          printf 'fallback_base64=%s\n' "$fallback_base64" >> "$GITHUB_OUTPUT"
 
       - name: Collect read-only post-switch diagnostic
         if: always()
@@ -596,7 +643,7 @@ jobs:
           DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-          PRODUCTION_DIAGNOSTIC_FALLBACK_B64: ${{ steps.diagnostic-fallback.outputs.fallback_base64 }}
+          PRODUCTION_DIAGNOSTIC_FALLBACK_B64: ${{ needs.prepare-production-recovery.outputs.diagnostic_fallback_base64 }}
         run: |
           set +e
           source scripts/lib/github-actions-remote.sh
@@ -604,7 +651,7 @@ jobs:
           deploy_root_assignment="$(printf 'CLASSROOMPATH_DEPLOY_ROOT=%q' "$DEPLOY_ROOT")"
           fallback_b64_assignment="$(printf 'PRODUCTION_DIAGNOSTIC_FALLBACK_B64=%q' "$PRODUCTION_DIAGNOSTIC_FALLBACK_B64")"
           diagnostic_path="${DEPLOY_ROOT%/}/release-state/post-switch-diagnostic.json"
-          remote_command="$deploy_root_assignment; $fallback_b64_assignment; state_file=\"${DEPLOY_ROOT%/}/release-state/deployment-phase.env\"; diagnostic_path=\"$diagnostic_path\"; fallback_path=\$(mktemp); printf '%s' \"\$PRODUCTION_DIAGNOSTIC_FALLBACK_B64\" | base64 --decode > \"\$fallback_path\"; chmod 700 \"\$fallback_path\"; mutation_boundary_reached=\$(grep '^MUTATION_BOUNDARY_REACHED=' \"\$state_file\" 2>/dev/null | sed 's/^[^=]*=//'); expected_marker='\"mutation_boundary_reached\":false'; if [ \"\$mutation_boundary_reached\" = 1 ]; then expected_marker='\"mutation_boundary_reached\":true'; fi; rm -f \"\$diagnostic_path\"; diagnostic_status=1; if [ \"\$mutation_boundary_reached\" = 1 ] && [ -x \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\" ]; then bash \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\" || diagnostic_status=\$?; fi; if [ \"\$diagnostic_status\" -ne 0 ] || [ ! -s \"\$diagnostic_path\" ] || ! grep -Fq \"\$expected_marker\" \"\$diagnostic_path\"; then bash \"\$fallback_path\" \"\$state_file\" \"\$diagnostic_path\" || true; fi; if [ -s \"\$diagnostic_path\" ]; then cat \"\$diagnostic_path\"; else bash \"\$fallback_path\" \"\$state_file\" \"\$diagnostic_path\" && cat \"\$diagnostic_path\"; fi; rm -f \"\$fallback_path\""
+          remote_command="$deploy_root_assignment; $fallback_b64_assignment; state_file=\"${DEPLOY_ROOT%/}/release-state/deployment-phase.env\"; diagnostic_path=\"$diagnostic_path\"; fallback_path=\$(mktemp); printf '%s' \"\$PRODUCTION_DIAGNOSTIC_FALLBACK_B64\" | base64 --decode > \"\$fallback_path\"; chmod 700 \"\$fallback_path\"; mutation_boundary_reached=\$(grep '^MUTATION_BOUNDARY_REACHED=' \"\$state_file\" 2>/dev/null | sed 's/^[^=]*=//'); expected_marker='\"mutation_boundary_reached\":false'; if [ \"\$mutation_boundary_reached\" = 1 ]; then expected_marker='\"mutation_boundary_reached\":true'; fi; rm -f \"\$diagnostic_path\"; diagnostic_status=1; if [ \"\$mutation_boundary_reached\" = 1 ] && [ -x \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\" ]; then if bash \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\"; then diagnostic_status=0; else diagnostic_status=\$?; fi; fi; if [ \"\$diagnostic_status\" -ne 0 ] || [ ! -s \"\$diagnostic_path\" ] || ! grep -Fq \"\$expected_marker\" \"\$diagnostic_path\"; then bash \"\$fallback_path\" \"\$state_file\" \"\$diagnostic_path\" || true; fi; if [ -s \"\$diagnostic_path\" ]; then cat \"\$diagnostic_path\"; else bash \"\$fallback_path\" \"\$state_file\" \"\$diagnostic_path\" && cat \"\$diagnostic_path\"; fi; rm -f \"\$fallback_path\""
           github_actions_remote_ssh \
             ~/.ssh/classroompath-production-diagnostic \
             "${DEPLOY_PORT:-22}" \
@@ -1004,25 +1051,24 @@ jobs:
   rollback-production:
     name: Roll Back Production
     runs-on: ubuntu-latest
-    needs: [deploy-production, smoke-test-production, resolve-release-images]
-    if: always() && (needs.deploy-production.result == 'failure' || needs.smoke-test-production.result == 'failure')
+    needs:
+      [
+        deploy-production,
+        smoke-test-production,
+        resolve-release-images,
+        prepare-production-recovery,
+      ]
+    if: always() && needs.prepare-production-recovery.result == 'success' && (needs.deploy-production.result == 'failure' || needs.smoke-test-production.result == 'failure')
     permissions:
       contents: read
       packages: read
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Prepare stable production recovery bundle
-        id: recovery-bundle
-        shell: bash
-        run: |
-          set -euo pipefail
-          recovery_bundle_path="$(mktemp)"
-          trap 'rm -f "$recovery_bundle_path"' EXIT
-          bash scripts/package-production-recovery-bundle.sh "$recovery_bundle_path" >/dev/null
-          printf 'bundle_base64=%s\n' "$(base64 "$recovery_bundle_path" | tr -d '\n')" >> "$GITHUB_OUTPUT"
+      - name: Download stable rollback transport wrapper
+        uses: actions/download-artifact@v7
+        with:
+          name: production-recovery-transport-${{ github.run_id }}
+          path: scripts
 
       - name: Resolve deploy host
         id: resolve
@@ -1045,7 +1091,10 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLASSROOMPATH_DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
           PRODUCTION_CONTAINER_PLATFORM: ${{ needs.resolve-release-images.outputs.production_container_platform }}
-          PRODUCTION_RECOVERY_BUNDLE_B64: ${{ steps.recovery-bundle.outputs.bundle_base64 }}
+          PRODUCTION_RECOVERY_BUNDLE_B64: ${{ needs.prepare-production-recovery.outputs.bundle_base64 }}
+          PRODUCTION_RECOVERY_ARTIFACT_SHA256: ${{ needs.prepare-production-recovery.outputs.artifact_sha256 }}
+          PRODUCTION_RECOVERY_EXECUTOR_SHA256: ${{ needs.prepare-production-recovery.outputs.executor_sha256 }}
+          PRODUCTION_RECOVERY_SOURCE_SHA: ${{ needs.prepare-production-recovery.outputs.source_sha }}
         uses: appleboy/ssh-action@v1.2.4
         with:
           host: ${{ steps.resolve.outputs.ip }}
@@ -1054,5 +1103,5 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 15m
-          envs: GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_DEPLOY_ROOT,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_RECOVERY_BUNDLE_B64
+          envs: GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_DEPLOY_ROOT,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_RECOVERY_BUNDLE_B64,PRODUCTION_RECOVERY_ARTIFACT_SHA256,PRODUCTION_RECOVERY_EXECUTOR_SHA256,PRODUCTION_RECOVERY_SOURCE_SHA
           script_path: scripts/rollback-production-remote.sh

@@ -686,6 +686,7 @@ describe('Deployment runtime contracts', () => {
       '  load_production_deploy_payload \\',
       '  load_production_release_manifest \\',
       '  classify_production_migration_risk \\',
+      '  production_recovery_artifact_prepare \\',
       '  cleanup_production_disk_if_needed \\',
       '  run_production_database_migrations \\',
       '  start_production_runtime \\',

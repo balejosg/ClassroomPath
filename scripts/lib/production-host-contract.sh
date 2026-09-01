@@ -42,6 +42,7 @@ PRODUCTION_HOST_REQUIRED_COMMANDS=(
   timeout
   touch
   tar
+  sha256sum
   uname
 )
 

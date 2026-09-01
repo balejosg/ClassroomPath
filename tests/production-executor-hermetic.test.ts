@@ -51,6 +51,7 @@ test('production host contract is POSIX/Docker based and does not require Node',
     'timeout',
     'touch',
     'tar',
+    'sha256sum',
     'uname',
   ]);
   assert.deepEqual(PRODUCTION_HOST_FORBIDDEN_RUNTIME_COMMANDS, ['node', 'npm']);

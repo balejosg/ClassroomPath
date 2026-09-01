@@ -84,8 +84,15 @@ recovery_bundle_is_complete() {
 recovery_archive_has_safe_paths() {
   local archive_path="$1"
   local archive_entry=""
+  local archive_entries=""
+
+  if ! archive_entries="$(tar -tzf "$archive_path")"; then
+    printf 'Unable to list the production recovery bundle\n' >&2
+    return 1
+  fi
 
   while IFS= read -r archive_entry; do
+    [ -n "$archive_entry" ] || continue
     case "$archive_entry" in
       production-recovery-executor.sh|lib|lib/*.sh|lib/)
         ;;
@@ -94,27 +101,129 @@ recovery_archive_has_safe_paths() {
         return 1
         ;;
     esac
-  done < <(tar -tzf "$archive_path")
+  done <<< "$archive_entries"
 }
 
-stage_transmitted_recovery_bundle() {
+recovery_identity_value() {
+  local identity_path="$1"
+  local field_name="$2"
+
+  [ -f "$identity_path" ] || return 1
+  awk -F= -v expected_field="$field_name" \
+    '$1 == expected_field { value = substr($0, index($0, "=") + 1); print value; found = 1; exit } END { exit(found ? 0 : 1) }' \
+    "$identity_path"
+}
+
+recovery_artifact_hash() {
+  sha256sum "$1" | awk '{ print $1; exit }'
+}
+
+stage_recovery_archive() {
+  local source_archive="$1"
   local bundle_archive=""
+  local actual_sha256=""
+  local expected_sha256="${PRODUCTION_RECOVERY_ARTIFACT_SHA256:-}"
+  local expected_executor_sha256="${PRODUCTION_RECOVERY_EXECUTOR_SHA256:-}"
 
   RECOVERY_BUNDLE_DIR="$(mktemp -d "$CLASSROOMPATH_DEPLOY_ROOT/.recovery-executor.XXXXXX")"
   bundle_archive="$RECOVERY_BUNDLE_DIR/recovery.tgz"
-  if ! printf '%s' "${PRODUCTION_RECOVERY_BUNDLE_B64:-}" | base64 --decode > "$bundle_archive"; then
-    printf 'Unable to decode the transmitted production recovery bundle\n' >&2
+  if ! cp "$source_archive" "$bundle_archive"; then
+    printf 'Unable to stage the production recovery bundle\n' >&2
+    return 1
+  fi
+  actual_sha256="$(recovery_artifact_hash "$bundle_archive")" || {
+    printf 'Unable to hash the production recovery bundle\n' >&2
+    return 1
+  }
+  if [[ ! "$expected_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    printf 'An exact PRODUCTION_RECOVERY_ARTIFACT_SHA256 is required\n' >&2
+    return 1
+  fi
+  if [ -n "$expected_executor_sha256" ] &&
+    [[ ! "$expected_executor_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    printf 'PRODUCTION_RECOVERY_EXECUTOR_SHA256 is invalid\n' >&2
+    return 1
+  fi
+  if [ "$actual_sha256" != "$expected_sha256" ]; then
+    printf 'Production recovery bundle hash mismatch: expected=%s actual=%s\n' \
+      "$expected_sha256" "$actual_sha256" >&2
     return 1
   fi
   recovery_archive_has_safe_paths "$bundle_archive" || return 1
   if ! tar -xzf "$bundle_archive" -C "$RECOVERY_BUNDLE_DIR" --no-same-owner --no-same-permissions; then
-    printf 'Unable to extract the transmitted production recovery bundle\n' >&2
+    printf 'Unable to extract the production recovery bundle\n' >&2
     return 1
   fi
-  rm -f "$bundle_archive"
   recovery_bundle_is_complete "$RECOVERY_BUNDLE_DIR" || return 1
   RECOVERY_EXECUTOR_PATH="$RECOVERY_BUNDLE_DIR/$RECOVERY_EXECUTOR_NAME"
   RECOVERY_BUNDLE_ROOT="$RECOVERY_BUNDLE_DIR"
+  RECOVERY_EXECUTOR_SHA256="$(recovery_artifact_hash "$RECOVERY_EXECUTOR_PATH")" || return 1
+  if [ -n "$expected_executor_sha256" ] &&
+    [ "$RECOVERY_EXECUTOR_SHA256" != "$expected_executor_sha256" ]; then
+    printf 'Production recovery executor hash mismatch: expected=%s actual=%s\n' \
+      "$expected_executor_sha256" "$RECOVERY_EXECUTOR_SHA256" >&2
+    return 1
+  fi
+  export RECOVERY_EXECUTOR_SHA256
+}
+
+stage_transmitted_recovery_bundle() {
+  local transmitted_dir=""
+  local bundle_archive=""
+
+  transmitted_dir="$(mktemp -d "$CLASSROOMPATH_DEPLOY_ROOT/.recovery-transmitted.XXXXXX")"
+  bundle_archive="$transmitted_dir/recovery.tgz"
+  if ! printf '%s' "${PRODUCTION_RECOVERY_BUNDLE_B64:-}" | base64 --decode > "$bundle_archive"; then
+    printf 'Unable to decode the transmitted production recovery bundle\n' >&2
+    rm -rf "$transmitted_dir"
+    return 1
+  fi
+  local stage_status=0
+  if stage_recovery_archive "$bundle_archive"; then
+    stage_status=0
+  else
+    stage_status=$?
+  fi
+  rm -rf "$transmitted_dir"
+  return "$stage_status"
+}
+
+stage_durable_recovery_artifact() {
+  local identity_path="$CLASSROOMPATH_DEPLOY_ROOT/recovery/current-artifact.env"
+  local artifact_path=""
+  local artifact_sha256=""
+  local executor_sha256=""
+  local identity_version=""
+  local expected_artifact_path=""
+
+  identity_version="$(recovery_identity_value "$identity_path" PRODUCTION_RECOVERY_ARTIFACT_VERSION || true)"
+  artifact_sha256="$(recovery_identity_value "$identity_path" PRODUCTION_RECOVERY_ARTIFACT_SHA256 || true)"
+  executor_sha256="$(recovery_identity_value "$identity_path" PRODUCTION_RECOVERY_EXECUTOR_SHA256 || true)"
+  artifact_path="$(recovery_identity_value "$identity_path" PRODUCTION_RECOVERY_ARTIFACT_PATH || true)"
+  expected_artifact_path="${CLASSROOMPATH_DEPLOY_ROOT%/}/recovery/releases/$artifact_sha256/production-recovery-bundle.tgz"
+  if [ "$identity_version" != "1" ] ||
+    [[ ! "$artifact_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+    [[ ! "$executor_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+    [ -z "$artifact_path" ] ||
+    [ "$artifact_path" != "$expected_artifact_path" ] ||
+    [[ "$artifact_path" == "$APP_DIR" || "$artifact_path" == "$APP_DIR"/* ]]; then
+    printf 'Durable production recovery artifact identity is missing or invalid\n' >&2
+    return 1
+  fi
+  if [ -n "${PRODUCTION_RECOVERY_ARTIFACT_SHA256:-}" ] &&
+    [ "$PRODUCTION_RECOVERY_ARTIFACT_SHA256" != "$artifact_sha256" ]; then
+    printf 'Durable production recovery artifact does not match the requested hash\n' >&2
+    return 1
+  fi
+  PRODUCTION_RECOVERY_ARTIFACT_SHA256="$artifact_sha256"
+  export PRODUCTION_RECOVERY_ARTIFACT_SHA256
+  if ! stage_recovery_archive "$artifact_path"; then
+    return 1
+  fi
+  if [ "$RECOVERY_EXECUTOR_SHA256" != "$executor_sha256" ]; then
+    printf 'Durable production recovery executor hash does not match its identity\n' >&2
+    return 1
+  fi
 }
 
 set_recovery_bundle_root_for_executor() {
@@ -145,6 +254,8 @@ elif [ -n "$SCRIPT_DIR" ] &&
   RECOVERY_BUNDLE_ROOT="$SCRIPT_DIR"
 elif [ -n "${PRODUCTION_RECOVERY_BUNDLE_B64:-}" ]; then
   stage_transmitted_recovery_bundle
+elif [ -f "$CLASSROOMPATH_DEPLOY_ROOT/recovery/current-artifact.env" ]; then
+  stage_durable_recovery_artifact
 elif [ -f "$CLASSROOMPATH_DEPLOY_ROOT/recovery/current/$RECOVERY_EXECUTOR_NAME" ]; then
   RECOVERY_EXECUTOR_PATH="$CLASSROOMPATH_DEPLOY_ROOT/recovery/current/$RECOVERY_EXECUTOR_NAME"
   RECOVERY_BUNDLE_ROOT="$CLASSROOMPATH_DEPLOY_ROOT/recovery/current"

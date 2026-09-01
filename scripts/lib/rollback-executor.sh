@@ -67,6 +67,7 @@ rollback_executor_write_plan() {
     printf 'ROLLBACK_PREVIOUS_OPENPATH_API_IMAGE=%q\n' "${OPENPATH_API_IMAGE:-}"
     printf 'ROLLBACK_PREVIOUS_SPA_IMAGE=%q\n' "${CLASSROOMPATH_SPA_IMAGE:-}"
     printf 'ROLLBACK_PREVIOUS_VERIFIER_IMAGE=%q\n' "${CLASSROOMPATH_VERIFIER_IMAGE:-}"
+    printf 'ROLLBACK_RECOVERY_ARTIFACT_SHA256=%q\n' "${PRODUCTION_RECOVERY_ARTIFACT_SHA256:-}"
   } > "$tmp_file"
   mv "$tmp_file" "$plan_file" || {
     rm -f "$tmp_file"

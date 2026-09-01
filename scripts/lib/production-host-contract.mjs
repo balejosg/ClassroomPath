@@ -40,6 +40,7 @@ export const PRODUCTION_HOST_REQUIRED_COMMANDS = Object.freeze([
   'timeout',
   'touch',
   'tar',
+  'sha256sum',
   'uname',
 ]);
 

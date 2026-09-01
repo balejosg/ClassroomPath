@@ -188,6 +188,23 @@ else
   deployment_state_load_previous_release
 fi
 
+if [ -n "${RECOVERY_ARTIFACT_SHA256:-}" ] &&
+  [ -n "${PRODUCTION_RECOVERY_ARTIFACT_SHA256:-}" ] &&
+  [ "$RECOVERY_ARTIFACT_SHA256" != "$PRODUCTION_RECOVERY_ARTIFACT_SHA256" ]; then
+  log_error "Production recovery artifact does not match the deployment transaction"
+  exit 1
+fi
+
+if [ "${PRODUCTION_RECOVERY_PREFLIGHT_ONLY:-0}" = "1" ] ||
+  [ "${1:-}" = "--preflight-only" ]; then
+  if [ "${ROLLBACK_USES_V2:-0}" != "1" ]; then
+    log_error "Production recovery preflight requires a durable Release Bundle v2 previous pointer"
+    exit 1
+  fi
+  log_info "Production recovery artifact preflight passed; no mutation was performed"
+  exit 0
+fi
+
 if [ "${ROLLBACK_USES_V2:-0}" = "1" ] && [ "${MUTATION_BOUNDARY_REACHED:-0}" != "1" ]; then
   log_info "Production deploy failed before the mutation boundary; no rollback is required"
   exit 0

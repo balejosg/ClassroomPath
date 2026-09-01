@@ -156,7 +156,6 @@ DEPLOY_DIR="$CLASSROOMPATH_DEPLOY_ROOT"
 STATE_DIR="$DEPLOY_DIR/release-state"
 DEPLOY_CONTEXT_FILE="$STATE_DIR/deploy-context.env"
 mkdir -p "$STATE_DIR"
-deployment_state_init_paths "$STATE_DIR"
 
 DB_MIGRATED=0
 FAILURE_STAGE="preflight"
@@ -182,6 +181,7 @@ PRODUCTION_REGISTRY_LOGGED_IN=0
 DEPLOY_DEBUG_FILE="$STATE_DIR/deploy-debug.json"
 DEPLOYMENT_TRANSACTION_FILE="$STATE_DIR/deployment-phase.env"
 PRODUCTION_HOST_CONTRACT_REPORT_FILE="$STATE_DIR/host-contract.json"
+PRODUCTION_RECOVERY_ARTIFACT_HELPER_PATH=""
 DEPLOYMENT_STATE_USE_VERIFIER=1
 ROLLBACK_READINESS_USE_VERIFIER=1
 export DEPLOYMENT_TRANSACTION_FILE PRODUCTION_HOST_CONTRACT_REPORT_FILE DEPLOYMENT_STATE_USE_VERIFIER
@@ -449,6 +449,16 @@ load_production_executor_helpers() {
   # shellcheck disable=SC1090
   source "$ROLLBACK_READINESS_HELPER_PATH"
 
+  PRODUCTION_RECOVERY_ARTIFACT_HELPER_PATH="$(resolve_remote_helper_path \
+    "$SCRIPT_DIR" "$APP_DIR" "lib/production-recovery-artifact.sh")"
+  if ! production_recovery_artifact_helper_supports_contract \
+    "$PRODUCTION_RECOVERY_ARTIFACT_HELPER_PATH"; then
+    log_error "Checked-out production-recovery-artifact helper does not meet the minimum contract"
+    return 1
+  fi
+  # shellcheck disable=SC1090
+  source "$PRODUCTION_RECOVERY_ARTIFACT_HELPER_PATH"
+
   deployment_transaction_init "$DEPLOYMENT_TRANSACTION_FILE" "" ""
 }
 
@@ -633,6 +643,7 @@ run_remote_deploy_phases \
   load_production_deploy_payload \
   load_production_release_manifest \
   classify_production_migration_risk \
+  production_recovery_artifact_prepare \
   cleanup_production_disk_if_needed \
   run_production_database_migrations \
   start_production_runtime \

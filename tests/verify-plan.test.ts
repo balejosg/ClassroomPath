@@ -74,6 +74,13 @@ describe('verify plan', () => {
     );
   });
 
+  test('detects the ops-regression scope for recovery artifact changes', () => {
+    assert.equal(
+      detectVerificationScope(['scripts/lib/production-recovery-artifact.sh'], 'commit'),
+      'ops-regression'
+    );
+  });
+
   test('detects the ops-regression scope for maintained documentation diffs', () => {
     assert.equal(
       detectVerificationScope(

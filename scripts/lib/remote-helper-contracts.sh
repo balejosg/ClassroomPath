@@ -12,6 +12,7 @@ RELEASE_RISK_POLICY_HELPER_MIN_CONTRACT_VERSION=1
 PRODUCTION_HOST_CONTRACT_HELPER_MIN_CONTRACT_VERSION=1
 DEPLOYMENT_TRANSACTION_HELPER_MIN_CONTRACT_VERSION=1
 ROLLBACK_EXECUTOR_HELPER_MIN_CONTRACT_VERSION=1
+PRODUCTION_RECOVERY_ARTIFACT_HELPER_MIN_CONTRACT_VERSION=1
 
 remote_helper_path_supports_all() {
   local helper_path="${1:-}"
@@ -171,6 +172,14 @@ rollback_executor_helper_supports_contract() {
     "$helper_path" \
     ROLLBACK_EXECUTOR_HELPER_CONTRACT_VERSION \
     "$ROLLBACK_EXECUTOR_HELPER_MIN_CONTRACT_VERSION"
+}
+
+production_recovery_artifact_helper_supports_contract() {
+  local helper_path="${1:-}"
+  remote_helper_contract_version_at_least \
+    "$helper_path" \
+    PRODUCTION_RECOVERY_ARTIFACT_HELPER_CONTRACT_VERSION \
+    "$PRODUCTION_RECOVERY_ARTIFACT_HELPER_MIN_CONTRACT_VERSION"
 }
 
 refresh_deployed_release_helpers() {
