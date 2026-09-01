@@ -186,6 +186,9 @@ function createRecoverySourceFixture(tempDir: string) {
   const sourceRoot = join(tempDir, 'recovery-source');
   cpSync(join(projectRoot, 'scripts'), join(sourceRoot, 'scripts'), { recursive: true });
   execFileSync('git', ['init', '--quiet', sourceRoot]);
+  // Prevent detached Git housekeeping from racing with temporary fixture cleanup.
+  execFileSync('git', ['-C', sourceRoot, 'config', 'gc.auto', '0']);
+  execFileSync('git', ['-C', sourceRoot, 'config', 'maintenance.auto', 'false']);
   execFileSync('git', ['-C', sourceRoot, 'config', 'user.email', 'fixture@example.invalid']);
   execFileSync('git', ['-C', sourceRoot, 'config', 'user.name', 'Recovery Fixture']);
   execFileSync('git', ['-C', sourceRoot, 'add', 'scripts']);
@@ -195,6 +198,29 @@ function createRecoverySourceFixture(tempDir: string) {
   }).trim();
   return { sourceRoot, recoverySha };
 }
+
+test('recovery source fixtures disable automatic Git maintenance before cleanup', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-recovery-git-maintenance-'));
+
+  try {
+    const { sourceRoot } = createRecoverySourceFixture(tempDir);
+    const gcAuto = spawnSync('git', ['-C', sourceRoot, 'config', '--get', 'gc.auto'], {
+      encoding: 'utf8',
+    });
+    const maintenanceAuto = spawnSync(
+      'git',
+      ['-C', sourceRoot, 'config', '--get', 'maintenance.auto'],
+      { encoding: 'utf8' }
+    );
+
+    assert.equal(gcAuto.status, 0);
+    assert.equal(gcAuto.stdout.trim(), '0');
+    assert.equal(maintenanceAuto.status, 0);
+    assert.equal(maintenanceAuto.stdout.trim(), 'false');
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
 
 function packageRecoverySourceFixture(sourceRoot: string, recoverySha: string, bundlePath: string) {
   execFileSync(
