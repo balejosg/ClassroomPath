@@ -114,15 +114,24 @@ jobs:
     needs: validate-package-preflight
     if: inputs.promote == true
     runs-on: ubuntu-latest
+    # This environment must require approval and provide the secret below.
+    # PRODUCTION_RECOVERY_VARIABLES_TOKEN is a dedicated GitHub App/PAT token
+    # with repository permission Variables: write; it is not github.token.
     environment: production-recovery-authority
     permissions:
-      actions: write
       contents: read
     steps:
+      - name: Checkout exact approved recovery authority R
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate-package-preflight.outputs.recovery_sha }}
+          path: recovery-source
+          fetch-depth: 1
+
       - name: Promote R as the explicit production recovery authority
         env:
-          GH_TOKEN: ${{ github.token }}
+          PRODUCTION_RECOVERY_VARIABLES_TOKEN: ${{ secrets.PRODUCTION_RECOVERY_VARIABLES_TOKEN }}
           PRODUCTION_RECOVERY_SHA: ${{ needs.validate-package-preflight.outputs.recovery_sha }}
         run: |
           set -euo pipefail
-          gh variable set PRODUCTION_RECOVERY_SHA --body "$PRODUCTION_RECOVERY_SHA"
+          bash recovery-source/scripts/promote-production-recovery-authority.sh
