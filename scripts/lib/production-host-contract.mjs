@@ -39,6 +39,7 @@ export const PRODUCTION_HOST_REQUIRED_COMMANDS = Object.freeze([
   'tail',
   'timeout',
   'touch',
+  'tar',
   'uname',
 ]);
 

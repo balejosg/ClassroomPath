@@ -41,6 +41,7 @@ PRODUCTION_HOST_REQUIRED_COMMANDS=(
   tail
   timeout
   touch
+  tar
   uname
 )
 

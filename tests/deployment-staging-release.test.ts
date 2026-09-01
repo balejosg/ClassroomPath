@@ -80,6 +80,10 @@ describe('Deployment staging and promotion contracts', () => {
     projectRoot,
     'scripts/rollback-production-remote.sh'
   );
+  const productionRecoveryExecutorPath = resolve(
+    projectRoot,
+    'scripts/lib/production-recovery-executor.sh'
+  );
 
   function runRollbackReadinessHarness({
     healthHttpStatus = 200,
@@ -619,10 +623,7 @@ bash "$2"
 
   test('staging and production rollback consume the same readiness gate before activation', () => {
     const stagingContent = readFileSync(stagingRollbackHelperPath, 'utf-8');
-    const productionContent = readFileSync(
-      resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
-      'utf-8'
-    );
+    const productionContent = readFileSync(productionRecoveryExecutorPath, 'utf-8');
     const readinessContent = readFileSync(rollbackReadinessHelperPath, 'utf-8');
 
     assert.ok(readinessContent.includes('JSON.parse'));
@@ -981,10 +982,7 @@ warn_if_other_release_candidate_run_in_progress target-sha
       resolve(projectRoot, 'scripts/lib/remote-deploy-scaffold.sh'),
       'utf-8'
     );
-    const rollbackRemoteScript = readFileSync(
-      resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
-      'utf-8'
-    );
+    const rollbackRemoteScript = readFileSync(productionRecoveryExecutorPath, 'utf-8');
     const releaseStateHelper = readFileSync(
       resolve(projectRoot, 'scripts/lib/release-state.sh'),
       'utf-8'
@@ -1099,10 +1097,7 @@ warn_if_other_release_candidate_run_in_progress target-sha
   });
 
   test('production rollback is release-candidate-only and validates metadata before mutations', () => {
-    const rollbackRemoteScript = readFileSync(
-      resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
-      'utf-8'
-    );
+    const rollbackRemoteScript = readFileSync(productionRecoveryExecutorPath, 'utf-8');
     const snapshotPreflightIndex = rollbackRemoteScript.indexOf(
       'deployment_state_v2_pointer_present previous'
     );
@@ -1126,10 +1121,7 @@ warn_if_other_release_candidate_run_in_progress target-sha
   });
 
   test('production rollback activates the previous state only after health and readiness pass', () => {
-    const rollbackRemoteScript = readFileSync(
-      resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
-      'utf-8'
-    );
+    const rollbackRemoteScript = readFileSync(productionRecoveryExecutorPath, 'utf-8');
     const activationIndex = rollbackRemoteScript.indexOf(
       'deployment_state_activate_previous_release'
     );

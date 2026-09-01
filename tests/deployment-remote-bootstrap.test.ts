@@ -28,6 +28,7 @@ void describe('Remote Deploy Bootstrap', () => {
   const stagingRemotePath = resolve(projectRoot, 'scripts/deploy-staging-remote.sh');
   const productionRemotePath = resolve(projectRoot, 'scripts/deploy-production-remote.sh');
   const rollbackRemotePath = resolve(projectRoot, 'scripts/rollback-production-remote.sh');
+  const recoveryExecutorPath = resolve(projectRoot, 'scripts/lib/production-recovery-executor.sh');
   const persistVerificationRemotePath = resolve(
     projectRoot,
     'scripts/persist-staging-verification-remote.sh'
@@ -213,6 +214,7 @@ void describe('Remote Deploy Bootstrap', () => {
   void test('production remote scripts require an explicit deploy root and resolve helpers when ssh-action omits BASH_SOURCE', () => {
     const deployRemoteContent = readFileSync(productionRemotePath, 'utf-8');
     const rollbackRemoteContent = readFileSync(rollbackRemotePath, 'utf-8');
+    const recoveryExecutorContent = readFileSync(recoveryExecutorPath, 'utf-8');
     const commonHelperContent = readFileSync(
       resolve(projectRoot, 'scripts/lib/common.sh'),
       'utf-8'
@@ -236,19 +238,36 @@ void describe('Remote Deploy Bootstrap', () => {
         ) && content.includes('APP_DIR="${APP_DIR:-$CLASSROOMPATH_DEPLOY_ROOT/app}"'),
         `${scriptName} should require an explicit production deploy root and resolve the app directory from it`
       );
-      assert.ok(
-        content.includes('SCRIPT_DIR="$APP_DIR/scripts"'),
-        `${scriptName} should fall back to the deployed scripts directory when stdin execution has no script path`
-      );
-      assert.ok(
-        content.includes('COMMON_SH_DEPLOYED_PATH="$APP_DIR/scripts/lib/common.sh"'),
-        `${scriptName} should keep an absolute path to the deployed helper library after the remote checkout updates the app directory`
-      );
-      assert.ok(
-        content.includes('remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"'),
-        `${scriptName} should re-source helper functions from the freshly checked out app directory`
-      );
+      if (scriptName === 'rollback-production-remote.sh') {
+        assert.ok(
+          content.includes('SCRIPT_DIR=""') && !content.includes('SCRIPT_DIR="$APP_DIR/scripts"'),
+          `${scriptName} must not use APP_DIR as an executable fallback when stdin execution has no script path`
+        );
+      } else {
+        assert.ok(
+          content.includes('SCRIPT_DIR="$APP_DIR/scripts"'),
+          `${scriptName} should fall back to the deployed scripts directory when stdin execution has no script path`
+        );
+      }
+      if (scriptName !== 'rollback-production-remote.sh') {
+        assert.ok(
+          content.includes('COMMON_SH_DEPLOYED_PATH="$APP_DIR/scripts/lib/common.sh"'),
+          `${scriptName} should keep an absolute path to the deployed helper library after the remote checkout updates the app directory`
+        );
+      }
     }
+
+    assert.ok(
+      deployRemoteContent.includes(
+        'remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"'
+      ),
+      'deploy-production-remote.sh should re-source helper functions from the freshly checked out app directory'
+    );
+    assert.doesNotMatch(
+      recoveryExecutorContent,
+      /remote_deploy_reload_checked_out_helpers|source.*APP_DIR.*scripts\/lib/u,
+      'the stable recovery executor must not refresh or source helpers from APP_DIR'
+    );
 
     assert.ok(
       commonHelperContent.includes('configure_node_path()') &&
@@ -299,17 +318,18 @@ void describe('Remote Deploy Bootstrap', () => {
       'deploy-production-remote.sh should not inline release-state, release-runtime, or deployment-state fallback bodies once the remote contract floor is raised'
     );
     assert.ok(
-      rollbackRemoteContent.includes('REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH') &&
-        rollbackRemoteContent.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
-        rollbackRemoteContent.includes(
+      rollbackRemoteContent.includes('PRODUCTION_RECOVERY_BUNDLE_B64') &&
+        recoveryExecutorContent.includes('REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH') &&
+        recoveryExecutorContent.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
+        recoveryExecutorContent.includes(
           'deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"'
         ) &&
-        !rollbackRemoteContent.includes('resolve_remote_script_dir() {') &&
-        !rollbackRemoteContent.includes('resolve_remote_helper_path() {') &&
-        !rollbackRemoteContent.includes('reload_deployed_common_helpers() {') &&
-        !rollbackRemoteContent.includes('deployment_state_init_paths() {') &&
-        !rollbackRemoteContent.includes('upsert_env_file_var() {'),
-      'rollback-production-remote.sh should require the shared scaffold and versioned helper contracts without inline fallback bodies'
+        !recoveryExecutorContent.includes('resolve_remote_script_dir() {') &&
+        !recoveryExecutorContent.includes('resolve_remote_helper_path() {') &&
+        !recoveryExecutorContent.includes('reload_deployed_common_helpers() {') &&
+        !recoveryExecutorContent.includes('deployment_state_init_paths() {') &&
+        !recoveryExecutorContent.includes('upsert_env_file_var() {'),
+      'rollback should use the stable scaffold and versioned helper contracts without inline fallback bodies'
     );
   });
 
@@ -347,18 +367,20 @@ void describe('Remote Deploy Bootstrap', () => {
     for (const [scriptName, content] of [
       ['deploy-staging-remote.sh', readFileSync(stagingRemotePath, 'utf-8')],
       ['deploy-production-remote.sh', readFileSync(productionRemotePath, 'utf-8')],
-      ['rollback-production-remote.sh', readFileSync(rollbackRemotePath, 'utf-8')],
+      ['rollback-production-remote.sh', readFileSync(recoveryExecutorPath, 'utf-8')],
       [
         'persist-staging-verification-remote.sh',
         readFileSync(persistVerificationRemotePath, 'utf-8'),
       ],
     ] as const) {
+      const isStableRecoveryExecutor = scriptName === 'rollback-production-remote.sh';
       assert.ok(
-        content.includes('REMOTE_BOOTSTRAP_HELPER_PATH=') &&
-          content.includes('resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE"') &&
-          content.includes('resolve_remote_helper_path') &&
-          (scriptName === 'rollback-production-remote.sh' ||
-            content.includes('REMOTE_HELPER_CONTRACTS_PATH')),
+        isStableRecoveryExecutor
+          ? content.includes('REMOTE_BOOTSTRAP_HELPER_PATH="$RECOVERY_LIB_DIR/remote-bootstrap.sh"')
+          : content.includes('REMOTE_BOOTSTRAP_HELPER_PATH=') &&
+              content.includes('resolve_remote_script_dir "$APP_DIR" "$SCRIPT_SOURCE"') &&
+              content.includes('resolve_remote_helper_path') &&
+              content.includes('REMOTE_HELPER_CONTRACTS_PATH'),
         `${scriptName} should reuse the shared remote bootstrap helper when available`
       );
     }

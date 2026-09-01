@@ -36,7 +36,11 @@ fi
 # shellcheck source=lib/remote-deploy-scaffold.sh
 source "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH"
 remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"
-remote_deploy_init_production_helper_paths "$SCRIPT_DIR" "$APP_DIR"
+if declare -f remote_deploy_init_production_helper_paths >/dev/null 2>&1; then
+  # This helper was introduced after some already-deployed releases. It is
+  # optional until the candidate checkout has replaced the old scaffold.
+  remote_deploy_init_production_helper_paths "$SCRIPT_DIR" "$APP_DIR"
+fi
 
 # Streamed deploys must still bootstrap cleanly against hosts that have not yet
 # checked out the latest scaffold helper contract.
@@ -141,36 +145,10 @@ else
   exit 1
 fi
 
-if production_host_contract_helper_supports_contract "$PRODUCTION_HOST_CONTRACT_HELPER_PATH"; then
-  # shellcheck source=lib/production-host-contract.sh
-  source "$PRODUCTION_HOST_CONTRACT_HELPER_PATH"
-else
-  log_error "Remote production-host-contract helper does not meet the minimum contract"
-  exit 1
-fi
-
-if deployment_transaction_helper_supports_contract "$DEPLOYMENT_TRANSACTION_HELPER_PATH"; then
-  # shellcheck source=lib/deployment-transaction.sh
-  source "$DEPLOYMENT_TRANSACTION_HELPER_PATH"
-else
-  log_error "Remote deployment-transaction helper does not meet the minimum contract"
-  exit 1
-fi
-
-if rollback_executor_helper_supports_contract "$ROLLBACK_EXECUTOR_HELPER_PATH"; then
-  # shellcheck source=lib/rollback-executor.sh
-  source "$ROLLBACK_EXECUTOR_HELPER_PATH"
-else
-  log_error "Remote rollback-executor helper does not meet the minimum contract"
-  exit 1
-fi
-
-if [ ! -f "$ROLLBACK_READINESS_HELPER_PATH" ]; then
-  log_error "Remote rollback-readiness helper not found"
-  exit 1
-fi
-# shellcheck source=lib/rollback-readiness.sh
-source "$ROLLBACK_READINESS_HELPER_PATH"
+# production-host-contract.sh, deployment-transaction.sh, and
+# rollback-executor.sh are deliberately not loaded here. A streamed entrypoint
+# must be able to start from the previous release, which predates those files;
+# they are loaded and guarded only after the candidate checkout.
 
 log_info "Starting ClassroomPath Docker deployment..."
 
@@ -326,8 +304,9 @@ capture_production_deploy_failure() {
   local failed_status="$?"
 
   trap - ERR
-  if [ "${DEPLOYMENT_PHASE:-}" != "$DEPLOYMENT_PHASE_COMMITTED" ] &&
-    [ "${DEPLOYMENT_PHASE:-}" != "$DEPLOYMENT_PHASE_ROLLED_BACK" ]; then
+  if declare -f deployment_transaction_mark_failure >/dev/null 2>&1 &&
+    [ "${DEPLOYMENT_PHASE:-}" != "${DEPLOYMENT_PHASE_COMMITTED:-COMMITTED}" ] &&
+    [ "${DEPLOYMENT_PHASE:-}" != "${DEPLOYMENT_PHASE_ROLLED_BACK:-ROLLED_BACK}" ]; then
     deployment_transaction_mark_failure \
       "${FAILURE_POINT:-executor-failure}" \
       "${FAILURE_CATEGORY:-remote-connectivity}" \
@@ -339,8 +318,6 @@ capture_production_deploy_failure() {
 }
 
 trap capture_production_deploy_failure ERR
-
-deployment_transaction_init "$DEPLOYMENT_TRANSACTION_FILE" "" ""
 
 login_production_registry() {
   if [ "${PRODUCTION_REGISTRY_LOGGED_IN:-0}" = "1" ]; then
@@ -379,22 +356,12 @@ load_deploy_container_platform_helper() {
   source "$DEPLOY_CONTAINER_PLATFORM_HELPER_PATH"
 }
 
-load_production_deploy_payload() {
+load_production_deploy_payload_intent() {
   local release_manifest_b64=""
   local release_bundle_b64=""
   local openpath_contract_b64=""
   local payload_image_source=""
   local payload_deployment_mode=""
-
-  FAILURE_POINT="host-contract"
-  FAILURE_CATEGORY="host-contract"
-  FAILURE_MESSAGE="production host contract validation failed"
-  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
-  production_host_contract_validate \
-    "$CLASSROOMPATH_DEPLOY_ROOT" \
-    "${PRODUCTION_HOST_DISK_THRESHOLD_PERCENT:-80}" \
-    "$PRODUCTION_HOST_CONTRACT_REPORT_FILE" || return 1
-  deployment_transaction_mark_stage "PREFLIGHT" || return 1
 
   if [ -n "${DEPLOY_PAYLOAD_B64:-}" ]; then
     DEPLOY_PAYLOAD_FILE="$(mktemp)"
@@ -433,6 +400,70 @@ load_production_deploy_payload() {
   fi
 }
 
+load_checked_out_remote_deploy_scaffold() {
+  REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-deploy-scaffold.sh")"
+
+  if [ ! -f "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH" ]; then
+    log_error "Checked-out remote deploy scaffold helper not found: $REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH"
+    return 1
+  fi
+
+  # The previous release may have supplied the bootstrap function that called
+  # this phase. Replace it with the candidate scaffold before reloading any
+  # candidate-only helper contract.
+  # shellcheck disable=SC1090
+  source "$REMOTE_DEPLOY_SCAFFOLD_HELPER_PATH"
+  remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"
+  remote_deploy_init_production_helper_paths "$SCRIPT_DIR" "$APP_DIR"
+}
+
+load_production_executor_helpers() {
+  load_checked_out_remote_deploy_scaffold || return 1
+  remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"
+
+  if ! production_host_contract_helper_supports_contract "$PRODUCTION_HOST_CONTRACT_HELPER_PATH"; then
+    log_error "Checked-out production-host-contract helper does not meet the minimum contract"
+    return 1
+  fi
+  # shellcheck disable=SC1090
+  source "$PRODUCTION_HOST_CONTRACT_HELPER_PATH"
+
+  if ! deployment_transaction_helper_supports_contract "$DEPLOYMENT_TRANSACTION_HELPER_PATH"; then
+    log_error "Checked-out deployment-transaction helper does not meet the minimum contract"
+    return 1
+  fi
+  # shellcheck disable=SC1090
+  source "$DEPLOYMENT_TRANSACTION_HELPER_PATH"
+
+  if ! rollback_executor_helper_supports_contract "$ROLLBACK_EXECUTOR_HELPER_PATH"; then
+    log_error "Checked-out rollback-executor helper does not meet the minimum contract"
+    return 1
+  fi
+  # shellcheck disable=SC1090
+  source "$ROLLBACK_EXECUTOR_HELPER_PATH"
+
+  if [ ! -f "$ROLLBACK_READINESS_HELPER_PATH" ]; then
+    log_error "Checked-out rollback-readiness helper not found"
+    return 1
+  fi
+  # shellcheck disable=SC1090
+  source "$ROLLBACK_READINESS_HELPER_PATH"
+
+  deployment_transaction_init "$DEPLOYMENT_TRANSACTION_FILE" "" ""
+}
+
+load_production_deploy_payload() {
+  FAILURE_POINT="host-contract"
+  FAILURE_CATEGORY="host-contract"
+  FAILURE_MESSAGE="production host contract validation failed"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  production_host_contract_validate \
+    "$CLASSROOMPATH_DEPLOY_ROOT" \
+    "${PRODUCTION_HOST_DISK_THRESHOLD_PERCENT:-80}" \
+    "$PRODUCTION_HOST_CONTRACT_REPORT_FILE" || return 1
+  deployment_transaction_mark_stage "PREFLIGHT" || return 1
+}
+
 prepare_production_checkout() {
   cd "$APP_DIR"
 
@@ -468,6 +499,7 @@ prepare_production_checkout() {
   git reset --hard "$TARGET_SHA"
   git submodule deinit -f --all || true
   git submodule update --init --recursive --force
+  load_checked_out_remote_deploy_scaffold
   remote_deploy_reload_checked_out_helpers "$COMMON_SH_DEPLOYED_PATH"
   deployment_state_init_paths "$STATE_DIR"
   RELEASE_EXECUTION_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-execution.sh")"
@@ -595,8 +627,10 @@ wait_for_production_runtime_readiness() {
 
 
 run_remote_deploy_phases \
-  load_production_deploy_payload \
+  load_production_deploy_payload_intent \
   prepare_production_checkout \
+  load_production_executor_helpers \
+  load_production_deploy_payload \
   load_production_release_manifest \
   classify_production_migration_risk \
   cleanup_production_disk_if_needed \

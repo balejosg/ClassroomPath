@@ -107,7 +107,7 @@ test('promotion verification and production tags bind the exact Release Bundle i
 
 test('rollback reads and activates the exact persisted previous Release Bundle', () => {
   const productionRollback = readFileSync(
-    resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
+    resolve(projectRoot, 'scripts/lib/production-recovery-executor.sh'),
     'utf8'
   );
   const stagingRollback = readFileSync(

@@ -533,6 +533,10 @@ describe('Deployment runtime contracts', () => {
       resolve(projectRoot, 'scripts/rollback-production-remote.sh'),
       'utf-8'
     );
+    const recoveryExecutor = readFileSync(
+      resolve(projectRoot, 'scripts/lib/production-recovery-executor.sh'),
+      'utf-8'
+    );
     const githubActionsRemoteHelper = readFileSync(githubActionsRemoteHelperPath, 'utf-8');
     const productionRuntimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
 
@@ -647,11 +651,14 @@ describe('Deployment runtime contracts', () => {
       )
     );
     assert.ok(
-      rollbackRemote.includes('DEPLOYMENT_STATE_HELPER_PATH') &&
-        rollbackRemote.includes('deployment_state_activate_previous_release') &&
-        rollbackRemote.includes('deployment_state_load_context') &&
-        rollbackRemote.includes('remote_deploy_reload_checked_out_helpers') &&
-        !rollbackRemote.includes('upsert_env_file_var() {')
+      rollbackRemote.includes('PRODUCTION_RECOVERY_BUNDLE_B64') &&
+        recoveryExecutor.includes('DEPLOYMENT_STATE_HELPER_PATH') &&
+        recoveryExecutor.includes('deployment_state_activate_previous_release') &&
+        recoveryExecutor.includes('deployment_state_load_context') &&
+        recoveryExecutor.includes('RECOVERY_LIB_DIR') &&
+        recoveryExecutor.includes('APP_DIR is data') &&
+        !recoveryExecutor.includes('remote_deploy_reload_checked_out_helpers') &&
+        !recoveryExecutor.includes('upsert_env_file_var() {')
     );
     assert.ok(
       verifyState.includes('release-state-cli.mjs') &&
@@ -673,8 +680,10 @@ describe('Deployment runtime contracts', () => {
     const productionRuntimeHelper = readFileSync(deployProductionRuntimeHelperPath, 'utf-8');
     const productionPhaseSequence = [
       'run_remote_deploy_phases \\',
-      '  load_production_deploy_payload \\',
+      '  load_production_deploy_payload_intent \\',
       '  prepare_production_checkout \\',
+      '  load_production_executor_helpers \\',
+      '  load_production_deploy_payload \\',
       '  load_production_release_manifest \\',
       '  classify_production_migration_risk \\',
       '  cleanup_production_disk_if_needed \\',

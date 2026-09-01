@@ -81,8 +81,8 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'deploy-shell',
     patterns: [
-      '^scripts/(?:deploy-.+|detect-email-delivery-risk|detect-windows-firefox-risk|production-deployment-diagnostic|rollback-.+|persist-.+|run-migrations(?:-docker|-image)?|run-staging-release-gate|tag-production-release|verify-production-promotion-ready|verify-staging-release-state)\\.sh$',
-      '^scripts/lib/(?:deployment-state|deployment-transaction|production-host-contract|release-execution|release-risk|release-risk-policy|release-runtime|release-state|remote-bootstrap|remote-deploy-scaffold|deploy-production-context|deploy-production-runtime|rollback-executor|rollback-readiness|staging-gates|staging-rollback)\\.sh$',
+      '^scripts/(?:deploy-.+|detect-email-delivery-risk|detect-windows-firefox-risk|package-production-recovery-bundle|production-deployment-diagnostic|rollback-.+|persist-.+|run-migrations(?:-docker|-image)?|run-staging-release-gate|tag-production-release|verify-production-promotion-ready|verify-staging-release-state)\\.sh$',
+      '^scripts/lib/(?:deployment-state|deployment-transaction|production-deployment-diagnostic-fallback|production-host-contract|production-recovery-executor|release-execution|release-risk|release-risk-policy|release-runtime|release-state|remote-bootstrap|remote-deploy-scaffold|deploy-production-context|deploy-production-runtime|rollback-executor|rollback-readiness|staging-gates|staging-rollback)\\.sh$',
     ],
     capabilities: { ciRelevant: true, verificationScope: 'ops-regression' },
     ...releasePolicy(),
@@ -124,7 +124,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-contract-test',
     patterns: [
-      '^tests/(?:ajax-auto-allow-canary-harness|ci-cache-measurement|ci-routing-measurement|deploy-intent|deployed-release-state|deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-assets-cache|firefox-release-version|github-actions-artifacts|linux-auto-allow-canary|linux-ajax-auto-allow-canary|npm-audit-critical|openpath-required-checks|prepromotion-runner-rehearsal|production-enrollment-download-canary|production-executor-fault-injection|production-executor-hermetic|production-executor-state|production-executor-workflow|promotion-eligibility|release-candidate-components|release-candidate-timings|release-cli|release-evidence|release-images|release-manifest-platforms|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|rollback-executor|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|windows-ajax-auto-allow-runtime|workflow(?:-core|-deploy|-production-client-canary|-release-candidate|-config|-production-executor)?)\\.test\\.ts$',
+      '^tests/(?:ajax-auto-allow-canary-harness|ci-cache-measurement|ci-routing-measurement|deploy-intent|deployed-release-state|deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-assets-cache|firefox-release-version|github-actions-artifacts|linux-auto-allow-canary|linux-ajax-auto-allow-canary|npm-audit-critical|openpath-required-checks|prepromotion-runner-rehearsal|production-enrollment-download-canary|production-executor-fault-injection|production-executor-hermetic|production-executor-state|production-executor-workflow|production-remote-regressions|promotion-eligibility|release-candidate-components|release-candidate-timings|release-cli|release-evidence|release-images|release-manifest-platforms|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|rollback-executor|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|windows-ajax-auto-allow-runtime|workflow(?:-core|-deploy|-production-client-canary|-release-candidate|-config|-production-executor)?)\\.test\\.ts$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -316,6 +316,7 @@ export const REGRESSION_PLAN_DEFINITIONS = {
       'tests/production-executor-fault-injection.test.ts',
       'tests/production-executor-hermetic.test.ts',
       'tests/production-executor-state.test.ts',
+      'tests/production-remote-regressions.test.ts',
       'tests/rollback-executor.test.ts',
       'tests/firefox-release-version.test.ts',
       'tests/firefox-release-metadata.test.ts',

@@ -578,6 +578,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Prepare stable post-switch diagnostic fallback
+        id: diagnostic-fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          fallback_base64="$(base64 scripts/lib/production-deployment-diagnostic-fallback.sh | tr -d '\n')"
+          printf 'fallback_base64=%s\n' "$fallback_base64" >> "$GITHUB_OUTPUT"
+
       - name: Collect read-only post-switch diagnostic
         if: always()
         continue-on-error: true
@@ -588,13 +596,15 @@ jobs:
           DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          PRODUCTION_DIAGNOSTIC_FALLBACK_B64: ${{ steps.diagnostic-fallback.outputs.fallback_base64 }}
         run: |
           set +e
           source scripts/lib/github-actions-remote.sh
           github_actions_remote_install_ssh_key "$DEPLOY_SSH_KEY" ~/.ssh/classroompath-production-diagnostic
           deploy_root_assignment="$(printf 'CLASSROOMPATH_DEPLOY_ROOT=%q' "$DEPLOY_ROOT")"
+          fallback_b64_assignment="$(printf 'PRODUCTION_DIAGNOSTIC_FALLBACK_B64=%q' "$PRODUCTION_DIAGNOSTIC_FALLBACK_B64")"
           diagnostic_path="${DEPLOY_ROOT%/}/release-state/post-switch-diagnostic.json"
-          remote_command="$deploy_root_assignment; state_file=\"${DEPLOY_ROOT%/}/release-state/deployment-phase.env\"; mutation_boundary_reached=\$(grep '^MUTATION_BOUNDARY_REACHED=' \"\$state_file\" 2>/dev/null | sed 's/^[^=]*=//'); if [ \"\$mutation_boundary_reached\" = 1 ] && [ -x \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\" ]; then bash \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\" || true; fi; if [ -s \"$diagnostic_path\" ]; then cat \"$diagnostic_path\"; else printf '%s\\n' '{\"mode\":\"diagnostic-unavailable\",\"mutation_boundary_reached\":false}'; fi"
+          remote_command="$deploy_root_assignment; $fallback_b64_assignment; state_file=\"${DEPLOY_ROOT%/}/release-state/deployment-phase.env\"; diagnostic_path=\"$diagnostic_path\"; fallback_path=\$(mktemp); printf '%s' \"\$PRODUCTION_DIAGNOSTIC_FALLBACK_B64\" | base64 --decode > \"\$fallback_path\"; chmod 700 \"\$fallback_path\"; mutation_boundary_reached=\$(grep '^MUTATION_BOUNDARY_REACHED=' \"\$state_file\" 2>/dev/null | sed 's/^[^=]*=//'); expected_marker='\"mutation_boundary_reached\":false'; if [ \"\$mutation_boundary_reached\" = 1 ]; then expected_marker='\"mutation_boundary_reached\":true'; fi; rm -f \"\$diagnostic_path\"; diagnostic_status=1; if [ \"\$mutation_boundary_reached\" = 1 ] && [ -x \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\" ]; then bash \"\${CLASSROOMPATH_DEPLOY_ROOT%/}/app/scripts/production-deployment-diagnostic.sh\" || diagnostic_status=\$?; fi; if [ \"\$diagnostic_status\" -ne 0 ] || [ ! -s \"\$diagnostic_path\" ] || ! grep -Fq \"\$expected_marker\" \"\$diagnostic_path\"; then bash \"\$fallback_path\" \"\$state_file\" \"\$diagnostic_path\" || true; fi; if [ -s \"\$diagnostic_path\" ]; then cat \"\$diagnostic_path\"; else bash \"\$fallback_path\" \"\$state_file\" \"\$diagnostic_path\" && cat \"\$diagnostic_path\"; fi; rm -f \"\$fallback_path\""
           github_actions_remote_ssh \
             ~/.ssh/classroompath-production-diagnostic \
             "${DEPLOY_PORT:-22}" \
@@ -1004,6 +1014,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Prepare stable production recovery bundle
+        id: recovery-bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          recovery_bundle_path="$(mktemp)"
+          trap 'rm -f "$recovery_bundle_path"' EXIT
+          bash scripts/package-production-recovery-bundle.sh "$recovery_bundle_path" >/dev/null
+          printf 'bundle_base64=%s\n' "$(base64 "$recovery_bundle_path" | tr -d '\n')" >> "$GITHUB_OUTPUT"
+
       - name: Resolve deploy host
         id: resolve
         shell: bash
@@ -1025,6 +1045,7 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLASSROOMPATH_DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
           PRODUCTION_CONTAINER_PLATFORM: ${{ needs.resolve-release-images.outputs.production_container_platform }}
+          PRODUCTION_RECOVERY_BUNDLE_B64: ${{ steps.recovery-bundle.outputs.bundle_base64 }}
         uses: appleboy/ssh-action@v1.2.4
         with:
           host: ${{ steps.resolve.outputs.ip }}
@@ -1033,5 +1054,5 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 15m
-          envs: GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_DEPLOY_ROOT,PRODUCTION_CONTAINER_PLATFORM
+          envs: GHCR_USERNAME,GHCR_TOKEN,CLASSROOMPATH_DEPLOY_ROOT,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_RECOVERY_BUNDLE_B64
           script_path: scripts/rollback-production-remote.sh

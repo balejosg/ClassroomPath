@@ -1,14 +1,18 @@
 # ClassroomPath #162: diseño del executor hermético de producción
 
-## Alcance aprobado
+## Alcance y estado de esta iteración
 
-Esta iteración implementa y verifica localmente las fases A–J del issue #162:
+Esta especificación define el diseño objetivo para las fases A–J del issue #162:
 contrato mínimo del host, runtime hermético del verifier, contrato de empaquetado,
 canary/fault injection del executor, estado transaccional, rollback independiente,
 boundary explícito, diagnóstico post-switch y smoke staging/production independiente.
 
+La implementación local permanece en `implementation incomplete / operational proof
+pending` hasta que las regresiones de bootstrap N→N+1, recovery shell independiente
+y diagnóstico post-switch sean aceptadas junto con el resto de criterios del issue.
 No se ejecutan staging, producción, hosts reales, tags, releases, push ni cambios
-remotos. Las fases K–M quedan como prueba operativa pendiente de autorización.
+remotos. Las fases K–M quedan explícitamente como prueba operativa pendiente de
+autorización.
 
 ## Decisiones
 
