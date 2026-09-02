@@ -21,6 +21,8 @@ const harnessPath = resolve(projectRoot, 'scripts/staging-equivalent-harness.sh'
 const candidateSha = 'c'.repeat(40);
 const recoverySha = 'a'.repeat(40);
 const previousSha = 'b'.repeat(40);
+const transactionId = 'e'.repeat(64);
+const staleTransactionId = 'f'.repeat(64);
 const releaseId = '1'.repeat(64);
 const bundleSha = '2'.repeat(64);
 const contractSha = '3'.repeat(64);
@@ -500,7 +502,9 @@ test('provisioning rejects pre-existing production-named persistent resources on
         'case "$1:$2" in',
         '  ps:*) exit 0 ;;',
         '  volume:inspect) [ "${FAKE_RESOURCE:-}" = volume ] && exit 0 || exit 1 ;;',
+        '  volume:ls) exit 0 ;;',
         '  network:inspect) [ "${FAKE_RESOURCE:-}" = network ] && exit 0 || exit 1 ;;',
+        '  network:ls) exit 0 ;;',
         'esac',
         'exit 1',
         '',
@@ -730,13 +734,25 @@ test('watchdog only stops a distinct candidate gateway at ACTIVATED_UNVERIFIED a
       ].join('\n') + '\n'
     );
 
-    writeFileSync(phasePath, 'DEPLOYMENT_PHASE=PREPARED\n');
+    writeFileSync(
+      phasePath,
+      [
+        'DEPLOYMENT_PHASE=PREPARED',
+        `DEPLOYMENT_TRANSACTION_ID=${transactionId}`,
+        `CANDIDATE_RELEASE_ID=${releaseId}`,
+        `CANDIDATE_SHA=${candidateSha}`,
+        `CURRENT_RELEASE_ID=${previousSha}`,
+        `PREVIOUS_RELEASE_ID=${previousSha}`,
+        'MUTATION_BOUNDARY_REACHED=0',
+        '',
+      ].join('\n')
+    );
     expectFailure(
       () =>
         runShell(
           [
             '-c',
-            'source "$1"; k_watchdog_act_once "$2" "$3" gateway-p "$4" "$5" "$6"',
+            'source "$1"; K_PREVIOUS_RELEASE_ID="$7"; k_watchdog_act_once "$2" "$3" gateway-p "$4" "$5" "$6" "$8" "$9" "${10}"',
             'bash',
             harnessPath,
             phasePath,
@@ -744,6 +760,10 @@ test('watchdog only stops a distinct candidate gateway at ACTIVATED_UNVERIFIED a
             gatewayImage,
             dockerPath,
             markerPath,
+            previousSha,
+            transactionId,
+            releaseId,
+            candidateSha,
           ],
           { STOP_LOG: stopLog }
         ),
@@ -751,11 +771,23 @@ test('watchdog only stops a distinct candidate gateway at ACTIVATED_UNVERIFIED a
     );
     assert.equal(existsSync(stopLog), false);
 
-    writeFileSync(phasePath, 'DEPLOYMENT_PHASE=ACTIVATED_UNVERIFIED\n');
+    writeFileSync(
+      phasePath,
+      [
+        'DEPLOYMENT_PHASE=ACTIVATED_UNVERIFIED',
+        `DEPLOYMENT_TRANSACTION_ID=${transactionId}`,
+        `CANDIDATE_RELEASE_ID=${releaseId}`,
+        `CANDIDATE_SHA=${candidateSha}`,
+        `CURRENT_RELEASE_ID=${previousSha}`,
+        `PREVIOUS_RELEASE_ID=${previousSha}`,
+        'MUTATION_BOUNDARY_REACHED=1',
+        '',
+      ].join('\n')
+    );
     runShell(
       [
         '-c',
-        'source "$1"; k_watchdog_act_once "$2" "$3" gateway-p "$4" "$5" "$6"',
+        'source "$1"; K_PREVIOUS_RELEASE_ID="$7"; k_watchdog_act_once "$2" "$3" gateway-p "$4" "$5" "$6" "$8" "$9" "${10}"',
         'bash',
         harnessPath,
         phasePath,
@@ -763,6 +795,10 @@ test('watchdog only stops a distinct candidate gateway at ACTIVATED_UNVERIFIED a
         gatewayImage,
         dockerPath,
         markerPath,
+        previousSha,
+        transactionId,
+        releaseId,
+        candidateSha,
       ],
       { STOP_LOG: stopLog }
     );
@@ -772,7 +808,7 @@ test('watchdog only stops a distinct candidate gateway at ACTIVATED_UNVERIFIED a
         runShell(
           [
             '-c',
-            'source "$1"; k_watchdog_act_once "$2" "$3" gateway-p "$4" "$5" "$6"',
+            'source "$1"; K_PREVIOUS_RELEASE_ID="$7"; k_watchdog_act_once "$2" "$3" gateway-p "$4" "$5" "$6" "$8" "$9" "${10}"',
             'bash',
             harnessPath,
             phasePath,
@@ -780,6 +816,10 @@ test('watchdog only stops a distinct candidate gateway at ACTIVATED_UNVERIFIED a
             gatewayImage,
             dockerPath,
             markerPath,
+            previousSha,
+            transactionId,
+            releaseId,
+            candidateSha,
           ],
           { STOP_LOG: stopLog }
         ),
@@ -796,7 +836,7 @@ test('watchdog only stops a distinct candidate gateway at ACTIVATED_UNVERIFIED a
         runShell(
           [
             '-c',
-            'source "$1"; k_watchdog_act_once "$2" "$3" gateway-p "$4" "$5" "$6"',
+            'source "$1"; K_PREVIOUS_RELEASE_ID="$7"; k_watchdog_act_once "$2" "$3" gateway-p "$4" "$5" "$6" "$8" "$9" "${10}"',
             'bash',
             harnessPath,
             phasePath,
@@ -804,6 +844,10 @@ test('watchdog only stops a distinct candidate gateway at ACTIVATED_UNVERIFIED a
             gatewayImage,
             dockerPath,
             markerPath,
+            previousSha,
+            transactionId,
+            releaseId,
+            candidateSha,
           ],
           { STOP_LOG: stopLog }
         ),
@@ -812,6 +856,911 @@ test('watchdog only stops a distinct candidate gateway at ACTIVATED_UNVERIFIED a
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('transaction identity is durable and history append failure remains secondary after SWITCHING', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-transaction-history-failure-'));
+  try {
+    const statePath = join(root, 'release-state', 'deployment-phase.env');
+    const historyParent = join(root, 'history-parent');
+    writeFileSync(historyParent, 'not-a-directory\n');
+    const output = runShell([
+      '-c',
+      [
+        'source "$1"',
+        'DEPLOYMENT_TRANSACTION_HISTORY_FILE="$2/history"',
+        'DEPLOYMENT_TRANSACTION_ID="$3"',
+        'deployment_transaction_init "$4" "$5" "$6" "$3"; init_status=$?',
+        'deployment_transaction_transition SWITCHING SWITCH; transition_status=$?',
+        'phase="$(deployment_transaction_read_value "$4" DEPLOYMENT_PHASE)"',
+        'boundary="$(deployment_transaction_read_value "$4" MUTATION_BOUNDARY_REACHED)"',
+        'history_status="$(deployment_transaction_read_value "$4" DEPLOYMENT_TRANSACTION_HISTORY_STATUS)"',
+        'persisted_id="$(deployment_transaction_read_value "$4" DEPLOYMENT_TRANSACTION_ID)"',
+        'printf "init=%s transition=%s phase=%s boundary=%s history=%s id=%s\\n" "$init_status" "$transition_status" "$phase" "$boundary" "$history_status" "$persisted_id"',
+      ].join('; '),
+      'bash',
+      resolve(projectRoot, 'scripts/lib/deployment-transaction.sh'),
+      historyParent,
+      transactionId,
+      statePath,
+      previousSha,
+      releaseId,
+    ]);
+    assert.match(output, /init=0 transition=0 phase=SWITCHING boundary=1 history=incomplete/u);
+    assert.match(output, new RegExp(`id=${transactionId}`, 'u'));
+
+    const validHistoryOutput = runShell([
+      '-c',
+      [
+        'source "$1"',
+        'source "$2"',
+        `K_TRANSACTION_ID="${transactionId}"`,
+        'DEPLOYMENT_TRANSACTION_HISTORY_FILE="$3"',
+        'deployment_transaction_init "$4" "$5" "$6" "$7"',
+        'deployment_transaction_transition SWITCHING SWITCH',
+        'k_validate_transaction_history "$3" PREPARED SWITCHING',
+        'printf "history-valid\\n"',
+      ].join('; '),
+      'bash',
+      harnessPath,
+      resolve(projectRoot, 'scripts/lib/deployment-transaction.sh'),
+      join(root, 'valid-history.env'),
+      join(root, 'valid-state.env'),
+      previousSha,
+      releaseId,
+      transactionId,
+    ]);
+    assert.match(validHistoryOutput, /history-valid/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('history append failure after durable SWITCHING still enters post-boundary recovery', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-history-recovery-'));
+  try {
+    const statePath = join(root, 'release-state', 'deployment-phase.env');
+    const historyParent = join(root, 'history-parent');
+    const recordsPath = join(root, 'records.jsonl');
+    const callsPath = join(root, 'rollback.calls');
+    writeFileSync(historyParent, 'not-a-directory\n');
+    writeFileSync(recordsPath, '');
+    const output = runShell([
+      '-c',
+      [
+        'source "$1"',
+        'source "$2"',
+        `K_DEPLOY_ROOT="${root}"; K_EVIDENCE_DIR="${root}"; K_TRANSACTION_ID="${transactionId}"; K_C_RELEASE_ID="${releaseId}"; K_CANDIDATE_SHA="${candidateSha}"; K_PREVIOUS_RELEASE_ID="${previousSha}"; CANDIDATE_SHA="${candidateSha}"`,
+        'DEPLOYMENT_TRANSACTION_HISTORY_FILE="$3/history"',
+        'deployment_transaction_init "$4" "$5" "$6" "$7"',
+        'deployment_transaction_transition SWITCHING SWITCH',
+        'k_require_durable_recovery_artifact() { return 0; }',
+        'CALLS_FILE="$9"; PHASE_FILE="$4"; k_run_rollback_observed() { printf "called\\n" >> "$CALLS_FILE"; K_ROLLBACK_STATUS=0; K_ROLLBACK_OBSERVER_STATUS=0; printf "DEPLOYMENT_TRANSACTION_HISTORY_STATUS=incomplete\\nDEPLOYMENT_PHASE=ROLLED_BACK\\nMUTATION_BOUNDARY_REACHED=1\\nCURRENT_RELEASE_ID=' +
+          previousSha +
+          '\\nPREVIOUS_RELEASE_ID=' +
+          previousSha +
+          '\\nCANDIDATE_RELEASE_ID=' +
+          releaseId +
+          '\\nCANDIDATE_SHA=' +
+          candidateSha +
+          '\\nDEPLOYMENT_TRANSACTION_ID=' +
+          transactionId +
+          '\\n" > "$PHASE_FILE"; return 0; }',
+        'k_process_post_forward 1 success "$8" "$4"',
+        'printf "phase=%s|history=%s|recovery=%s|safety=%s\\n" "$(k_read_file_value "$4" DEPLOYMENT_PHASE)" "$(k_read_file_value "$4" DEPLOYMENT_TRANSACTION_HISTORY_STATUS)" "$K_RECOVERY_RESULT" "$K_SAFETY_OUTCOME"',
+      ].join('; '),
+      'bash',
+      harnessPath,
+      resolve(projectRoot, 'scripts/lib/deployment-transaction.sh'),
+      historyParent,
+      statePath,
+      previousSha,
+      releaseId,
+      transactionId,
+      recordsPath,
+      callsPath,
+    ]);
+    assert.match(
+      output,
+      /phase=ROLLED_BACK\|history=incomplete\|recovery=ROLLED_BACK\|safety=ROLLED_BACK/u
+    );
+    assert.equal(readFileSync(callsPath, 'utf8').trim(), 'called');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('forward outcome classification reads durable boundary and fails toward recovery when state is ambiguous', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-forward-classification-'));
+  try {
+    const makeState = (name: string, values: Record<string, string>) => {
+      const path = join(root, `${name}.env`);
+      writeFileSync(
+        path,
+        `${Object.entries({
+          DEPLOYMENT_TRANSACTION_ID: transactionId,
+          CANDIDATE_RELEASE_ID: releaseId,
+          CANDIDATE_SHA: candidateSha,
+          CURRENT_RELEASE_ID: previousSha,
+          PREVIOUS_RELEASE_ID: previousSha,
+          ...values,
+        })
+          .map(([key, value]) => `${key}=${value}`)
+          .join('\n')}\n`
+      );
+      return path;
+    };
+    const classify = (statePath: string, status: number, leg = 'success', failure = '') =>
+      runShell([
+        '-c',
+        'source "$1"; K_TRANSACTION_ID="$2"; K_C_RELEASE_ID="$3"; K_CANDIDATE_SHA="' +
+          candidateSha +
+          '"; K_PREVIOUS_RELEASE_ID="' +
+          previousSha +
+          '"; k_classify_forward_outcome "$4" "$5" "$6" "$7"; printf "%s|%s|%s|%s\\n" "$K_FORWARD_OUTCOME" "$K_FORWARD_BOUNDARY" "$K_FORWARD_PHASE" "$K_FORWARD_STATE_READABLE"',
+        'bash',
+        harnessPath,
+        transactionId,
+        releaseId,
+        String(status),
+        statePath,
+        leg,
+        failure,
+      ]).trim();
+
+    assert.equal(
+      classify(
+        makeState('pre-boundary', { DEPLOYMENT_PHASE: 'FAILED', MUTATION_BOUNDARY_REACHED: '0' }),
+        1
+      ),
+      'FORWARD_FAILURE_PRE_BOUNDARY|0|FAILED|true'
+    );
+    assert.equal(
+      classify(
+        makeState('switching', { DEPLOYMENT_PHASE: 'SWITCHING', MUTATION_BOUNDARY_REACHED: '1' }),
+        1
+      ),
+      'FORWARD_FAILURE_POST_BOUNDARY|1|SWITCHING|true'
+    );
+    assert.equal(
+      classify(
+        makeState('activated', {
+          DEPLOYMENT_PHASE: 'ACTIVATED_UNVERIFIED',
+          MUTATION_BOUNDARY_REACHED: '1',
+        }),
+        1
+      ),
+      'FORWARD_FAILURE_POST_BOUNDARY|1|ACTIVATED_UNVERIFIED|true'
+    );
+    assert.equal(
+      classify(
+        makeState('readiness', { DEPLOYMENT_PHASE: 'VERIFIED', MUTATION_BOUNDARY_REACHED: '1' }),
+        1
+      ),
+      'FORWARD_FAILURE_POST_BOUNDARY|1|VERIFIED|true'
+    );
+    assert.equal(
+      classify(
+        makeState('evidence', { DEPLOYMENT_PHASE: 'SWITCHING', MUTATION_BOUNDARY_REACHED: '1' }),
+        0,
+        'fault',
+        'evidence'
+      ),
+      'HARNESS_FAILURE_POST_BOUNDARY|1|SWITCHING|true'
+    );
+    assert.equal(
+      classify(join(root, 'missing.env'), 1),
+      'STATE_UNKNOWN_AFTER_FORWARD|unknown|unknown|false'
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('shared post-forward policy recovers every non-terminal fault and preserves safety when evidence fails', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-post-forward-policy-'));
+  try {
+    const phasePath = join(root, 'phase.env');
+    const recordsPath = join(root, 'records.jsonl');
+    const callsPath = join(root, 'rollback.calls');
+    writeFileSync(recordsPath, '');
+    writeFileSync(
+      phasePath,
+      [
+        'DEPLOYMENT_PHASE=SWITCHING',
+        'MUTATION_BOUNDARY_REACHED=1',
+        `CURRENT_RELEASE_ID=${previousSha}`,
+        `PREVIOUS_RELEASE_ID=${previousSha}`,
+        `CANDIDATE_RELEASE_ID=${releaseId}`,
+        `CANDIDATE_SHA=${candidateSha}`,
+        `DEPLOYMENT_TRANSACTION_ID=${transactionId}`,
+        '',
+      ].join('\n')
+    );
+    const command = [
+      'source "$1"',
+      `K_TRANSACTION_ID="${transactionId}"`,
+      `K_C_RELEASE_ID="${releaseId}"`,
+      `K_CANDIDATE_SHA="${candidateSha}"`,
+      `K_PREVIOUS_RELEASE_ID="${previousSha}"`,
+      'K_EVIDENCE_DIR="$(dirname "$3")"',
+      'CALLS_FILE="$4"; PHASE_FILE="$2"; k_require_durable_recovery_artifact() { return 0; }',
+      'k_run_rollback_observed() { printf "called\\n" >> "$CALLS_FILE"; K_ROLLBACK_STATUS=0; K_ROLLBACK_OBSERVER_STATUS=0; printf "DEPLOYMENT_TRANSACTION_HISTORY_STATUS=incomplete\\nDEPLOYMENT_PHASE=ROLLED_BACK\\nMUTATION_BOUNDARY_REACHED=1\\nCURRENT_RELEASE_ID=' +
+        previousSha +
+        '\\nPREVIOUS_RELEASE_ID=' +
+        previousSha +
+        '\\nCANDIDATE_RELEASE_ID=' +
+        releaseId +
+        '\\nCANDIDATE_SHA=' +
+        candidateSha +
+        '\\nDEPLOYMENT_TRANSACTION_ID=' +
+        transactionId +
+        '\\n" > "$PHASE_FILE"; return 0; }',
+      'K_FORWARD_OUTCOME=FORWARD_FAILURE_POST_BOUNDARY',
+      'K_FORWARD_PHASE=SWITCHING',
+      'K_FORWARD_BOUNDARY=1',
+      'k_ensure_post_boundary_recovery success "$3" "$2"',
+      'printf "success=%s|%s|%s|%s\\n" "$K_RECOVERY_ATTEMPTED" "$K_RECOVERY_RESULT" "$K_SAFETY_OUTCOME" "$(wc -l < "$4")"',
+    ].join('; ');
+    const output = runShell([
+      '-c',
+      command,
+      'bash',
+      harnessPath,
+      phasePath,
+      recordsPath,
+      callsPath,
+      callsPath,
+    ]);
+    assert.match(output, /success=true\|ROLLED_BACK\|ROLLED_BACK\|1/u);
+
+    const faultOutput = runShell([
+      '-c',
+      [
+        'source "$1"',
+        `K_TRANSACTION_ID="${transactionId}"`,
+        `K_C_RELEASE_ID="${releaseId}"`,
+        `K_CANDIDATE_SHA="${candidateSha}"`,
+        `K_PREVIOUS_RELEASE_ID="${previousSha}"`,
+        'CALLS_FILE="$4"; k_require_durable_recovery_artifact() { return 0; }',
+        'k_run_rollback_observed() { printf "fault-called\\n" >> "$CALLS_FILE"; K_ROLLBACK_STATUS=0; K_ROLLBACK_OBSERVER_STATUS=0; return 0; }',
+        'K_FORWARD_OUTCOME=FORWARD_FAILURE_TERMINAL_SAFE',
+        'K_FORWARD_PHASE=COMMITTED',
+        'K_FORWARD_BOUNDARY=1',
+        'k_ensure_post_boundary_recovery fault "$3" "$2"',
+        'printf "fault=%s|%s|%s\\n" "$K_RECOVERY_ATTEMPTED" "$K_RECOVERY_RESULT" "$K_SAFETY_OUTCOME"',
+      ].join('; '),
+      'bash',
+      harnessPath,
+      phasePath,
+      recordsPath,
+      callsPath,
+    ]);
+    assert.match(faultOutput, /fault=true\|ROLLED_BACK\|ROLLED_BACK/u);
+
+    const evidenceOutput = runShell([
+      '-c',
+      [
+        'source "$1"',
+        'K_EVIDENCE_OUTCOME=COMPLETE',
+        'K_SAFETY_OUTCOME=ROLLED_BACK',
+        'k_build_evidence() { return 1; }',
+        'if k_finalize_leg_evidence success "$2" "$3"; then status=0; else status=$?; fi',
+        'printf "evidence_status=%s|safety=%s|evidence=%s\\n" "$status" "$K_SAFETY_OUTCOME" "$K_EVIDENCE_OUTCOME"',
+      ].join('; '),
+      'bash',
+      harnessPath,
+      recordsPath,
+      join(root, 'missing-history'),
+    ]);
+    assert.match(evidenceOutput, /evidence_status=1\|safety=ROLLED_BACK\|evidence=INCOMPLETE/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ambiguous durable state still attempts R and rejects a rollback no-op', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-ambiguous-recovery-'));
+  try {
+    for (const terminal of [true, false]) {
+      const caseRoot = join(root, terminal ? 'terminal' : 'noop');
+      mkdirSync(caseRoot);
+      const callsPath = join(caseRoot, 'rollback.calls');
+      const command = [
+        'source "$1"',
+        `K_DEPLOY_ROOT="$2"; K_EVIDENCE_DIR="$2"; K_TRANSACTION_ID="${transactionId}"; K_C_RELEASE_ID="${releaseId}"; K_CANDIDATE_SHA="${candidateSha}"; K_PREVIOUS_RELEASE_ID="${previousSha}"`,
+        'CALLS_FILE="$3"; PHASE_FILE="$2/phase.env"',
+        'k_require_durable_recovery_artifact() { return 0; }',
+        terminal
+          ? 'k_run_rollback_observed() { printf "called\\n" >> "$CALLS_FILE"; K_ROLLBACK_STATUS=0; K_ROLLBACK_OBSERVER_STATUS=0; printf "DEPLOYMENT_PHASE=ROLLED_BACK\\nMUTATION_BOUNDARY_REACHED=1\\nCURRENT_RELEASE_ID=' +
+            previousSha +
+            '\\nPREVIOUS_RELEASE_ID=' +
+            previousSha +
+            '\\nCANDIDATE_RELEASE_ID=' +
+            releaseId +
+            '\\nCANDIDATE_SHA=' +
+            candidateSha +
+            '\\nDEPLOYMENT_TRANSACTION_ID=' +
+            transactionId +
+            '\\n" > "$PHASE_FILE"; return 0; }'
+          : 'k_run_rollback_observed() { printf "called\\n" >> "$CALLS_FILE"; K_ROLLBACK_STATUS=0; K_ROLLBACK_OBSERVER_STATUS=0; return 0; }',
+        'k_process_post_forward 1 success "$2/records.jsonl" "$2/phase.env"',
+        'printf "%s|%s|%s\\n" "$K_RECOVERY_ATTEMPTED" "$K_RECOVERY_RESULT" "$K_SAFETY_OUTCOME"',
+      ].join('; ');
+      writeFileSync(join(caseRoot, 'records.jsonl'), '');
+      const output = runShell(['-c', command, 'bash', harnessPath, caseRoot, callsPath], {
+        K_EVIDENCE_DIR: caseRoot,
+      });
+      assert.match(
+        output,
+        terminal ? /true\|ROLLED_BACK\|ROLLED_BACK/u : /true\|FAILED\|RECOVERY_FAILED/u
+      );
+      assert.equal(readFileSync(callsPath, 'utf8').trim(), 'called');
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('diagnostic, history, record, and observer failures remain after recovery is attempted', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-post-forward-evidence-failures-'));
+  try {
+    const phasePath = join(root, 'phase.env');
+    const recordsPath = join(root, 'records.jsonl');
+    const callsPath = join(root, 'rollback.calls');
+    writeFileSync(
+      phasePath,
+      [
+        'DEPLOYMENT_PHASE=ACTIVATED_UNVERIFIED',
+        'MUTATION_BOUNDARY_REACHED=1',
+        `CURRENT_RELEASE_ID=${previousSha}`,
+        `PREVIOUS_RELEASE_ID=${previousSha}`,
+        `CANDIDATE_RELEASE_ID=${releaseId}`,
+        `CANDIDATE_SHA=${candidateSha}`,
+        `DEPLOYMENT_TRANSACTION_ID=${transactionId}`,
+        '',
+      ].join('\n')
+    );
+    const output = runShell([
+      '-c',
+      [
+        'source "$1"',
+        'K_EVIDENCE_DIR="$2"; K_DEPLOY_ROOT="$2"; mkdir -p "$2"',
+        `K_TRANSACTION_ID="${transactionId}"; K_C_RELEASE_ID="${releaseId}"; K_CANDIDATE_SHA="${candidateSha}"; K_PREVIOUS_RELEASE_ID="${previousSha}"`,
+        'CALLS_FILE="$3"; PHASE_FILE="$4"',
+        'k_require_durable_recovery_artifact() { return 0; }',
+        'k_run_rollback_observed() { printf "rollback\\n" >> "$CALLS_FILE"; K_ROLLBACK_STATUS=0; K_ROLLBACK_OBSERVER_STATUS=0; printf "DEPLOYMENT_PHASE=ROLLED_BACK\\nMUTATION_BOUNDARY_REACHED=1\\nCURRENT_RELEASE_ID=' +
+          previousSha +
+          '\\nPREVIOUS_RELEASE_ID=' +
+          previousSha +
+          '\\nCANDIDATE_RELEASE_ID=' +
+          releaseId +
+          '\\nCANDIDATE_SHA=' +
+          candidateSha +
+          '\\nDEPLOYMENT_TRANSACTION_ID=' +
+          transactionId +
+          '\\n" > "$PHASE_FILE"; return 0; }',
+        'k_process_post_forward 1 success "$2/records.jsonl" "$4"',
+        'k_collect_diagnostic() { return 1; }',
+        'k_validate_transaction_history() { return 1; }',
+        'k_record_transaction_history() { return 1; }',
+        'k_record() { return 1; }',
+        'k_build_evidence() { return 1; }',
+        'if k_finalize_leg_evidence success "$2/records.jsonl" "$2/missing-history"; then final=0; else final=$?; fi',
+        'printf "%s|%s|%s|%s\\n" "$final" "$K_RECOVERY_RESULT" "$K_SAFETY_OUTCOME" "$K_EVIDENCE_OUTCOME"',
+      ].join('; '),
+      'bash',
+      harnessPath,
+      root,
+      callsPath,
+      phasePath,
+    ]);
+    assert.match(output, /1\|ROLLED_BACK\|ROLLED_BACK\|INCOMPLETE/u);
+    assert.equal(readFileSync(callsPath, 'utf8').trim(), 'rollback');
+
+    const observerOutput = runShell([
+      '-c',
+      [
+        'source "$1"',
+        'K_EVIDENCE_DIR="$2"; K_DEPLOY_ROOT="$2"; mkdir -p "$2"',
+        `K_TRANSACTION_ID="${transactionId}"; K_C_RELEASE_ID="${releaseId}"; K_CANDIDATE_SHA="${candidateSha}"; K_PREVIOUS_RELEASE_ID="${previousSha}"`,
+        'CALLS_FILE="$3"',
+        'k_require_durable_recovery_artifact() { return 0; }',
+        'k_initialize_rollback_phase_observations() { return 1; }',
+        'k_run_rollback_from_stdin() { printf "observer-fallback\\n" >> "$CALLS_FILE"; return 0; }',
+        'K_FORWARD_OUTCOME=FORWARD_FAILURE_POST_BOUNDARY; K_FORWARD_PHASE=ACTIVATED_UNVERIFIED; K_FORWARD_BOUNDARY=1',
+        'k_ensure_post_boundary_recovery success "$2/records.jsonl" "$2/phase.env"',
+        'printf "%s|%s|%s\\n" "$K_RECOVERY_ATTEMPTED" "$K_RECOVERY_RESULT" "$K_SAFETY_OUTCOME"',
+      ].join('; '),
+      'bash',
+      harnessPath,
+      root,
+      callsPath,
+    ]);
+    assert.match(observerOutput, /true\|ROLLED_BACK\|ROLLED_BACK/u);
+    assert.match(readFileSync(callsPath, 'utf8'), /observer-fallback/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('watchdog ignores stale terminal state, arms only after current PREPARED, and rejects another transaction', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-watchdog-correlation-'));
+  try {
+    const phasePath = join(root, 'phase.env');
+    const recordsPath = join(root, 'records.txt');
+    const markerPath = join(root, 'fault-target.env');
+    const dockerPath = join(root, 'docker');
+    const stopLog = join(root, 'stop.log');
+    writeFileSync(dockerPath, '#!/bin/sh\nprintf "%s\\n" "$2" >> "$STOP_LOG"\n');
+    chmodSync(dockerPath, 0o755);
+    writeFileSync(
+      recordsPath,
+      `gateway-c|classroompath-production|gateway|${gatewayImage}|classroompath-gateway|running\n`
+    );
+
+    for (const stalePhase of ['ROLLED_BACK', 'COMMITTED']) {
+      writeFileSync(
+        phasePath,
+        [
+          `DEPLOYMENT_PHASE=${stalePhase}`,
+          `DEPLOYMENT_TRANSACTION_ID=${staleTransactionId}`,
+          `CANDIDATE_RELEASE_ID=${releaseId}`,
+          `CANDIDATE_SHA=${candidateSha}`,
+          `CURRENT_RELEASE_ID=${stalePhase === 'COMMITTED' ? releaseId : previousSha}`,
+          `PREVIOUS_RELEASE_ID=${previousSha}`,
+          'MUTATION_BOUNDARY_REACHED=1',
+          '',
+        ].join('\n')
+      );
+      expectFailure(
+        () =>
+          runShell(
+            [
+              '-c',
+              'source "$1"; K_DEPLOY_ROOT="$2"; K_EVIDENCE_DIR="$3"; K_C_TRANSACTION_ID="$4"; K_C_RELEASE_ID="$5"; K_CANDIDATE_SHA="$6"; K_WATCHDOG_MAX_ATTEMPTS=1; K_WATCHDOG_POLL_SECONDS=0.01; K_WATCHDOG_RECORDS_FILE="$7"; K_FAULT_TARGET_FILE="$8"; K_BASELINE_GATEWAY_ID="gateway-p"; k_watchdog_loop "$4" "$5" "$6"',
+              'bash',
+              harnessPath,
+              root,
+              root,
+              transactionId,
+              releaseId,
+              candidateSha,
+              recordsPath,
+              markerPath,
+            ],
+            { STOP_LOG: stopLog }
+          ),
+        `stale ${stalePhase} must not close the new watchdog window`
+      );
+    }
+    assert.equal(existsSync(stopLog), false);
+
+    writeFileSync(
+      phasePath,
+      [
+        'DEPLOYMENT_PHASE=ACTIVATED_UNVERIFIED',
+        `DEPLOYMENT_TRANSACTION_ID=${staleTransactionId}`,
+        `CANDIDATE_RELEASE_ID=${releaseId}`,
+        `CANDIDATE_SHA=${candidateSha}`,
+        `CURRENT_RELEASE_ID=${previousSha}`,
+        `PREVIOUS_RELEASE_ID=${previousSha}`,
+        'MUTATION_BOUNDARY_REACHED=1',
+        '',
+      ].join('\n')
+    );
+    expectFailure(
+      () =>
+        runShell(
+          [
+            '-c',
+            'source "$1"; K_PREVIOUS_RELEASE_ID="$2"; k_watchdog_act_once "$3" "$4" gateway-p "$5" "$6" "$7" "$8" "$9" "${10}"',
+            'bash',
+            harnessPath,
+            previousSha,
+            phasePath,
+            recordsPath,
+            gatewayImage,
+            dockerPath,
+            markerPath,
+            transactionId,
+            releaseId,
+            candidateSha,
+          ],
+          { STOP_LOG: stopLog }
+        ),
+      'watchdog must never act on a different transaction ID'
+    );
+    assert.equal(existsSync(stopLog), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('fault target evidence is bound to the current transaction and watchdog inventory', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-fault-target-evidence-'));
+  try {
+    const markerPath = join(root, 'fault-target.env');
+    const recordsPath = join(root, 'watchdog-containers.txt');
+    const targetId = 'a'.repeat(64);
+    writeFileSync(
+      markerPath,
+      [
+        `FAULT_TARGET_CONTAINER_ID=${targetId}`,
+        'FAULT_PHASE=ACTIVATED_UNVERIFIED',
+        `FAULT_TRANSACTION_ID=${transactionId}`,
+        `FAULT_CANDIDATE_RELEASE_ID=${releaseId}`,
+        `FAULT_CANDIDATE_SHA=${candidateSha}`,
+        '',
+      ].join('\n')
+    );
+    writeFileSync(
+      recordsPath,
+      `${targetId}|classroompath-production|gateway|${gatewayImage}|classroompath-gateway|running\n`
+    );
+    const output = runShell([
+      '-c',
+      'source "$1"; K_FAULT_TARGET_FILE="$2"; K_WATCHDOG_RECORDS_FILE="$3"; K_TRANSACTION_ID="$4"; K_C_RELEASE_ID="$5"; K_CANDIDATE_SHA="$6"; K_EXPECTED_GATEWAY_NAME=classroompath-gateway; K_C_GATEWAY_IMAGE="$7"; target="$(k_validate_fault_target_evidence)"; printf "%s\\n" "$target"',
+      'bash',
+      harnessPath,
+      markerPath,
+      recordsPath,
+      transactionId,
+      releaseId,
+      candidateSha,
+      gatewayImage,
+    ]).trim();
+    assert.equal(output, targetId);
+
+    writeFileSync(
+      markerPath,
+      readFileSync(markerPath, 'utf8').replace(transactionId, staleTransactionId)
+    );
+    expectFailure(
+      () =>
+        runShell([
+          '-c',
+          'source "$1"; K_FAULT_TARGET_FILE="$2"; K_WATCHDOG_RECORDS_FILE="$3"; K_TRANSACTION_ID="$4"; K_C_RELEASE_ID="$5"; K_CANDIDATE_SHA="$6"; K_EXPECTED_GATEWAY_NAME=classroompath-gateway; K_C_GATEWAY_IMAGE="$7"; k_validate_fault_target_evidence',
+          'bash',
+          harnessPath,
+          markerPath,
+          recordsPath,
+          transactionId,
+          releaseId,
+          candidateSha,
+          gatewayImage,
+        ]),
+      'fault target evidence must reject another transaction'
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('provisioning orders migrations before application runtime and records owned resources for retry cleanup', () => {
+  const source = readFileSync(
+    resolve(projectRoot, 'scripts/staging-equivalent-harness.sh'),
+    'utf8'
+  );
+  const provisionStart = source.indexOf('k_provision_p()');
+  const provisionEnd = source.indexOf('\nk_execute_fault_leg()', provisionStart);
+  assert.ok(provisionStart >= 0 && provisionEnd > provisionStart);
+  const provisionSource = source.slice(provisionStart, provisionEnd);
+  const migrationIndex = provisionSource.indexOf('run-migrations-docker.sh');
+  const composeUpIndex = provisionSource.indexOf(
+    'docker compose',
+    provisionSource.indexOf('docker compose') + 1
+  );
+  assert.ok(
+    migrationIndex >= 0 && composeUpIndex > migrationIndex,
+    'migrations must be invoked before compose up'
+  );
+  assert.match(source, /PROVISION_ATTEMPT_ID/u);
+  assert.match(source, /k_provision_cleanup_attempt/u);
+  assert.match(source, /PROVISION_OWNERSHIP_CONFIRMED=true/u);
+  assert.match(source, /docker rm -f/u);
+  assert.doesNotMatch(provisionSource, /docker compose[^\n]*down/u);
+});
+
+test('post-forward policy matrix never abandons a non-terminal boundary state', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-post-forward-matrix-'));
+  try {
+    const cases = [
+      {
+        phase: 'FAILED',
+        boundary: '0',
+        status: 1,
+        leg: 'success',
+        result: 'NO_RECOVERY',
+        calls: 0,
+      },
+      {
+        phase: 'SWITCHING',
+        boundary: '1',
+        status: 1,
+        leg: 'success',
+        result: 'ROLLED_BACK',
+        calls: 1,
+      },
+      {
+        phase: 'ACTIVATED_UNVERIFIED',
+        boundary: '1',
+        status: 1,
+        leg: 'success',
+        result: 'ROLLED_BACK',
+        calls: 1,
+      },
+      {
+        phase: 'VERIFIED',
+        boundary: '1',
+        status: 1,
+        leg: 'success',
+        result: 'ROLLED_BACK',
+        calls: 1,
+      },
+      {
+        phase: 'COMMITTED',
+        boundary: '1',
+        status: 0,
+        leg: 'success',
+        result: 'NOT_REQUIRED',
+        calls: 0,
+      },
+      {
+        phase: 'COMMITTED',
+        boundary: '1',
+        status: 1,
+        leg: 'success',
+        result: 'ROLLED_BACK',
+        calls: 1,
+      },
+      {
+        phase: 'COMMITTED',
+        boundary: '1',
+        status: 0,
+        leg: 'fault',
+        result: 'ROLLED_BACK',
+        calls: 1,
+      },
+    ];
+
+    for (const [index, item] of cases.entries()) {
+      const phasePath = join(root, `phase-${index}.env`);
+      const recordsPath = join(root, `records-${index}.jsonl`);
+      const callsPath = join(root, `calls-${index}.txt`);
+      writeFileSync(
+        phasePath,
+        [
+          `DEPLOYMENT_PHASE=${item.phase}`,
+          `MUTATION_BOUNDARY_REACHED=${item.boundary}`,
+          `CURRENT_RELEASE_ID=${item.phase === 'COMMITTED' ? releaseId : previousSha}`,
+          `PREVIOUS_RELEASE_ID=${previousSha}`,
+          `CANDIDATE_RELEASE_ID=${releaseId}`,
+          `CANDIDATE_SHA=${candidateSha}`,
+          `DEPLOYMENT_TRANSACTION_ID=${transactionId}`,
+          '',
+        ].join('\n')
+      );
+      const output = runShell([
+        '-c',
+        [
+          'source "$1"',
+          'K_EVIDENCE_DIR="$2"',
+          'K_DEPLOY_ROOT="$2"',
+          'K_TRANSACTION_ID="$3"',
+          'K_C_RELEASE_ID="$4"',
+          'K_CANDIDATE_SHA="$5"',
+          'K_PREVIOUS_RELEASE_ID="' + previousSha + '"',
+          'CALLS_FILE="$6"; PHASE_FILE="$7"',
+          'k_require_durable_recovery_artifact() { return 0; }',
+          'k_run_rollback_observed() { printf "rollback\\n" >> "$CALLS_FILE"; K_ROLLBACK_STATUS=0; K_ROLLBACK_OBSERVER_STATUS=0; printf "DEPLOYMENT_PHASE=ROLLED_BACK\\nMUTATION_BOUNDARY_REACHED=1\\nCURRENT_RELEASE_ID=' +
+            previousSha +
+            '\\nPREVIOUS_RELEASE_ID=' +
+            previousSha +
+            '\\nCANDIDATE_RELEASE_ID=' +
+            releaseId +
+            '\\nCANDIDATE_SHA=' +
+            candidateSha +
+            '\\nDEPLOYMENT_TRANSACTION_ID=' +
+            transactionId +
+            '\\n" > "$PHASE_FILE"; return 0; }',
+          'k_process_post_forward "$8" "$9" "$2/records.jsonl" "$7"',
+          'printf "%s|%s|%s|%s\\n" "$K_FORWARD_OUTCOME" "$K_RECOVERY_RESULT" "$K_SAFETY_OUTCOME" "$(wc -l < "$6" 2>/dev/null || true)"',
+        ].join('; '),
+        'bash',
+        harnessPath,
+        root,
+        transactionId,
+        releaseId,
+        candidateSha,
+        callsPath,
+        phasePath,
+        String(item.status),
+        item.leg,
+      ]).trim();
+      assert.match(output, new RegExp(`\\|${item.result}\\|`, 'u'));
+      assert.equal(
+        existsSync(callsPath)
+          ? readFileSync(callsPath, 'utf8').trim().split('\n').filter(Boolean).length
+          : 0,
+        item.calls
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('post-boundary recovery failure is explicit and evidence remains best-effort', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-recovery-failure-'));
+  try {
+    const phasePath = join(root, 'phase.env');
+    const recordsPath = join(root, 'records.jsonl');
+    const callsPath = join(root, 'calls.txt');
+    writeFileSync(
+      phasePath,
+      [
+        'DEPLOYMENT_PHASE=ACTIVATED_UNVERIFIED',
+        'MUTATION_BOUNDARY_REACHED=1',
+        `CURRENT_RELEASE_ID=${previousSha}`,
+        `PREVIOUS_RELEASE_ID=${previousSha}`,
+        `CANDIDATE_RELEASE_ID=${releaseId}`,
+        `CANDIDATE_SHA=${candidateSha}`,
+        `DEPLOYMENT_TRANSACTION_ID=${transactionId}`,
+        '',
+      ].join('\n')
+    );
+    const output = runShell([
+      '-c',
+      [
+        'source "$1"',
+        'K_EVIDENCE_DIR="$2"; K_DEPLOY_ROOT="$2"',
+        `K_TRANSACTION_ID="${transactionId}"; K_C_RELEASE_ID="${releaseId}"; K_CANDIDATE_SHA="${candidateSha}"; K_PREVIOUS_RELEASE_ID="${previousSha}"`,
+        'CALLS_FILE="$3"',
+        'k_require_durable_recovery_artifact() { return 0; }',
+        'k_run_rollback_observed() { printf "attempted\\n" >> "$CALLS_FILE"; K_ROLLBACK_STATUS=1; K_ROLLBACK_OBSERVER_STATUS=1; return 1; }',
+        'k_process_post_forward 1 success "$2/records.jsonl" "$4"',
+        'printf "%s|%s|%s\\n" "$K_RECOVERY_ATTEMPTED" "$K_RECOVERY_RESULT" "$K_SAFETY_OUTCOME"',
+      ].join('; '),
+      'bash',
+      harnessPath,
+      root,
+      callsPath,
+      phasePath,
+    ]);
+    assert.match(output, /true\|FAILED\|RECOVERY_FAILED/u);
+    assert.equal(readFileSync(callsPath, 'utf8').trim(), 'attempted');
+    assert.equal(existsSync(recordsPath), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('provisioning cleanup is ownership-bound and retryable after a partial compose failure', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-provision-cleanup-'));
+  try {
+    const deployRoot = join(root, 'deploy-root');
+    const fakeBin = join(root, 'bin');
+    const dockerLog = join(root, 'docker-removals.log');
+    mkdirSync(join(deployRoot, 'release-state'), { recursive: true });
+    mkdirSync(fakeBin, { recursive: true });
+    writeFileSync(
+      join(fakeBin, 'docker'),
+      [
+        '#!/bin/sh',
+        'set -eu',
+        'case "${1:-}:${2:-}" in',
+        '  ps:*)',
+        '    case "${4:-}" in',
+        '      \'name=^/classroompath-gateway$\') grep -q "container:container-gateway" "$DOCKER_LOG" || printf "container-gateway\\n" ;;',
+        '      \'name=^/classroompath-api$\') grep -q "container:container-api" "$DOCKER_LOG" || printf "container-api\\n" ;;',
+        '      \'name=^/classroompath-spa$\') grep -q "container:container-spa" "$DOCKER_LOG" || printf "container-spa\\n" ;;',
+        '      \'name=^/classroompath-openpath-windows-offline-installer-provision$\') grep -q "container:container-provision" "$DOCKER_LOG" || printf "container-provision\\n" ;;',
+        '      *) exit 0 ;;',
+        '    esac',
+        '    ;;',
+        '  inspect:-f)',
+        '    target="${4:-}"',
+        '    case "$target" in',
+        '      container-gateway) printf "container-gateway|/classroompath-gateway|classroompath-production|gateway\\n" ;;',
+        '      container-api) printf "container-api|/classroompath-api|classroompath-production|api\\n" ;;',
+        '      container-spa) printf "container-spa|/classroompath-spa|classroompath-production|spa\\n" ;;',
+        '      container-provision) printf "container-provision|/classroompath-openpath-windows-offline-installer-provision|classroompath-production|windows-offline-installer-provision\\n" ;;',
+        '      provision-network) printf "provision-network|classroompath-production_openpath_default|classroompath-production\\n" ;;',
+        '      *) exit 1 ;;',
+        '    esac',
+        '    ;;',
+        '  volume:inspect)',
+        '    target="${3:-}"; [ "$target" = -f ] && target="${5:-}"',
+        '    case "$target" in',
+        `      ${apiDataVolume}) printf "${apiDataVolume}|classroompath-production|api-data\\n" ;;`,
+        `      ${templatesVolume}) printf "${templatesVolume}|classroompath-production|windows_offline_installer_templates\\n" ;;`,
+        `      ${artifactsVolume}) printf "${artifactsVolume}|classroompath-production|windows_offline_installer_artifacts\\n" ;;`,
+        '      *) exit 1 ;;',
+        '    esac',
+        '    ;;',
+        '  network:inspect)',
+        '    target="${3:-}"; [ "$target" = -f ] && target="${5:-}"',
+        `    [ "$target" = provision-network ] && printf "provision-network|${network}|classroompath-production\\n" || exit 1`,
+        '    ;;',
+        '  rm:-f) printf "container:%s\\n" "$3" >> "$DOCKER_LOG" ;;',
+        '  volume:rm) printf "volume:%s\\n" "$3" >> "$DOCKER_LOG" ;;',
+        '  network:rm) printf "network:%s\\n" "$3" >> "$DOCKER_LOG" ;;',
+        '  *) exit 1 ;;',
+        'esac',
+        '',
+      ].join('\n')
+    );
+    chmodSync(join(fakeBin, 'docker'), 0o755);
+    writeFileSync(
+      join(deployRoot, 'release-state', 'provision-attempt.env'),
+      [
+        `PROVISION_ATTEMPT_ID=${transactionId}`,
+        'PROVISION_STATUS=RUNTIME_CREATED',
+        'PROVISION_OWNERSHIP_CONFIRMED=true',
+        'PROVISION_RESOURCES_ABSENT_BEFORE=true',
+        `PROVISION_RELEASE_ID=${releaseId}`,
+        'PROVISION_COMPOSE_PROJECT=classroompath-production',
+        `PROVISION_NETWORK_NAME=${network}`,
+        'PROVISION_GATEWAY_NAME=classroompath-gateway',
+        'PROVISION_API_NAME=classroompath-api',
+        'PROVISION_SPA_NAME=classroompath-spa',
+        'PROVISION_PROVISION_NAME=classroompath-openpath-windows-offline-installer-provision',
+        `PROVISION_API_DATA_VOLUME=${apiDataVolume}`,
+        `PROVISION_TEMPLATES_VOLUME=${templatesVolume}`,
+        `PROVISION_ARTIFACTS_VOLUME=${artifactsVolume}`,
+        'PROVISION_GATEWAY_ID=container-gateway',
+        'PROVISION_API_ID=container-api',
+        'PROVISION_SPA_ID=container-spa',
+        'PROVISION_PROVISION_ID=container-provision',
+        'PROVISION_NETWORK_ID=provision-network',
+        '',
+      ].join('\n')
+    );
+    const output = runShell(
+      [
+        '-c',
+        'source "$1"; K_DEPLOY_ROOT="$2"; K_COMPOSE_PROJECT=classroompath-production; K_EFFECTIVE_HOST_PATH="$3:/usr/bin:/bin"; K_EVIDENCE_DIR="$2/k-evidence"; K_P_RELEASE_ID="$4"; export K_DEPLOY_ROOT K_COMPOSE_PROJECT K_EFFECTIVE_HOST_PATH K_EVIDENCE_DIR K_P_RELEASE_ID; k_provision_cleanup_attempt; first=$?; k_provision_cleanup_attempt; second=$?; status="$(k_read_file_value "$2/release-state/provision-attempt.env" PROVISION_STATUS)"; printf "first=%s second=%s status=%s\\n" "$first" "$second" "$status"',
+        'bash',
+        harnessPath,
+        deployRoot,
+        fakeBin,
+        releaseId,
+      ],
+      { DOCKER_LOG: dockerLog }
+    );
+    assert.match(output, /first=0 second=0 status=CLEANED/u);
+    assert.equal(readFileSync(dockerLog, 'utf8').trim().split('\n').length, 8);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('manual rollback fence consumes durable R without history or candidate helpers', () => {
+  const source = readFileSync(
+    resolve(projectRoot, 'scripts/staging-equivalent-harness.sh'),
+    'utf8'
+  );
+  assert.match(source, /k_validate_manual_rollback_fence/u);
+  assert.match(source, /K_MANUAL_ROLLBACK/u);
+  assert.match(source, /K_RECOVERY_PERSISTED_FILE/u);
+  assert.match(source, /history_file=""/u);
+  assert.doesNotMatch(
+    source.slice(source.indexOf('rollback)')),
+    /k_validate_transaction_history[^\n]*K_TRANSACTION/u
+  );
+});
+
+test('all post-boundary exits advertise independent safety and evidence outcomes', () => {
+  const source = readFileSync(
+    resolve(projectRoot, 'scripts/staging-equivalent-harness.sh'),
+    'utf8'
+  );
+  assert.match(source, /SAFETY_OUTCOME/u);
+  assert.match(source, /EVIDENCE_OUTCOME/u);
+  assert.match(source, /RECOVERY_ATTEMPTED/u);
+  assert.match(source, /RECOVERY_RESULT.*ROLLED_BACK/u);
+  assert.match(source, /RECOVERY_RESULT.*FAILED/u);
 });
 
 test('transaction validator preserves current until commit and rollback is candidate-independent', () => {

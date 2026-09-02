@@ -16,6 +16,16 @@ DEPLOYMENT_PHASE_ROLLING_BACK=ROLLING_BACK
 DEPLOYMENT_PHASE_ROLLED_BACK=ROLLED_BACK
 DEPLOYMENT_PHASE_FAILED=FAILED
 
+deployment_transaction_generate_id() {
+  printf '%s' "$(date -u +%s%N)-$$-${RANDOM:-0}" | sha256sum | awk '{ print $1; exit }'
+}
+
+deployment_transaction_require_id() {
+  local transaction_id="${1:-}"
+
+  [[ "$transaction_id" =~ ^[0-9a-f]{64}$ ]]
+}
+
 deployment_transaction_log_error() {
   if declare -f log_error >/dev/null 2>&1; then
     log_error "$*"
@@ -65,6 +75,8 @@ deployment_transaction_write() {
   local value=""
   local -a fields=(
     DEPLOYMENT_TRANSACTION_VERSION
+    DEPLOYMENT_TRANSACTION_ID
+    DEPLOYMENT_TRANSACTION_HISTORY_STATUS
     DEPLOYMENT_PHASE
     DEPLOYMENT_STAGE
     DEPLOYMENT_PHASE_STARTED_AT
@@ -93,12 +105,15 @@ deployment_transaction_write() {
 
   [ -n "$state_file" ] || return 1
   state_dir="$(dirname "$state_file")"
-  mkdir -p "$state_dir"
+  mkdir -p "$state_dir" || return 1
   tmp_file="$(mktemp "$state_file.tmp.XXXXXX")" || return 1
   umask 077
   for field in "${fields[@]}"; do
     value="${!field:-}"
-    printf '%s=%q\n' "$field" "$value" >> "$tmp_file"
+    if ! printf '%s=%q\n' "$field" "$value" >> "$tmp_file"; then
+      rm -f "$tmp_file"
+      return 1
+    fi
   done
   if ! mv "$tmp_file" "$state_file"; then
     rm -f "$tmp_file"
@@ -113,10 +128,17 @@ deployment_transaction_append_history() {
 
   [ -n "$history_file" ] || return 0
   history_dir="$(dirname "$history_file")"
-  mkdir -p "$history_dir" || return 1
+  if ! mkdir -p "$history_dir"; then
+    deployment_transaction_log_error "Unable to create deployment transaction history directory"
+    DEPLOYMENT_TRANSACTION_HISTORY_STATUS=incomplete
+    export DEPLOYMENT_TRANSACTION_HISTORY_STATUS
+    deployment_transaction_write "${DEPLOYMENT_TRANSACTION_FILE:-}" || return 1
+    return 0
+  fi
   umask 077
-  printf 'DEPLOYMENT_PHASE=%q DEPLOYMENT_PHASE_UPDATED_AT=%q DEPLOYMENT_STAGE=%q MUTATION_BOUNDARY_REACHED=%q CURRENT_RELEASE_ID=%q PREVIOUS_RELEASE_ID=%q CANDIDATE_RELEASE_ID=%q RECOVERY_SOURCE_SHA=%q RECOVERY_ARTIFACT_SHA256=%q RECOVERY_EXECUTOR_SHA256=%q RECOVERY_ARTIFACT_PATH=%q\n' \
+  if printf 'DEPLOYMENT_PHASE=%q DEPLOYMENT_TRANSACTION_ID=%q DEPLOYMENT_PHASE_UPDATED_AT=%q DEPLOYMENT_STAGE=%q MUTATION_BOUNDARY_REACHED=%q CURRENT_RELEASE_ID=%q PREVIOUS_RELEASE_ID=%q CANDIDATE_RELEASE_ID=%q RECOVERY_SOURCE_SHA=%q RECOVERY_ARTIFACT_SHA256=%q RECOVERY_EXECUTOR_SHA256=%q RECOVERY_ARTIFACT_PATH=%q\n' \
     "${DEPLOYMENT_PHASE:-}" \
+    "${DEPLOYMENT_TRANSACTION_ID:-}" \
     "${DEPLOYMENT_PHASE_UPDATED_AT:-}" \
     "${DEPLOYMENT_STAGE:-}" \
     "${MUTATION_BOUNDARY_REACHED:-0}" \
@@ -126,17 +148,39 @@ deployment_transaction_append_history() {
     "${RECOVERY_SOURCE_SHA:-}" \
     "${RECOVERY_ARTIFACT_SHA256:-}" \
     "${RECOVERY_EXECUTOR_SHA256:-}" \
-    "${RECOVERY_ARTIFACT_PATH:-}" >> "$history_file"
+    "${RECOVERY_ARTIFACT_PATH:-}" >> "$history_file"; then
+    return 0
+  fi
+  deployment_transaction_log_error "Unable to append deployment transaction history"
+  DEPLOYMENT_TRANSACTION_HISTORY_STATUS=incomplete
+  export DEPLOYMENT_TRANSACTION_HISTORY_STATUS
+  deployment_transaction_write "${DEPLOYMENT_TRANSACTION_FILE:-}" || return 1
+  return 0
 }
 
 deployment_transaction_init() {
   local state_file="$1"
   local previous_release_id="${2:-${PREVIOUS_RELEASE_ID:-}}"
   local candidate_release_id="${3:-${CANDIDATE_RELEASE_ID:-${RELEASE_ID:-}}}"
+  local transaction_id="${4:-${DEPLOYMENT_TRANSACTION_ID:-}}"
   local now=""
+
+  if [ -z "$transaction_id" ]; then
+    transaction_id="$(deployment_transaction_generate_id)" || return 1
+  fi
+  deployment_transaction_require_id "$transaction_id" || {
+    deployment_transaction_log_error "DEPLOYMENT_TRANSACTION_ID must be a full lowercase 64-character value"
+    return 1
+  }
 
   DEPLOYMENT_TRANSACTION_FILE="$state_file"
   DEPLOYMENT_TRANSACTION_VERSION=1
+  DEPLOYMENT_TRANSACTION_ID="$transaction_id"
+  if [ -n "${DEPLOYMENT_TRANSACTION_HISTORY_FILE:-}" ]; then
+    DEPLOYMENT_TRANSACTION_HISTORY_STATUS=complete
+  else
+    DEPLOYMENT_TRANSACTION_HISTORY_STATUS=not_configured
+  fi
   DEPLOYMENT_PHASE="$DEPLOYMENT_PHASE_PREPARED"
   DEPLOYMENT_STAGE="RESOLVE"
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -162,7 +206,8 @@ deployment_transaction_init() {
   RECOVERY_EXECUTOR_SHA256=""
   RECOVERY_ARTIFACT_PATH=""
   RECOVERY_ARTIFACT_SOURCE_SHA=""
-  export DEPLOYMENT_TRANSACTION_FILE DEPLOYMENT_TRANSACTION_VERSION DEPLOYMENT_PHASE DEPLOYMENT_STAGE
+  export DEPLOYMENT_TRANSACTION_FILE DEPLOYMENT_TRANSACTION_VERSION DEPLOYMENT_TRANSACTION_ID
+  export DEPLOYMENT_TRANSACTION_HISTORY_STATUS DEPLOYMENT_PHASE DEPLOYMENT_STAGE
   export DEPLOYMENT_PHASE_STARTED_AT DEPLOYMENT_PHASE_UPDATED_AT MUTATION_BOUNDARY_REACHED
   export REQUESTED_RELEASE_ID CANDIDATE_RELEASE_ID CURRENT_RELEASE_ID PREVIOUS_RELEASE_ID
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE ROLLBACK_PHASE ROLLBACK_ATTEMPTED ROLLBACK_RESULT
@@ -233,6 +278,7 @@ deployment_transaction_transition() {
   local previous_rollback_phase="${ROLLBACK_PHASE:-}"
   local previous_rollback_attempted="${ROLLBACK_ATTEMPTED:-0}"
   local previous_rollback_result="${ROLLBACK_RESULT:-not_attempted}"
+  local previous_history_status="${DEPLOYMENT_TRANSACTION_HISTORY_STATUS:-not_configured}"
 
   if [ -z "$current_phase" ] && [ -n "${DEPLOYMENT_TRANSACTION_FILE:-}" ]; then
     current_phase="$(deployment_transaction_read_phase "$DEPLOYMENT_TRANSACTION_FILE")" || return 1
@@ -274,15 +320,13 @@ deployment_transaction_transition() {
     ROLLBACK_PHASE="$previous_rollback_phase"
     ROLLBACK_ATTEMPTED="$previous_rollback_attempted"
     ROLLBACK_RESULT="$previous_rollback_result"
+    DEPLOYMENT_TRANSACTION_HISTORY_STATUS="$previous_history_status"
     export DEPLOYMENT_PHASE DEPLOYMENT_STAGE DEPLOYMENT_PHASE_UPDATED_AT
     export MUTATION_BOUNDARY_REACHED CURRENT_RELEASE_ID ROLLBACK_PHASE
     export ROLLBACK_ATTEMPTED ROLLBACK_RESULT
     return 1
   fi
-  deployment_transaction_append_history || {
-    deployment_transaction_log_error "Unable to append deployment transaction history"
-    return 1
-  }
+  deployment_transaction_append_history
 }
 
 deployment_transaction_mark_failure() {

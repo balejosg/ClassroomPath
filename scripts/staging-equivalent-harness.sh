@@ -125,6 +125,19 @@ k_hash_text() {
   printf '%s' "$1" | sha256sum | awk '{ print $1; exit }'
 }
 
+k_generate_transaction_id() {
+  printf '%s' "$(date -u +%s%N)-$$-${RANDOM:-0}" | sha256sum | awk '{ print $1; exit }'
+}
+
+k_require_transaction_id() {
+  local transaction_id="${1:-}"
+
+  [[ "$transaction_id" =~ ^[0-9a-f]{64}$ ]] || {
+    k_error 'Deployment transaction ID must be a full lowercase 64-character SHA-256 value'
+    return 1
+  }
+}
+
 k_hash_filesystem_device() {
   local path="$1"
   local device=""
@@ -281,7 +294,7 @@ k_load_config() {
         # This is a path to a private operator-managed file. Its contents are
         # never parsed into evidence or sourced by the harness.
         ;;
-      K_HARNESS_*|K_CONFIG_FILE|K_CONFIRM_STAGING_EQUIVALENT|K_*_OPTION|K_EFFECTIVE_HOST_PATH|K_SNAPSHOT_TEMP|K_RUNTIME_PROJECTION_KEYS|K_HOST_NODE_NPM_UNAVAILABLE|K_HOST_NODE_OBSERVED|K_HOST_NPM_OBSERVED|K_DOCKER_DAEMON_ID_OBSERVED|K_GATEWAY_DOWNLOAD_DEVICE_SHA256_OBSERVED)
+      K_HARNESS_*|K_CONFIG_FILE|K_CONFIRM_STAGING_EQUIVALENT|K_*_OPTION|K_EFFECTIVE_HOST_PATH|K_SNAPSHOT_TEMP|K_RUNTIME_PROJECTION_KEYS|K_HOST_NODE_NPM_UNAVAILABLE|K_HOST_NODE_OBSERVED|K_HOST_NPM_OBSERVED|K_DOCKER_DAEMON_ID_OBSERVED|K_GATEWAY_DOWNLOAD_DEVICE_SHA256_OBSERVED|K_TRANSACTION_ID|K_PROVISION_ATTEMPT_*|K_PROVISION_RESOURCES_ABSENT_BEFORE|K_SAFETY_OUTCOME|K_EVIDENCE_OUTCOME|K_EVIDENCE_FAILURE_REASON|K_FORWARD_*|K_RECOVERY_ATTEMPTED|K_RECOVERY_RESULT|K_RECOVERY_REQUIRED_AFTER_FORWARD|K_MANUAL_ROLLBACK*)
         k_error "Harness config attempts to override an internal variable: $key"
         return 1
         ;;
@@ -1962,6 +1975,413 @@ k_initialize_transaction_history() {
   export K_TRANSACTION_HISTORY_FILE DEPLOYMENT_TRANSACTION_HISTORY_FILE
 }
 
+k_initialize_transaction_attempt() {
+  local requested_id=""
+
+  requested_id="$(k_generate_transaction_id)" || return 1
+  k_require_transaction_id "$requested_id" || return 1
+  K_TRANSACTION_ID="$requested_id"
+  export K_TRANSACTION_ID
+}
+
+k_initialize_leg_outcomes() {
+  K_SAFETY_OUTCOME=UNDETERMINED
+  K_EVIDENCE_OUTCOME=COMPLETE
+  K_EVIDENCE_FAILURE_REASON=""
+  K_FORWARD_OUTCOME=UNCLASSIFIED
+  K_FORWARD_PHASE=unknown
+  K_FORWARD_BOUNDARY=unknown
+  K_FORWARD_STATE_READABLE=false
+  K_RECOVERY_ATTEMPTED=false
+  K_RECOVERY_RESULT=NOT_REQUIRED
+  export K_SAFETY_OUTCOME K_EVIDENCE_OUTCOME K_EVIDENCE_FAILURE_REASON
+  export K_FORWARD_OUTCOME K_FORWARD_PHASE K_FORWARD_BOUNDARY K_FORWARD_STATE_READABLE
+  export K_RECOVERY_ATTEMPTED K_RECOVERY_RESULT
+}
+
+k_mark_evidence_incomplete() {
+  local reason="${1:-evidence failure}"
+
+  K_EVIDENCE_OUTCOME=INCOMPLETE
+  if [ -z "${K_EVIDENCE_FAILURE_REASON:-}" ]; then
+    K_EVIDENCE_FAILURE_REASON="$reason"
+  fi
+  export K_EVIDENCE_OUTCOME K_EVIDENCE_FAILURE_REASON
+  k_error "$reason" || true
+}
+
+k_record_best_effort() {
+  local records_file="$1"
+  shift
+
+  if ! k_record "$records_file" "$@"; then
+    k_mark_evidence_incomplete "Unable to record evidence: ${2:-unknown}"
+  fi
+  return 0
+}
+
+k_classify_forward_outcome() {
+  local forward_status="${1:-1}"
+  local phase_file="${2:-}"
+  local leg="${3:-success}"
+  local failure_kind="${4:-}"
+  local phase=""
+  local boundary=""
+  local transaction_id=""
+  local candidate_release_id=""
+  local candidate_sha=""
+  local current_release_id=""
+  local previous_release_id=""
+  local state_complete=false
+  local expected_transaction_field=""
+
+  K_FORWARD_OUTCOME=STATE_UNKNOWN_AFTER_FORWARD
+  K_FORWARD_PHASE=unknown
+  K_FORWARD_BOUNDARY=unknown
+  K_FORWARD_STATE_READABLE=false
+
+  if [ ! -f "$phase_file" ] || [ -L "$phase_file" ]; then
+    export K_FORWARD_OUTCOME K_FORWARD_PHASE K_FORWARD_BOUNDARY K_FORWARD_STATE_READABLE
+    return 0
+  fi
+
+  phase="$(k_read_file_value "$phase_file" DEPLOYMENT_PHASE || true)"
+  boundary="$(k_read_file_value "$phase_file" MUTATION_BOUNDARY_REACHED || true)"
+  transaction_id="$(k_read_file_value "$phase_file" DEPLOYMENT_TRANSACTION_ID || true)"
+  candidate_release_id="$(k_read_file_value "$phase_file" CANDIDATE_RELEASE_ID || true)"
+  candidate_sha="$(k_read_file_value "$phase_file" CANDIDATE_SHA || true)"
+  current_release_id="$(k_read_file_value "$phase_file" CURRENT_RELEASE_ID || true)"
+  previous_release_id="$(k_read_file_value "$phase_file" PREVIOUS_RELEASE_ID || true)"
+  K_FORWARD_PHASE="${phase:-unknown}"
+  K_FORWARD_BOUNDARY="${boundary:-unknown}"
+
+  if [ -n "$phase" ] && [[ "$boundary" = 0 || "$boundary" = 1 ]] &&
+    [[ "$phase" =~ ^(PREPARED|SWITCHING|ACTIVATED_UNVERIFIED|VERIFIED|COMMITTED|FAILED|ROLLING_BACK|ROLLED_BACK)$ ]]; then
+    state_complete=true
+  fi
+  if [ "$state_complete" = true ] &&
+    { [ -z "${K_TRANSACTION_ID:-}" ] || [ "$transaction_id" != "$K_TRANSACTION_ID" ]; }; then
+    expected_transaction_field="${K_TRANSACTION_ID:-}"
+    state_complete=false
+  fi
+  if [ "$state_complete" = true ] &&
+    { [ -z "${K_C_RELEASE_ID:-}" ] || [ "$candidate_release_id" != "$K_C_RELEASE_ID" ]; }; then
+    state_complete=false
+  fi
+  if [ "$state_complete" = true ] &&
+    { [ -z "${K_CANDIDATE_SHA:-}" ] || [ "$candidate_sha" != "$K_CANDIDATE_SHA" ]; }; then
+    state_complete=false
+  fi
+  if [ "$state_complete" = true ] &&
+    { [ -z "${K_PREVIOUS_RELEASE_ID:-}" ] || [ "$previous_release_id" != "$K_PREVIOUS_RELEASE_ID" ]; }; then
+    state_complete=false
+  fi
+  if [ "$state_complete" = true ] && [ "$phase" = COMMITTED ] &&
+    { [ "$boundary" != 1 ] || [ "$current_release_id" != "$candidate_release_id" ]; }; then
+    state_complete=false
+  fi
+  if [ "$state_complete" = true ] && [ "$phase" = ROLLED_BACK ] &&
+    { [ "$boundary" != 1 ] || [ "$current_release_id" != "$previous_release_id" ]; }; then
+    state_complete=false
+  fi
+  if [ "$state_complete" != true ]; then
+    if [ -n "$expected_transaction_field" ]; then
+      k_error 'Durable forward state belongs to a different transaction attempt' || true
+    fi
+    export K_FORWARD_OUTCOME K_FORWARD_PHASE K_FORWARD_BOUNDARY K_FORWARD_STATE_READABLE
+    return 0
+  fi
+  K_FORWARD_STATE_READABLE=true
+
+  if [ -n "$failure_kind" ]; then
+    if [ "$boundary" = 1 ]; then
+      case "$phase" in
+        COMMITTED)
+          K_FORWARD_OUTCOME=HARNESS_FAILURE_TERMINAL_SAFE
+          ;;
+        ROLLED_BACK)
+          K_FORWARD_OUTCOME=HARNESS_FAILURE_TERMINAL_SAFE
+          ;;
+        *)
+          K_FORWARD_OUTCOME=HARNESS_FAILURE_POST_BOUNDARY
+          ;;
+      esac
+    else
+      K_FORWARD_OUTCOME=HARNESS_FAILURE_PRE_BOUNDARY
+    fi
+  elif [ "$boundary" = 0 ]; then
+    case "$phase" in
+      PREPARED|FAILED)
+        if [ "$forward_status" -ne 0 ]; then
+          K_FORWARD_OUTCOME=FORWARD_FAILURE_PRE_BOUNDARY
+        else
+          K_FORWARD_OUTCOME=FORWARD_INCOMPLETE_PRE_BOUNDARY
+        fi
+        ;;
+      *)
+        K_FORWARD_OUTCOME=STATE_UNKNOWN_AFTER_FORWARD
+        K_FORWARD_STATE_READABLE=false
+        ;;
+    esac
+  else
+    case "$phase" in
+      COMMITTED)
+        if [ "$leg" = fault ]; then
+          K_FORWARD_OUTCOME=FORWARD_COMMITTED_FAULT
+        elif [ "$forward_status" -eq 0 ]; then
+          K_FORWARD_OUTCOME=FORWARD_SUCCESS_COMMITTED
+        else
+          # A non-zero forward result is still a failed success leg even if
+          # the durable executor state reached COMMITTED. Restore P so a
+          # caller cannot mistake a post-commit command error for success.
+          K_FORWARD_OUTCOME=FORWARD_FAILURE_POST_BOUNDARY
+        fi
+        ;;
+      ROLLED_BACK)
+        K_FORWARD_OUTCOME=FORWARD_ROLLED_BACK_SAFE
+        ;;
+      *)
+        if [ "$failure_kind" != "" ]; then
+          K_FORWARD_OUTCOME=HARNESS_FAILURE_POST_BOUNDARY
+        elif [ "$forward_status" -ne 0 ]; then
+          K_FORWARD_OUTCOME=FORWARD_FAILURE_POST_BOUNDARY
+        else
+          K_FORWARD_OUTCOME=FORWARD_INCOMPLETE_POST_BOUNDARY
+        fi
+        ;;
+    esac
+  fi
+  export K_FORWARD_OUTCOME K_FORWARD_PHASE K_FORWARD_BOUNDARY K_FORWARD_STATE_READABLE
+}
+
+k_durable_rollback_proven() {
+  local phase_file="$1"
+  local phase=""
+  local boundary=""
+  local transaction_id=""
+  local candidate_release_id=""
+  local candidate_sha=""
+  local current_release_id=""
+  local previous_release_id=""
+
+  [ -f "$phase_file" ] && [ ! -L "$phase_file" ] || return 1
+  phase="$(k_read_file_value "$phase_file" DEPLOYMENT_PHASE || true)"
+  boundary="$(k_read_file_value "$phase_file" MUTATION_BOUNDARY_REACHED || true)"
+  transaction_id="$(k_read_file_value "$phase_file" DEPLOYMENT_TRANSACTION_ID || true)"
+  candidate_release_id="$(k_read_file_value "$phase_file" CANDIDATE_RELEASE_ID || true)"
+  candidate_sha="$(k_read_file_value "$phase_file" CANDIDATE_SHA || true)"
+  current_release_id="$(k_read_file_value "$phase_file" CURRENT_RELEASE_ID || true)"
+  previous_release_id="$(k_read_file_value "$phase_file" PREVIOUS_RELEASE_ID || true)"
+  [ "$phase" = ROLLED_BACK ] || return 1
+  [ "$boundary" = 1 ] || return 1
+  [ "$transaction_id" = "${K_TRANSACTION_ID:-}" ] || return 1
+  [ "$candidate_release_id" = "${K_C_RELEASE_ID:-}" ] || return 1
+  [ "$candidate_sha" = "${K_CANDIDATE_SHA:-}" ] || return 1
+  [ "$previous_release_id" = "${K_PREVIOUS_RELEASE_ID:-}" ] || return 1
+  [ "$current_release_id" = "$previous_release_id" ] || return 1
+}
+
+k_capture_minimum_forward_evidence() {
+  local records_file="$1"
+  local phase_file="$2"
+  local key=""
+  local value=""
+  local previous_diagnostic_output="${K_DIAGNOSTIC_OUTPUT_FILE:-}"
+  local previous_diagnostic_provenance="${K_DIAGNOSTIC_PROVENANCE:-}"
+  local pre_recovery_diagnostic="$K_EVIDENCE_DIR/pre-recovery-diagnostic.json"
+
+  k_record_best_effort "$records_file" forward outcome "${K_FORWARD_OUTCOME:-unknown}"
+  k_record_best_effort "$records_file" forward phase "${K_FORWARD_PHASE:-unknown}"
+  k_record_best_effort "$records_file" forward boundary "${K_FORWARD_BOUNDARY:-unknown}"
+  for key in DEPLOYMENT_TRANSACTION_ID DEPLOYMENT_STAGE CURRENT_RELEASE_ID PREVIOUS_RELEASE_ID CANDIDATE_RELEASE_ID CANDIDATE_SHA; do
+    value="$(k_read_file_value "$phase_file" "$key" || true)"
+    k_record_best_effort "$records_file" transaction "${key,,}" "$value"
+  done
+  if [ "${K_FORWARD_BOUNDARY:-unknown}" = 1 ]; then
+    # Preserve a diagnostic while C is still observable, but never make the
+    # safety path depend on this optional evidence collection. The finalizer
+    # uses the configured post-recovery output path independently.
+    if [ -e "$pre_recovery_diagnostic" ]; then
+      k_mark_evidence_incomplete 'Pre-recovery diagnostic path already exists; refusing stale evidence reuse'
+    else
+      K_DIAGNOSTIC_OUTPUT_FILE="$pre_recovery_diagnostic"
+      if k_collect_diagnostic; then
+        k_record_best_effort "$records_file" diagnostic pre_recovery_provenance "${K_DIAGNOSTIC_PROVENANCE:-unknown}"
+      else
+        k_mark_evidence_incomplete 'Pre-recovery diagnostic collection failed'
+      fi
+    fi
+    K_DIAGNOSTIC_OUTPUT_FILE="$previous_diagnostic_output"
+    K_DIAGNOSTIC_PROVENANCE="$previous_diagnostic_provenance"
+    export K_DIAGNOSTIC_OUTPUT_FILE K_DIAGNOSTIC_PROVENANCE
+  fi
+}
+
+k_write_leg_outcomes() {
+  local output_file="${K_EVIDENCE_DIR:-}/outcome.env"
+  local temp_file=""
+
+  case "$output_file" in
+    "$K_EVIDENCE_DIR"|"$K_EVIDENCE_DIR"/*) ;;
+    *) return 1 ;;
+  esac
+  mkdir -p "$K_EVIDENCE_DIR" || return 1
+  temp_file="$(mktemp "$output_file.tmp.XXXXXX")" || return 1
+  {
+    printf 'SAFETY_OUTCOME=%s\n' "${K_SAFETY_OUTCOME:-UNDETERMINED}"
+    printf 'EVIDENCE_OUTCOME=%s\n' "${K_EVIDENCE_OUTCOME:-INCOMPLETE}"
+    printf 'EVIDENCE_FAILURE_REASON=%s\n' "${K_EVIDENCE_FAILURE_REASON:-}"
+    printf 'FORWARD_OUTCOME=%s\n' "${K_FORWARD_OUTCOME:-UNCLASSIFIED}"
+    printf 'RECOVERY_ATTEMPTED=%s\n' "${K_RECOVERY_ATTEMPTED:-false}"
+    printf 'RECOVERY_RESULT=%s\n' "${K_RECOVERY_RESULT:-NOT_REQUIRED}"
+  } > "$temp_file" || { rm -f "$temp_file"; return 1; }
+  install -m 600 "$temp_file" "$output_file" || { rm -f "$temp_file"; return 1; }
+  rm -f "$temp_file"
+}
+
+k_process_post_forward() {
+  local forward_status="$1"
+  local leg="$2"
+  local records_file="$3"
+  local phase_file="$4"
+  local failure_kind="${5:-}"
+
+  # This is the only post-forward safety gate.  It deliberately performs
+  # durable-state classification and recovery before any strict evidence
+  # validation, because a failed observer/evidence writer must not strand C.
+  k_classify_forward_outcome "$forward_status" "$phase_file" "$leg" "$failure_kind" || true
+  k_capture_minimum_forward_evidence "$records_file" "$phase_file" || true
+  k_ensure_post_boundary_recovery "$leg" "$records_file" "$phase_file" || true
+}
+
+k_ensure_post_boundary_recovery() {
+  local leg="${1:-success}"
+  local records_file="$2"
+  local phase_file="$3"
+  local needs_recovery=false
+  local phase="${K_FORWARD_PHASE:-unknown}"
+  local rollback_status=1
+  local observer_status=1
+
+  case "${K_FORWARD_OUTCOME:-STATE_UNKNOWN_AFTER_FORWARD}" in
+    FORWARD_FAILURE_PRE_BOUNDARY|FORWARD_INCOMPLETE_PRE_BOUNDARY|HARNESS_FAILURE_PRE_BOUNDARY)
+      K_RECOVERY_ATTEMPTED=false
+      K_RECOVERY_RESULT=NOT_REQUIRED
+      K_SAFETY_OUTCOME=NO_RECOVERY
+      ;;
+    FORWARD_SUCCESS_COMMITTED|FORWARD_FAILURE_TERMINAL_SAFE|HARNESS_FAILURE_TERMINAL_SAFE)
+      if [ "$leg" = fault ] && [ "$phase" != ROLLED_BACK ]; then
+        needs_recovery=true
+      else
+        K_RECOVERY_ATTEMPTED=false
+        K_RECOVERY_RESULT=NOT_REQUIRED
+        K_SAFETY_OUTCOME=COMMITTED
+      fi
+      ;;
+    FORWARD_ROLLED_BACK_SAFE)
+      K_RECOVERY_ATTEMPTED=false
+      K_RECOVERY_RESULT=ROLLED_BACK
+      K_SAFETY_OUTCOME=ROLLED_BACK
+      ;;
+    *)
+      needs_recovery=true
+      ;;
+  esac
+
+  if [ "$needs_recovery" = true ]; then
+    K_RECOVERY_ATTEMPTED=true
+    K_RECOVERY_RESULT=FAILED
+    K_SAFETY_OUTCOME=RECOVERY_FAILED
+    export K_RECOVERY_ATTEMPTED K_RECOVERY_RESULT K_SAFETY_OUTCOME
+    k_record_best_effort "$records_file" recovery attempted true
+    if ! k_require_durable_recovery_artifact 0 1 1; then
+      k_mark_evidence_incomplete 'Exact durable recovery R could not be validated'
+    fi
+    k_record_best_effort "$records_file" recovery state_ambiguous "${K_RECOVERY_STATE_AMBIGUOUS:-false}"
+    # A post-boundary validation failure must not suppress the recovery call:
+    # the rollback path performs its own exact-R checks and records failure if
+    # the persisted material cannot be used.
+    K_RECOVERY_REQUIRED_AFTER_FORWARD=1
+    export K_RECOVERY_REQUIRED_AFTER_FORWARD
+    k_run_rollback_observed || true
+    rollback_status="${K_ROLLBACK_STATUS:-1}"
+    observer_status="${K_ROLLBACK_OBSERVER_STATUS:-1}"
+    if k_durable_rollback_proven "$phase_file"; then
+      K_RECOVERY_RESULT=ROLLED_BACK
+      K_SAFETY_OUTCOME=ROLLED_BACK
+      [ "$rollback_status" -eq 0 ] || k_mark_evidence_incomplete 'Rollback executor returned failure after durable ROLLED_BACK/current=P'
+      [ "$observer_status" -eq 0 ] || k_mark_evidence_incomplete 'Rollback completed but phase observation evidence is incomplete'
+    else
+      K_RECOVERY_RESULT=FAILED
+      K_SAFETY_OUTCOME=RECOVERY_FAILED
+      if [ "$rollback_status" -eq 0 ]; then
+        k_mark_evidence_incomplete 'Rollback executor returned success without durable ROLLED_BACK/current=P'
+      fi
+    fi
+    k_record_best_effort "$records_file" recovery result "$K_RECOVERY_RESULT"
+    k_record_best_effort "$records_file" safety outcome "$K_SAFETY_OUTCOME"
+  else
+    k_record_best_effort "$records_file" recovery attempted false
+    k_record_best_effort "$records_file" recovery result "$K_RECOVERY_RESULT"
+    k_record_best_effort "$records_file" safety outcome "$K_SAFETY_OUTCOME"
+  fi
+  k_write_leg_outcomes || true
+  export K_RECOVERY_ATTEMPTED K_RECOVERY_RESULT K_SAFETY_OUTCOME
+  return 0
+}
+
+k_finalize_leg_evidence() {
+  local leg="$1"
+  local records_file="$2"
+  local history_file="$3"
+  local history_status=0
+  local diagnostic_status=0
+  local output_status=0
+
+  if k_collect_diagnostic; then diagnostic_status=0; else diagnostic_status=$?; fi
+  if [ "$diagnostic_status" -ne 0 ]; then
+    k_mark_evidence_incomplete 'Post-forward diagnostic collection failed'
+  else
+    k_record_best_effort "$records_file" diagnostic provenance "${K_DIAGNOSTIC_PROVENANCE:-not-required}"
+  fi
+
+  if [ "$leg" = fault ]; then
+    if k_validate_transaction_history "$history_file" \
+      PREPARED SWITCHING ACTIVATED_UNVERIFIED FAILED ROLLING_BACK ROLLED_BACK; then
+      history_status=0
+    elif k_validate_transaction_history "$history_file" PREPARED SWITCHING FAILED ROLLING_BACK ROLLED_BACK; then
+      history_status=0
+    fi
+  else
+    if k_validate_transaction_history "$history_file" PREPARED SWITCHING ACTIVATED_UNVERIFIED VERIFIED COMMITTED; then
+      history_status=0
+    else
+      history_status=$?
+    fi
+  fi
+  if [ "$history_status" -ne 0 ]; then
+    k_mark_evidence_incomplete 'Transaction history validation failed'
+  fi
+  if ! k_record_transaction_history "$records_file" "$history_file"; then
+    k_mark_evidence_incomplete 'Transaction history evidence recording failed'
+  fi
+  k_record_phase_state "$records_file" || k_mark_evidence_incomplete 'Final durable phase evidence is unavailable'
+  k_record_best_effort "$records_file" outcome safety "${K_SAFETY_OUTCOME:-UNKNOWN}"
+  k_record_best_effort "$records_file" outcome evidence "${K_EVIDENCE_OUTCOME:-UNKNOWN}"
+  k_record_best_effort "$records_file" outcome recovery_attempted "${K_RECOVERY_ATTEMPTED:-false}"
+  k_record_best_effort "$records_file" outcome recovery_result "${K_RECOVERY_RESULT:-UNKNOWN}"
+  k_write_leg_outcomes || k_mark_evidence_incomplete 'Outcome evidence could not be persisted'
+  if k_build_evidence "$records_file" "$K_EVIDENCE_DIR"; then
+    output_status=0
+  else
+    output_status=$?
+    k_mark_evidence_incomplete 'Evidence bundle construction failed'
+  fi
+  k_write_leg_outcomes || true
+  [ "$diagnostic_status" -eq 0 ] && [ "$history_status" -eq 0 ] && [ "$output_status" -eq 0 ] &&
+    [ "${K_EVIDENCE_OUTCOME:-INCOMPLETE}" = COMPLETE ]
+}
+
 k_validate_transaction_history() {
   local history_file="$1"
   shift
@@ -1976,6 +2396,7 @@ k_validate_transaction_history() {
   local recovery_artifact_field=""
   local recovery_executor_field=""
   local recovery_path_field=""
+  local transaction_id_field=""
 
   [ -f "$history_file" ] && [ ! -L "$history_file" ] || {
     k_error "Transaction history is missing: $history_file"
@@ -2004,6 +2425,13 @@ k_validate_transaction_history() {
     }
     [[ "$line" == *'DEPLOYMENT_PHASE_UPDATED_AT='* ]] || return 1
     [[ "$line" == *'MUTATION_BOUNDARY_REACHED='* ]] || return 1
+    if [ -n "${K_TRANSACTION_ID:-}" ]; then
+      printf -v transaction_id_field 'DEPLOYMENT_TRANSACTION_ID=%q' "$K_TRANSACTION_ID"
+      [[ "$line" == *"$transaction_id_field"* ]] || {
+        k_error 'Transaction history belongs to a different transaction attempt'
+        return 1
+      }
+    fi
     if [ "$actual_phase" = SWITCHING ]; then
       [[ "$line" == *'MUTATION_BOUNDARY_REACHED=1 '* ]] || {
         k_error 'SWITCHING history record does not prove the mutation boundary'
@@ -2698,33 +3126,118 @@ k_stage_diagnostic_fallback() {
 }
 
 k_require_durable_recovery_artifact() {
+  local require_transmitted="${1:-1}"
+  local allow_missing_transmitted="${2:-0}"
+  local allow_ambiguous_state="${3:-0}"
   local identity_file="$K_DEPLOY_ROOT/recovery/current-artifact.env"
   local transaction_file="$K_DEPLOY_ROOT/release-state/deployment-phase.env"
   local artifact_path=""
   local artifact_sha=""
+  local identity_recovery_sha=""
+  local identity_source_sha=""
+  local identity_contract_version=""
+  local identity_source_version=""
+  local identity_executor_sha=""
+  local identity_candidate_sha=""
+  local identity_artifact_version=""
+  local identity_preflight=""
   local extracted_dir=""
+  local expected_artifact_path=""
+  local state_transaction_id=""
+  local state_candidate_release_id=""
+  local state_candidate_sha=""
+  local state_recovery_artifact_version=""
+  local state_recovery_source_sha=""
+  local state_recovery_contract_version=""
+  local state_recovery_source_version=""
+  local state_recovery_artifact_sha256=""
+  local state_recovery_executor_sha256=""
+  local state_recovery_artifact_path=""
+  local state_identity_complete=1
 
-  [ -f "$identity_file" ] || { k_error 'Durable recovery identity is missing'; return 1; }
+  K_RECOVERY_STATE_AMBIGUOUS=0
+  export K_RECOVERY_STATE_AMBIGUOUS
+
+  [ -f "$identity_file" ] && [ ! -L "$identity_file" ] || { k_error 'Durable recovery identity is missing or symlinked'; return 1; }
   k_source_recovery_artifact_helper || return 1
-  [ "$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_ARTIFACT_VERSION)" = 1 ] || return 1
-  [ "$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_SHA)" = "$K_RECOVERY_SHA" ] || return 1
-  [ "$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_SOURCE_SHA)" = "$K_RECOVERY_SOURCE_SHA" ] || return 1
-  [ "$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_CONTRACT_VERSION)" = "$K_RECOVERY_CONTRACT_VERSION" ] || return 1
-  [ "$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_SOURCE_VERSION)" = "$K_RECOVERY_SOURCE_VERSION" ] || return 1
+  identity_artifact_version="$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_ARTIFACT_VERSION)" || return 1
+  identity_recovery_sha="$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_SHA)" || return 1
+  identity_source_sha="$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_SOURCE_SHA)" || return 1
+  identity_contract_version="$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_CONTRACT_VERSION)" || return 1
+  identity_source_version="$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_SOURCE_VERSION)" || return 1
   artifact_sha="$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_ARTIFACT_SHA256)" || return 1
-  [ "$artifact_sha" = "$K_RECOVERY_ARTIFACT_SHA256" ] || return 1
-  [ "$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_EXECUTOR_SHA256)" = "$K_RECOVERY_EXECUTOR_SHA256" ] || return 1
-  [ "$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_CANDIDATE_SHA)" = "$K_CANDIDATE_SHA" ] || return 1
-  [ "$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_PREFLIGHT)" = passed ] || return 1
+  identity_executor_sha="$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_EXECUTOR_SHA256)" || return 1
+  identity_candidate_sha="$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_CANDIDATE_SHA)" || return 1
+  identity_preflight="$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_PREFLIGHT)" || return 1
   artifact_path="$(k_read_required_file_value "$identity_file" PRODUCTION_RECOVERY_ARTIFACT_PATH)" || return 1
-  [ "$artifact_path" = "$K_RECOVERY_PERSISTED_FILE" ] || return 1
-  [ "$(k_read_required_file_value "$transaction_file" RECOVERY_ARTIFACT_VERSION)" = 1 ] || return 1
-  [ "$(k_read_required_file_value "$transaction_file" RECOVERY_SOURCE_SHA)" = "$K_RECOVERY_SOURCE_SHA" ] || return 1
-  [ "$(k_read_required_file_value "$transaction_file" RECOVERY_CONTRACT_VERSION)" = "$K_RECOVERY_CONTRACT_VERSION" ] || return 1
-  [ "$(k_read_required_file_value "$transaction_file" RECOVERY_SOURCE_VERSION)" = "$K_RECOVERY_SOURCE_VERSION" ] || return 1
-  [ "$(k_read_required_file_value "$transaction_file" RECOVERY_ARTIFACT_SHA256)" = "$K_RECOVERY_ARTIFACT_SHA256" ] || return 1
-  [ "$(k_read_required_file_value "$transaction_file" RECOVERY_EXECUTOR_SHA256)" = "$K_RECOVERY_EXECUTOR_SHA256" ] || return 1
-  [ "$(k_read_required_file_value "$transaction_file" RECOVERY_ARTIFACT_PATH)" = "$K_RECOVERY_PERSISTED_FILE" ] || return 1
+  [ "$identity_artifact_version" = 1 ] || return 1
+  [ "${K_RECOVERY_SHA:-$identity_recovery_sha}" = "$identity_recovery_sha" ] || return 1
+  [ "${K_RECOVERY_SOURCE_SHA:-$identity_source_sha}" = "$identity_source_sha" ] || return 1
+  [ "${K_RECOVERY_CONTRACT_VERSION:-$identity_contract_version}" = "$identity_contract_version" ] || return 1
+  [ "${K_RECOVERY_SOURCE_VERSION:-$identity_source_version}" = "$identity_source_version" ] || return 1
+  [ "${K_RECOVERY_ARTIFACT_SHA256:-$artifact_sha}" = "$artifact_sha" ] || return 1
+  [ "${K_RECOVERY_EXECUTOR_SHA256:-$identity_executor_sha}" = "$identity_executor_sha" ] || return 1
+  [ "${K_CANDIDATE_SHA:-$identity_candidate_sha}" = "$identity_candidate_sha" ] || return 1
+  [ "$identity_preflight" = passed ] || return 1
+  K_RECOVERY_SHA="$identity_recovery_sha"
+  K_RECOVERY_SOURCE_SHA="$identity_source_sha"
+  K_RECOVERY_CONTRACT_VERSION="$identity_contract_version"
+  K_RECOVERY_SOURCE_VERSION="$identity_source_version"
+  K_RECOVERY_ARTIFACT_SHA256="$artifact_sha"
+  K_RECOVERY_EXECUTOR_SHA256="$identity_executor_sha"
+  K_CANDIDATE_SHA="$identity_candidate_sha"
+  K_RECOVERY_PERSISTED_FILE="$artifact_path"
+  export K_RECOVERY_SHA K_RECOVERY_SOURCE_SHA K_RECOVERY_CONTRACT_VERSION K_RECOVERY_SOURCE_VERSION
+  export K_RECOVERY_ARTIFACT_SHA256 K_RECOVERY_EXECUTOR_SHA256 K_CANDIDATE_SHA K_RECOVERY_PERSISTED_FILE
+  expected_artifact_path="$K_DEPLOY_ROOT/recovery/releases/$K_RECOVERY_ARTIFACT_SHA256/production-recovery-bundle.tgz"
+  [ "$artifact_path" = "$expected_artifact_path" ] || {
+    k_error 'Durable recovery artifact must use the canonical hash-addressed path'
+    return 1
+  }
+  if [ "$allow_ambiguous_state" = 1 ]; then
+    if [ -f "$transaction_file" ] && [ ! -L "$transaction_file" ]; then
+      state_transaction_id="$(k_read_file_value "$transaction_file" DEPLOYMENT_TRANSACTION_ID || true)"
+      state_candidate_release_id="$(k_read_file_value "$transaction_file" CANDIDATE_RELEASE_ID || true)"
+      state_candidate_sha="$(k_read_file_value "$transaction_file" CANDIDATE_SHA || true)"
+      state_recovery_artifact_version="$(k_read_file_value "$transaction_file" RECOVERY_ARTIFACT_VERSION || true)"
+      state_recovery_source_sha="$(k_read_file_value "$transaction_file" RECOVERY_SOURCE_SHA || true)"
+      state_recovery_contract_version="$(k_read_file_value "$transaction_file" RECOVERY_CONTRACT_VERSION || true)"
+      state_recovery_source_version="$(k_read_file_value "$transaction_file" RECOVERY_SOURCE_VERSION || true)"
+      state_recovery_artifact_sha256="$(k_read_file_value "$transaction_file" RECOVERY_ARTIFACT_SHA256 || true)"
+      state_recovery_executor_sha256="$(k_read_file_value "$transaction_file" RECOVERY_EXECUTOR_SHA256 || true)"
+      state_recovery_artifact_path="$(k_read_file_value "$transaction_file" RECOVERY_ARTIFACT_PATH || true)"
+      if [ -z "${K_TRANSACTION_ID:-}" ] || [ "$state_transaction_id" != "$K_TRANSACTION_ID" ] ||
+        [ -z "${K_C_RELEASE_ID:-}" ] || [ "$state_candidate_release_id" != "$K_C_RELEASE_ID" ] ||
+        [ -z "${K_CANDIDATE_SHA:-}" ] || [ "$state_candidate_sha" != "$K_CANDIDATE_SHA" ] ||
+        [ "$state_recovery_artifact_version" != 1 ] ||
+        [ -z "${K_RECOVERY_SOURCE_SHA:-}" ] || [ "$state_recovery_source_sha" != "$K_RECOVERY_SOURCE_SHA" ] ||
+        [ -z "${K_RECOVERY_CONTRACT_VERSION:-}" ] || [ "$state_recovery_contract_version" != "$K_RECOVERY_CONTRACT_VERSION" ] ||
+        [ -z "${K_RECOVERY_SOURCE_VERSION:-}" ] || [ "$state_recovery_source_version" != "$K_RECOVERY_SOURCE_VERSION" ] ||
+        [ -z "${K_RECOVERY_ARTIFACT_SHA256:-}" ] || [ "$state_recovery_artifact_sha256" != "$K_RECOVERY_ARTIFACT_SHA256" ] ||
+        [ -z "${K_RECOVERY_EXECUTOR_SHA256:-}" ] || [ "$state_recovery_executor_sha256" != "$K_RECOVERY_EXECUTOR_SHA256" ] ||
+        [ -z "${K_RECOVERY_PERSISTED_FILE:-}" ] || [ "$state_recovery_artifact_path" != "$K_RECOVERY_PERSISTED_FILE" ]; then
+        state_identity_complete=0
+      fi
+    else
+      state_identity_complete=0
+    fi
+    if [ "$state_identity_complete" -ne 1 ]; then
+      # R remains the only recovery source after the forward may have crossed
+      # the boundary.  The executor must still prove ROLLED_BACK/current=P
+      # before this function reports a safe result.
+      K_RECOVERY_STATE_AMBIGUOUS=1
+      export K_RECOVERY_STATE_AMBIGUOUS
+    fi
+  else
+    [ -f "$transaction_file" ] && [ ! -L "$transaction_file" ] || return 1
+    [ "$(k_read_required_file_value "$transaction_file" RECOVERY_ARTIFACT_VERSION)" = 1 ] || return 1
+    [ "$(k_read_required_file_value "$transaction_file" RECOVERY_SOURCE_SHA)" = "$K_RECOVERY_SOURCE_SHA" ] || return 1
+    [ "$(k_read_required_file_value "$transaction_file" RECOVERY_CONTRACT_VERSION)" = "$K_RECOVERY_CONTRACT_VERSION" ] || return 1
+    [ "$(k_read_required_file_value "$transaction_file" RECOVERY_SOURCE_VERSION)" = "$K_RECOVERY_SOURCE_VERSION" ] || return 1
+    [ "$(k_read_required_file_value "$transaction_file" RECOVERY_ARTIFACT_SHA256)" = "$K_RECOVERY_ARTIFACT_SHA256" ] || return 1
+    [ "$(k_read_required_file_value "$transaction_file" RECOVERY_EXECUTOR_SHA256)" = "$K_RECOVERY_EXECUTOR_SHA256" ] || return 1
+    [ "$(k_read_required_file_value "$transaction_file" RECOVERY_ARTIFACT_PATH)" = "$K_RECOVERY_PERSISTED_FILE" ] || return 1
+  fi
   [ -f "$artifact_path" ] && [ ! -L "$artifact_path" ] || return 1
   [ "$(k_hash_file "$artifact_path")" = "$K_RECOVERY_ARTIFACT_SHA256" ] || return 1
   production_recovery_artifact_archive_has_safe_paths "$artifact_path" || return 1
@@ -2739,10 +3252,81 @@ k_require_durable_recovery_artifact() {
     return 1
   fi
   rm -rf "$extracted_dir"
-  cmp -- "$K_RECOVERY_TRANSMITTED_FILE" "$artifact_path" || {
-    k_error 'Transmitted recovery bytes differ from durable bytes'
+  if [ "$require_transmitted" = 1 ] || [ -n "${K_RECOVERY_TRANSMITTED_FILE:-}" ]; then
+    if [ -f "${K_RECOVERY_TRANSMITTED_FILE:-}" ] && [ ! -L "$K_RECOVERY_TRANSMITTED_FILE" ]; then
+      cmp -- "$K_RECOVERY_TRANSMITTED_FILE" "$artifact_path" || {
+        k_error 'Transmitted recovery bytes differ from durable bytes'
+        return 1
+      }
+    elif [ "$require_transmitted" = 1 ] || [ "$allow_missing_transmitted" != 1 ] ||
+      [ -e "${K_RECOVERY_TRANSMITTED_FILE:-}" ]; then
+      k_error 'Transmitted recovery artifact is required for this rollback path'
+      return 1
+    fi
+  fi
+}
+
+k_validate_manual_rollback_fence() {
+  local phase_file="$K_DEPLOY_ROOT/release-state/deployment-phase.env"
+  local phase=""
+  local boundary=""
+  local current=""
+  local previous=""
+  local candidate=""
+  local candidate_sha=""
+  local transaction_id=""
+  local expected_artifact=""
+
+  K_MANUAL_ROLLBACK_NOOP=0
+  [ -f "$phase_file" ] && [ ! -L "$phase_file" ] || {
+    k_error 'Manual rollback requires a readable durable transaction state'
     return 1
   }
+  phase="$(k_read_required_file_value "$phase_file" DEPLOYMENT_PHASE)" || return 1
+  boundary="$(k_read_required_file_value "$phase_file" MUTATION_BOUNDARY_REACHED)" || return 1
+  current="$(k_read_required_file_value "$phase_file" CURRENT_RELEASE_ID)" || return 1
+  previous="$(k_read_required_file_value "$phase_file" PREVIOUS_RELEASE_ID)" || return 1
+  candidate="$(k_read_required_file_value "$phase_file" CANDIDATE_RELEASE_ID)" || return 1
+  candidate_sha="$(k_read_required_file_value "$phase_file" CANDIDATE_SHA)" || return 1
+  transaction_id="$(k_read_required_file_value "$phase_file" DEPLOYMENT_TRANSACTION_ID)" || return 1
+  k_require_transaction_id "$transaction_id" || return 1
+  [ -n "${K_P_RELEASE_ID:-}" ] && [ "$previous" = "$K_P_RELEASE_ID" ] || {
+    k_error 'Manual rollback transaction does not identify the configured baseline P'
+    return 1
+  }
+  [ -n "${K_C_RELEASE_ID:-}" ] && [ "$candidate" = "$K_C_RELEASE_ID" ] || {
+    k_error 'Manual rollback transaction does not identify the configured candidate C'
+    return 1
+  }
+  [ -n "${K_CANDIDATE_SHA:-}" ] && [ "$candidate_sha" = "$K_CANDIDATE_SHA" ] || {
+    k_error 'Manual rollback transaction does not identify the configured candidate SHA'
+    return 1
+  }
+  if [ "$phase" = ROLLED_BACK ] && [ "$boundary" = 1 ] && [ "$current" = "$previous" ]; then
+    K_MANUAL_ROLLBACK_NOOP=1
+    export K_MANUAL_ROLLBACK_NOOP
+    k_info 'Manual rollback fence shows that P is already restored; no mutation required'
+    return 0
+  fi
+  [ "$boundary" = 1 ] || {
+    k_error 'Manual rollback refuses a transaction that has not crossed the mutation boundary'
+    return 1
+  }
+  case "$phase" in
+    SWITCHING|ACTIVATED_UNVERIFIED|VERIFIED|COMMITTED|FAILED|ROLLING_BACK) ;;
+    *) k_error "Manual rollback refuses phase $phase"; return 1 ;;
+  esac
+  [ -n "${K_PREVIOUS_RELEASE_ID:-}" ] && [ "$previous" = "$K_PREVIOUS_RELEASE_ID" ] || {
+    k_error 'Manual rollback transaction does not identify the expected baseline P'
+    return 1
+  }
+  k_require_durable_recovery_artifact 0 1 || return 1
+  expected_artifact="$K_DEPLOY_ROOT/recovery/releases/$K_RECOVERY_ARTIFACT_SHA256/production-recovery-bundle.tgz"
+  [ "$K_RECOVERY_PERSISTED_FILE" = "$expected_artifact" ] || {
+    k_error 'Manual rollback must use the canonical persisted recovery artifact path'
+    return 1
+  }
+  export K_MANUAL_ROLLBACK_NOOP
 }
 
 k_run_forward_from_stdin() {
@@ -2767,6 +3351,7 @@ k_run_forward_from_stdin() {
       -u PRODUCTION_RECOVERY_CONTRACT_VERSION -u PRODUCTION_RECOVERY_SOURCE_VERSION \
       -u PRODUCTION_RECOVERY_BUNDLE_B64 \
       DEPLOYMENT_TRANSACTION_HISTORY_FILE="${K_TRANSACTION_HISTORY_FILE:-}" \
+      DEPLOYMENT_TRANSACTION_ID="${K_TRANSACTION_ID:-}" \
       COMPOSE_PROJECT_NAME="$K_COMPOSE_PROJECT" CLASSROOMPATH_DEPLOY_ROOT="$K_DEPLOY_ROOT" \
       APP_DIR="$K_APP_DIR" DEPLOY_SHA="$K_CANDIDATE_SHA" CANDIDATE_SHA="$K_CANDIDATE_SHA" \
       DEPLOY_PAYLOAD_B64="$payload_b64" \
@@ -2784,9 +3369,31 @@ k_run_forward_from_stdin() {
 k_run_rollback_from_stdin() {
   local recovery_b64=""
   local effective_path="${K_EFFECTIVE_HOST_PATH:-${PATH:-}}"
+  local history_file="${K_TRANSACTION_HISTORY_FILE:-}"
 
+  if [ "${K_MANUAL_ROLLBACK:-0}" = 1 ]; then
+    k_validate_manual_rollback_fence || return 1
+    [ "${K_MANUAL_ROLLBACK_NOOP:-0}" = 1 ] && return 0
+    history_file=""
+  fi
   k_stage_stable_rollback_wrapper || return 1
-  k_require_durable_recovery_artifact || return 1
+  if [ "${K_MANUAL_ROLLBACK:-0}" = 1 ]; then
+    k_require_durable_recovery_artifact 0 1 || return 1
+  elif [ "${K_RECOVERY_REQUIRED_AFTER_FORWARD:-0}" = 1 ]; then
+    # The persisted R archive is the recovery source of truth once the
+    # boundary is crossed.  Compare a transmitted copy when it survives, but
+    # do not let a post-boundary evidence failure suppress recovery.
+    k_require_durable_recovery_artifact 0 1 1 || return 1
+  else
+    k_require_durable_recovery_artifact || return 1
+  fi
+  if [ "${K_MANUAL_ROLLBACK:-0}" = 1 ]; then
+    # Re-read the durable fence after all artifact checks and immediately
+    # before transmitting R; an intervening successful rollback is a safe
+    # no-op, while any other fence drift aborts without host mutation.
+    k_validate_manual_rollback_fence || return 1
+    [ "${K_MANUAL_ROLLBACK_NOOP:-0}" = 1 ] && return 0
+  fi
   recovery_b64="$(base64 "$K_RECOVERY_PERSISTED_FILE" | tr -d '\r\n')"
   (
     cd "$K_APP_DIR"
@@ -2795,7 +3402,11 @@ k_run_rollback_from_stdin() {
       -u PRODUCTION_RECOVERY_SOURCE_SHA -u PRODUCTION_RECOVERY_ARTIFACT_SHA256 \
       -u PRODUCTION_RECOVERY_EXECUTOR_SHA256 -u PRODUCTION_RECOVERY_CONTRACT_VERSION \
       -u PRODUCTION_RECOVERY_SOURCE_VERSION \
-      DEPLOYMENT_TRANSACTION_HISTORY_FILE="${K_TRANSACTION_HISTORY_FILE:-}" \
+      DEPLOYMENT_TRANSACTION_HISTORY_FILE="$history_file" \
+      DEPLOYMENT_TRANSACTION_ID="${K_TRANSACTION_ID:-}" \
+      CANDIDATE_RELEASE_ID="${K_C_RELEASE_ID:-}" \
+      PREVIOUS_RELEASE_ID="${K_PREVIOUS_RELEASE_ID:-}" \
+      RECOVERY_REQUIRED_AFTER_FORWARD="${K_RECOVERY_REQUIRED_AFTER_FORWARD:-0}" \
       PRODUCTION_RECOVERY_SHA="$K_RECOVERY_SHA" PRODUCTION_RECOVERY_SOURCE_SHA="$K_RECOVERY_SOURCE_SHA" \
       PRODUCTION_RECOVERY_CONTRACT_VERSION="$K_RECOVERY_CONTRACT_VERSION" PRODUCTION_RECOVERY_SOURCE_VERSION="$K_RECOVERY_SOURCE_VERSION" \
       PRODUCTION_RECOVERY_ARTIFACT_SHA256="$K_RECOVERY_ARTIFACT_SHA256" PRODUCTION_RECOVERY_EXECUTOR_SHA256="$K_RECOVERY_EXECUTOR_SHA256" \
@@ -2815,14 +3426,25 @@ k_run_rollback_observed() {
   local observer_pid=0
   local rollback_status=0
   local observer_status=0
+  local observer_enabled=0
 
-  k_initialize_rollback_phase_observations || return 1
+  if k_initialize_rollback_phase_observations; then
+    observer_enabled=1
+  else
+    k_error 'Rollback phase observer could not initialize; continuing recovery without observer evidence'
+  fi
   k_run_rollback_from_stdin &
   rollback_pid=$!
-  k_observe_rollback_phases "$rollback_pid" "$phase_file" "$observations_file" &
-  observer_pid=$!
+  if [ "$observer_enabled" -eq 1 ]; then
+    k_observe_rollback_phases "$rollback_pid" "$phase_file" "$observations_file" &
+    observer_pid=$!
+  fi
   if wait "$rollback_pid"; then rollback_status=0; else rollback_status=$?; fi
-  if wait "$observer_pid"; then observer_status=0; else observer_status=$?; fi
+  if [ "$observer_enabled" -eq 1 ]; then
+    if wait "$observer_pid"; then observer_status=0; else observer_status=$?; fi
+  else
+    observer_status=1
+  fi
   K_ROLLBACK_STATUS="$rollback_status"
   K_ROLLBACK_OBSERVER_STATUS="$observer_status"
   export K_ROLLBACK_STATUS K_ROLLBACK_OBSERVER_STATUS
@@ -2870,6 +3492,52 @@ k_watchdog_select_candidate() {
   printf '%s\n' "$candidate"
 }
 
+k_watchdog_attempt_is_prepared() {
+  local phase_file="$1"
+  local expected_transaction_id="$2"
+  local expected_release_id="$3"
+  local expected_candidate_sha="$4"
+  local phase=""
+  local boundary=""
+  local current=""
+  local previous=""
+
+  [ -f "$phase_file" ] && [ ! -L "$phase_file" ] || return 1
+  phase="$(k_read_file_value "$phase_file" DEPLOYMENT_PHASE || true)"
+  boundary="$(k_read_file_value "$phase_file" MUTATION_BOUNDARY_REACHED || true)"
+  current="$(k_read_file_value "$phase_file" CURRENT_RELEASE_ID || true)"
+  previous="$(k_read_file_value "$phase_file" PREVIOUS_RELEASE_ID || true)"
+  [ "$phase" = PREPARED ] || return 1
+  [ "$boundary" = 0 ] || return 1
+  [ -n "$current" ] && [ "$current" = "$previous" ] && [ "$current" != "$expected_release_id" ] || return 1
+  [ -z "${K_PREVIOUS_RELEASE_ID:-}" ] || [ "$current" = "$K_PREVIOUS_RELEASE_ID" ] || return 1
+  [ "$(k_read_file_value "$phase_file" DEPLOYMENT_TRANSACTION_ID || true)" = "$expected_transaction_id" ] || return 1
+  [ "$(k_read_file_value "$phase_file" CANDIDATE_RELEASE_ID || true)" = "$expected_release_id" ] || return 1
+  [ "$(k_read_file_value "$phase_file" CANDIDATE_SHA || true)" = "$expected_candidate_sha" ] || return 1
+}
+
+k_watchdog_attempt_is_activated() {
+  local phase_file="$1"
+  local expected_transaction_id="$2"
+  local expected_release_id="$3"
+  local expected_candidate_sha="$4"
+  local phase=""
+  local current=""
+  local previous=""
+
+  [ -f "$phase_file" ] && [ ! -L "$phase_file" ] || return 1
+  phase="$(k_read_file_value "$phase_file" DEPLOYMENT_PHASE || true)"
+  current="$(k_read_file_value "$phase_file" CURRENT_RELEASE_ID || true)"
+  previous="$(k_read_file_value "$phase_file" PREVIOUS_RELEASE_ID || true)"
+  [ "$phase" = ACTIVATED_UNVERIFIED ] || return 1
+  [ "$(k_read_file_value "$phase_file" MUTATION_BOUNDARY_REACHED || true)" = 1 ] || return 1
+  [ -n "$current" ] && [ "$current" = "$previous" ] && [ "$current" != "$expected_release_id" ] || return 1
+  [ -z "${K_PREVIOUS_RELEASE_ID:-}" ] || [ "$current" = "$K_PREVIOUS_RELEASE_ID" ] || return 1
+  [ "$(k_read_file_value "$phase_file" DEPLOYMENT_TRANSACTION_ID || true)" = "$expected_transaction_id" ] || return 1
+  [ "$(k_read_file_value "$phase_file" CANDIDATE_RELEASE_ID || true)" = "$expected_release_id" ] || return 1
+  [ "$(k_read_file_value "$phase_file" CANDIDATE_SHA || true)" = "$expected_candidate_sha" ] || return 1
+}
+
 k_watchdog_act_once() {
   local phase_file="$1"
   local records_file="$2"
@@ -2877,24 +3545,58 @@ k_watchdog_act_once() {
   local expected_image="$4"
   local docker_bin="$5"
   local marker_file="$6"
+  local expected_transaction_id="${7:-${K_TRANSACTION_ID:-}}"
+  local expected_release_id="${8:-${K_C_RELEASE_ID:-}}"
+  local expected_candidate_sha="${9:-${K_CANDIDATE_SHA:-}}"
   local candidate=""
+  local name=""
 
-  [ ! -e "$marker_file" ] || { k_error 'Watchdog is one-shot and already acted'; return 1; }
+  k_require_transaction_id "$expected_transaction_id" || return 1
+  k_require_sha40 watchdog_candidate_sha "$expected_candidate_sha" || return 1
+  [ -n "$expected_release_id" ] || { k_error 'Watchdog requires the current candidate release ID'; return 1; }
+  [ ! -e "$marker_file" ] && [ ! -L "$marker_file" ] || {
+    k_error 'Watchdog is one-shot and already acted'
+    return 1
+  }
+  k_watchdog_attempt_is_activated "$phase_file" "$expected_transaction_id" "$expected_release_id" "$expected_candidate_sha" || {
+    k_error 'Watchdog transaction window does not belong to the current attempt'
+    return 1
+  }
   candidate="$(k_watchdog_select_candidate "$phase_file" "$records_file" "$previous_gateway_id" "$expected_image")" || return 1
   [ "$candidate" != "$previous_gateway_id" ] || return 1
-  [ "$(k_read_required_file_value "$phase_file" DEPLOYMENT_PHASE)" = ACTIVATED_UNVERIFIED ] || {
-    k_error 'Watchdog phase window closed before stopping the candidate gateway'
+  name="$(awk -F'|' -v expected_id="$candidate" '$1 == expected_id { print $5; exit }' "$records_file")"
+  name="${name#/}"
+  [ "$name" = "${K_EXPECTED_GATEWAY_NAME:-classroompath-gateway}" ] || {
+    k_error 'Watchdog candidate has an unexpected Compose container name'
+    return 1
+  }
+  k_watchdog_attempt_is_activated "$phase_file" "$expected_transaction_id" "$expected_release_id" "$expected_candidate_sha" || {
+    k_error 'Watchdog transaction window closed before stopping the candidate gateway'
+    return 1
+  }
+  [ ! -e "$marker_file" ] && [ ! -L "$marker_file" ] || {
+    k_error 'Watchdog marker appeared before the candidate stop'
     return 1
   }
   "$docker_bin" stop "$candidate" >/dev/null
   mkdir -p "$(dirname "$marker_file")"
+  [ ! -e "$marker_file" ] && [ ! -L "$marker_file" ] || {
+    k_error 'Watchdog marker appeared before evidence could be written'
+    return 1
+  }
   {
     printf 'FAULT_TARGET_CONTAINER_ID=%s\n' "$candidate"
     printf 'FAULT_PHASE=ACTIVATED_UNVERIFIED\n'
+    printf 'FAULT_TRANSACTION_ID=%s\n' "$expected_transaction_id"
+    printf 'FAULT_CANDIDATE_RELEASE_ID=%s\n' "$expected_release_id"
+    printf 'FAULT_CANDIDATE_SHA=%s\n' "$expected_candidate_sha"
   } > "$marker_file"
 }
 
 k_watchdog_loop() {
+  local expected_transaction_id="${1:-${K_TRANSACTION_ID:-}}"
+  local expected_release_id="${2:-${K_C_RELEASE_ID:-}}"
+  local expected_candidate_sha="${3:-${K_CANDIDATE_SHA:-}}"
   local phase_file="$K_DEPLOY_ROOT/release-state/deployment-phase.env"
   local records_file="${K_WATCHDOG_RECORDS_FILE:-$K_EVIDENCE_DIR/watchdog-containers.txt}"
   local marker_file="${K_FAULT_TARGET_FILE:-$K_EVIDENCE_DIR/fault-target.env}"
@@ -2902,25 +3604,116 @@ k_watchdog_loop() {
   local attempt=0
   local id=""
   local metadata=""
+  local phase=""
+  local prepared_observed=0
 
   k_require_immutable_image K_C_GATEWAY_IMAGE "${K_C_GATEWAY_IMAGE:-}" || return 1
+  k_require_transaction_id "$expected_transaction_id" || return 1
+  k_require_sha40 watchdog_candidate_sha "$expected_candidate_sha" || return 1
+  [ -n "$expected_release_id" ] || { k_error 'Watchdog requires the current candidate release ID'; return 1; }
   for ((attempt = 1; attempt <= attempts; attempt += 1)); do
-    if [ "$(k_read_file_value "$phase_file" DEPLOYMENT_PHASE || true)" = ACTIVATED_UNVERIFIED ]; then
+    phase="$(k_read_file_value "$phase_file" DEPLOYMENT_PHASE || true)"
+    if [ "$prepared_observed" -eq 0 ]; then
+      if k_watchdog_attempt_is_prepared "$phase_file" "$expected_transaction_id" "$expected_release_id" "$expected_candidate_sha"; then
+        prepared_observed=1
+      else
+        sleep "${K_WATCHDOG_POLL_SECONDS:-1}"
+        continue
+      fi
+    fi
+    if k_watchdog_attempt_is_activated "$phase_file" "$expected_transaction_id" "$expected_release_id" "$expected_candidate_sha"; then
       : > "$records_file"
       while IFS= read -r id; do
         [ -n "$id" ] || continue
         metadata="$(docker inspect -f '{{.Id}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{.Config.Image}}|{{.Name}}|{{.State.Status}}' "$id")" || return 1
         printf '%s\n' "$metadata" >> "$records_file"
       done < <(docker ps -aq --filter "label=com.docker.compose.project=$K_COMPOSE_PROJECT" --filter 'label=com.docker.compose.service=gateway')
-      k_watchdog_act_once "$phase_file" "$records_file" "$K_BASELINE_GATEWAY_ID" "$K_C_GATEWAY_IMAGE" "$(command -v docker)" "$marker_file"
+      k_watchdog_act_once "$phase_file" "$records_file" "$K_BASELINE_GATEWAY_ID" "$K_C_GATEWAY_IMAGE" "$(command -v docker)" "$marker_file" "$expected_transaction_id" "$expected_release_id" "$expected_candidate_sha"
       return $?
     fi
-    case "$(k_read_file_value "$phase_file" DEPLOYMENT_PHASE || true)" in
-      FAILED|VERIFIED|COMMITTED|ROLLED_BACK) k_error 'Watchdog phase window closed'; return 1 ;;
+    if [ "$phase" = FAILED ] && [ "$(k_read_file_value "$phase_file" MUTATION_BOUNDARY_REACHED || true)" = 0 ]; then
+      k_info 'Watchdog observed the current attempt fail before the mutation boundary'
+      return 0
+    fi
+    case "$phase" in
+      VERIFIED|COMMITTED|ROLLED_BACK|FAILED)
+        k_error 'Watchdog phase window closed for the current transaction attempt'
+        return 1
+        ;;
     esac
     sleep "${K_WATCHDOG_POLL_SECONDS:-1}"
   done
-  k_error 'Watchdog timed out waiting for ACTIVATED_UNVERIFIED'
+  k_error 'Watchdog timed out waiting for PREPARED and ACTIVATED_UNVERIFIED of the current transaction'
+}
+
+k_validate_fault_target_evidence() {
+  local marker_file="${K_FAULT_TARGET_FILE:-$K_EVIDENCE_DIR/fault-target.env}"
+  local records_file="${K_WATCHDOG_RECORDS_FILE:-$K_EVIDENCE_DIR/watchdog-containers.txt}"
+  local target_id=""
+  local target_phase=""
+  local target_transaction_id=""
+  local target_release_id=""
+  local target_sha=""
+  local matching_count=0
+
+  [ -f "$marker_file" ] && [ ! -L "$marker_file" ] || {
+    k_error 'Fault watchdog target evidence is missing or symlinked'
+    return 1
+  }
+  target_id="$(k_read_required_file_value "$marker_file" FAULT_TARGET_CONTAINER_ID)" || return 1
+  target_phase="$(k_read_required_file_value "$marker_file" FAULT_PHASE)" || return 1
+  target_transaction_id="$(k_read_required_file_value "$marker_file" FAULT_TRANSACTION_ID)" || return 1
+  target_release_id="$(k_read_required_file_value "$marker_file" FAULT_CANDIDATE_RELEASE_ID)" || return 1
+  target_sha="$(k_read_required_file_value "$marker_file" FAULT_CANDIDATE_SHA)" || return 1
+  [[ "$target_id" =~ ^[0-9a-f]{12,64}$ ]] || {
+    k_error 'Fault target evidence does not contain a valid container ID'
+    return 1
+  }
+  [ "$target_phase" = ACTIVATED_UNVERIFIED ] || {
+    k_error 'Fault target evidence does not identify ACTIVATED_UNVERIFIED'
+    return 1
+  }
+  k_require_transaction_id "$target_transaction_id" || return 1
+  [ "$target_transaction_id" = "${K_TRANSACTION_ID:-}" ] || {
+    k_error 'Fault target evidence belongs to another transaction attempt'
+    return 1
+  }
+  [ "$target_release_id" = "${K_C_RELEASE_ID:-}" ] || {
+    k_error 'Fault target evidence belongs to another candidate release'
+    return 1
+  }
+  k_require_sha40 fault_target_candidate_sha "$target_sha" || return 1
+  [ "$target_sha" = "${K_CANDIDATE_SHA:-}" ] || {
+    k_error 'Fault target evidence belongs to another candidate SHA'
+    return 1
+  }
+  [ "$target_id" != "${K_BASELINE_GATEWAY_ID:-}" ] || {
+    k_error 'Fault target evidence points at the baseline gateway'
+    return 1
+  }
+  [ -f "$records_file" ] && [ ! -L "$records_file" ] || {
+    k_error 'Watchdog container inventory is missing or symlinked'
+    return 1
+  }
+  k_require_immutable_image K_C_GATEWAY_IMAGE "${K_C_GATEWAY_IMAGE:-}" || return 1
+  matching_count="$(awk -F'|' \
+    -v expected_id="$target_id" \
+    -v expected_project="$K_HARNESS_COMPOSE_PROJECT" \
+    -v expected_image="$K_C_GATEWAY_IMAGE" \
+    -v expected_name="${K_EXPECTED_GATEWAY_NAME:-classroompath-gateway}" '
+      $1 == expected_id && $2 == expected_project && $3 == "gateway" &&
+      $4 == expected_image && $6 == "running" {
+        name = $5
+        sub(/^\//, "", name)
+        if (name == expected_name) count++
+      }
+      END { print count + 0 }
+    ' "$records_file")" || return 1
+  [ "$matching_count" -eq 1 ] || {
+    k_error 'Fault target evidence does not match exactly one candidate gateway record'
+    return 1
+  }
+  printf '%s\n' "$target_id"
 }
 
 k_diagnostic_is_candidate_valid() {
@@ -3384,7 +4177,10 @@ k_require_fresh_container_names() {
     classroompath-api \
     classroompath-spa \
     classroompath-openpath-windows-offline-installer-provision; do
-    existing="$(PATH="$K_EFFECTIVE_HOST_PATH" docker ps -aq --filter "name=^/${container_name}$" 2>/dev/null || true)"
+    existing="$(PATH="$K_EFFECTIVE_HOST_PATH" docker ps -aq --filter "name=^/${container_name}$" 2>/dev/null)" || {
+      k_error "Unable to prove that the fixed-name container is absent: $container_name"
+      return 1
+    }
     [ -z "$existing" ] || {
       k_error "Provisioning refuses an existing fixed-name container: $container_name"
       return 1
@@ -3403,15 +4199,441 @@ k_require_fresh_runtime_resources() {
     if PATH="$K_EFFECTIVE_HOST_PATH" docker volume inspect "$volume_name" >/dev/null 2>&1; then
       k_error "Provisioning refuses an existing persistent volume without a durable P: $volume_name"
       return 1
+    else
+      local volume_listing=""
+      volume_listing="$(PATH="$K_EFFECTIVE_HOST_PATH" docker volume ls -q --filter "name=$volume_name" 2>/dev/null)" || {
+        k_error "Unable to prove that the persistent volume is absent: $volume_name"
+        return 1
+      }
+      if printf '%s\n' "$volume_listing" | awk -v expected="$volume_name" '$0 == expected { found = 1 } END { exit(found ? 0 : 1) }'; then
+        k_error "Provisioning refuses an existing persistent volume without a durable P: $volume_name"
+        return 1
+      fi
     fi
   done
   if PATH="$K_EFFECTIVE_HOST_PATH" docker network inspect "$K_EXPECTED_NETWORKS" >/dev/null 2>&1; then
     k_error "Provisioning refuses an existing production Compose network without a durable P: $K_EXPECTED_NETWORKS"
     return 1
+  else
+    local network_listing=""
+    network_listing="$(PATH="$K_EFFECTIVE_HOST_PATH" docker network ls --format '{{.Name}}' --filter "name=$K_EXPECTED_NETWORKS" 2>/dev/null)" || {
+      k_error "Unable to prove that the production Compose network is absent: $K_EXPECTED_NETWORKS"
+      return 1
+    }
+    if printf '%s\n' "$network_listing" | awk -v expected="$K_EXPECTED_NETWORKS" '$0 == expected { found = 1 } END { exit(found ? 0 : 1) }'; then
+      k_error "Provisioning refuses an existing production Compose network without a durable P: $K_EXPECTED_NETWORKS"
+      return 1
+    fi
   fi
 }
 
-k_provision_p() {
+k_provision_attempt_file() {
+  printf '%s/release-state/provision-attempt.env\n' "$K_DEPLOY_ROOT"
+}
+
+k_provision_update_attempt() {
+  local attempt_file=""
+  local temp_file=""
+
+  attempt_file="$(k_provision_attempt_file)" || return 1
+  mkdir -p "$(dirname "$attempt_file")" || return 1
+  temp_file="$(mktemp "$attempt_file.tmp.XXXXXX")" || return 1
+  {
+    printf 'PROVISION_ATTEMPT_ID=%s\n' "${K_PROVISION_ATTEMPT_ID:-}"
+    printf 'PROVISION_STATUS=%s\n' "${K_PROVISION_ATTEMPT_STATUS:-PREPARING}"
+    printf 'PROVISION_OWNERSHIP_CONFIRMED=%s\n' "${K_PROVISION_OWNERSHIP_CONFIRMED:-false}"
+    printf 'PROVISION_RESOURCES_ABSENT_BEFORE=%s\n' "${K_PROVISION_RESOURCES_ABSENT_BEFORE:-false}"
+    printf 'PROVISION_RELEASE_ID=%s\n' "${K_P_RELEASE_ID:-}"
+    printf 'PROVISION_COMPOSE_PROJECT=%s\n' "$K_COMPOSE_PROJECT"
+    printf 'PROVISION_NETWORK_NAME=%s\n' "${K_EXPECTED_NETWORKS:-}"
+    printf 'PROVISION_GATEWAY_NAME=%s\n' "${K_EXPECTED_GATEWAY_NAME:-classroompath-gateway}"
+    printf 'PROVISION_API_NAME=%s\n' "${K_EXPECTED_API_NAME:-classroompath-api}"
+    printf 'PROVISION_SPA_NAME=%s\n' "${K_EXPECTED_SPA_NAME:-classroompath-spa}"
+    printf 'PROVISION_PROVISION_NAME=%s\n' "${K_EXPECTED_PROVISION_NAME:-classroompath-openpath-windows-offline-installer-provision}"
+    printf 'PROVISION_API_DATA_VOLUME=%s\n' "${K_EXPECTED_API_DATA_VOLUME:-}"
+    printf 'PROVISION_TEMPLATES_VOLUME=%s\n' "${K_EXPECTED_TEMPLATES_VOLUME:-}"
+    printf 'PROVISION_ARTIFACTS_VOLUME=%s\n' "${K_EXPECTED_ARTIFACTS_VOLUME:-}"
+    printf 'PROVISION_GATEWAY_ID=%s\n' "${K_PROVISION_GATEWAY_ID:-}"
+    printf 'PROVISION_API_ID=%s\n' "${K_PROVISION_API_ID:-}"
+    printf 'PROVISION_SPA_ID=%s\n' "${K_PROVISION_SPA_ID:-}"
+    printf 'PROVISION_PROVISION_ID=%s\n' "${K_PROVISION_PROVISION_ID:-}"
+    printf 'PROVISION_NETWORK_ID=%s\n' "${K_PROVISION_NETWORK_ID:-}"
+  } > "$temp_file" || {
+    rm -f "$temp_file"
+    return 1
+  }
+  install -m 600 "$temp_file" "$attempt_file" || {
+    rm -f "$temp_file"
+    return 1
+  }
+  rm -f "$temp_file"
+}
+
+k_provision_begin_attempt() {
+  K_PROVISION_ATTEMPT_ID="$(k_generate_transaction_id)" || return 1
+  k_require_transaction_id "$K_PROVISION_ATTEMPT_ID" || return 1
+  K_PROVISION_ATTEMPT_STATUS=PREPARING
+  K_PROVISION_OWNERSHIP_CONFIRMED=true
+  K_PROVISION_RESOURCES_ABSENT_BEFORE=true
+  K_PROVISION_GATEWAY_ID=""
+  K_PROVISION_API_ID=""
+  K_PROVISION_SPA_ID=""
+  K_PROVISION_PROVISION_ID=""
+  K_PROVISION_NETWORK_ID=""
+  export K_PROVISION_ATTEMPT_ID K_PROVISION_ATTEMPT_STATUS K_PROVISION_OWNERSHIP_CONFIRMED K_PROVISION_RESOURCES_ABSENT_BEFORE
+  export K_PROVISION_GATEWAY_ID K_PROVISION_API_ID K_PROVISION_SPA_ID K_PROVISION_PROVISION_ID K_PROVISION_NETWORK_ID
+  k_provision_update_attempt
+}
+
+k_provision_load_attempt() {
+  local attempt_file=""
+
+  attempt_file="$(k_provision_attempt_file)" || return 1
+  [ -f "$attempt_file" ] && [ ! -L "$attempt_file" ] || return 1
+  K_PROVISION_ATTEMPT_ID="$(k_read_required_file_value "$attempt_file" PROVISION_ATTEMPT_ID)" || return 1
+  K_PROVISION_ATTEMPT_STATUS="$(k_read_required_file_value "$attempt_file" PROVISION_STATUS)" || return 1
+  K_PROVISION_OWNERSHIP_CONFIRMED="$(k_read_required_file_value "$attempt_file" PROVISION_OWNERSHIP_CONFIRMED)" || return 1
+  K_PROVISION_RESOURCES_ABSENT_BEFORE="$(k_read_required_file_value "$attempt_file" PROVISION_RESOURCES_ABSENT_BEFORE)" || return 1
+  local provision_release_id=""
+  k_require_transaction_id "$K_PROVISION_ATTEMPT_ID" || return 1
+  [ "$(k_read_required_file_value "$attempt_file" PROVISION_COMPOSE_PROJECT)" = "$K_COMPOSE_PROJECT" ] || return 1
+  [ "$K_PROVISION_RESOURCES_ABSENT_BEFORE" = true ] || return 1
+  provision_release_id="$(k_read_required_file_value "$attempt_file" PROVISION_RELEASE_ID)"
+  [ -z "${K_P_RELEASE_ID:-}" ] || [ "$provision_release_id" = "$K_P_RELEASE_ID" ] || return 1
+  K_EXPECTED_NETWORKS="$(k_read_required_file_value "$attempt_file" PROVISION_NETWORK_NAME)"
+  K_EXPECTED_GATEWAY_NAME="$(k_read_required_file_value "$attempt_file" PROVISION_GATEWAY_NAME)"
+  K_EXPECTED_API_NAME="$(k_read_required_file_value "$attempt_file" PROVISION_API_NAME)"
+  K_EXPECTED_SPA_NAME="$(k_read_required_file_value "$attempt_file" PROVISION_SPA_NAME)"
+  K_EXPECTED_PROVISION_NAME="$(k_read_required_file_value "$attempt_file" PROVISION_PROVISION_NAME)"
+  K_EXPECTED_API_DATA_VOLUME="$(k_read_required_file_value "$attempt_file" PROVISION_API_DATA_VOLUME)"
+  K_EXPECTED_TEMPLATES_VOLUME="$(k_read_required_file_value "$attempt_file" PROVISION_TEMPLATES_VOLUME)"
+  K_EXPECTED_ARTIFACTS_VOLUME="$(k_read_required_file_value "$attempt_file" PROVISION_ARTIFACTS_VOLUME)"
+  [ "$K_EXPECTED_NETWORKS" = "${K_COMPOSE_PROJECT}_openpath_default" ] || return 1
+  [ "$K_EXPECTED_API_DATA_VOLUME" = "${K_COMPOSE_PROJECT}_api-data" ] || return 1
+  [ "$K_EXPECTED_TEMPLATES_VOLUME" = "${K_COMPOSE_PROJECT}_windows_offline_installer_templates" ] || return 1
+  [ "$K_EXPECTED_ARTIFACTS_VOLUME" = "${K_COMPOSE_PROJECT}_windows_offline_installer_artifacts" ] || return 1
+  [ "$K_EXPECTED_GATEWAY_NAME" = classroompath-gateway ] || return 1
+  [ "$K_EXPECTED_API_NAME" = classroompath-api ] || return 1
+  [ "$K_EXPECTED_SPA_NAME" = classroompath-spa ] || return 1
+  [ "$K_EXPECTED_PROVISION_NAME" = classroompath-openpath-windows-offline-installer-provision ] || return 1
+  export K_EXPECTED_NETWORKS K_EXPECTED_GATEWAY_NAME K_EXPECTED_API_NAME K_EXPECTED_SPA_NAME K_EXPECTED_PROVISION_NAME
+  export K_EXPECTED_API_DATA_VOLUME K_EXPECTED_TEMPLATES_VOLUME K_EXPECTED_ARTIFACTS_VOLUME
+  export K_PROVISION_ATTEMPT_ID K_PROVISION_ATTEMPT_STATUS K_PROVISION_OWNERSHIP_CONFIRMED K_PROVISION_RESOURCES_ABSENT_BEFORE
+  K_PROVISION_GATEWAY_ID="$(k_read_file_value "$attempt_file" PROVISION_GATEWAY_ID || true)"
+  K_PROVISION_API_ID="$(k_read_file_value "$attempt_file" PROVISION_API_ID || true)"
+  K_PROVISION_SPA_ID="$(k_read_file_value "$attempt_file" PROVISION_SPA_ID || true)"
+  K_PROVISION_PROVISION_ID="$(k_read_file_value "$attempt_file" PROVISION_PROVISION_ID || true)"
+  K_PROVISION_NETWORK_ID="$(k_read_file_value "$attempt_file" PROVISION_NETWORK_ID || true)"
+  export K_PROVISION_GATEWAY_ID K_PROVISION_API_ID K_PROVISION_SPA_ID K_PROVISION_PROVISION_ID K_PROVISION_NETWORK_ID
+}
+
+k_provision_container_metadata() {
+  local container_id="$1"
+
+  PATH="$K_EFFECTIVE_HOST_PATH" docker inspect -f '{{.Id}}|{{.Name}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}' "$container_id"
+}
+
+k_provision_container_id_for_exact_name() {
+  local container_name="$1"
+  local ids=""
+  local id_count=0
+  local id=""
+  local metadata=""
+  local actual_id=""
+  local actual_name=""
+
+  ids="$(PATH="$K_EFFECTIVE_HOST_PATH" docker ps -aq --filter "name=^/${container_name}$")" || return 1
+  id_count="$(printf '%s\n' "$ids" | awk 'NF { count += 1 } END { print count + 0 }')"
+  [ "$id_count" -le 1 ] || return 1
+  [ "$id_count" -eq 1 ] || return 0
+  id="$(printf '%s\n' "$ids" | awk 'NF { print; exit }')"
+  metadata="$(k_provision_container_metadata "$id")" || return 1
+  IFS='|' read -r actual_id actual_name _ _ <<< "$metadata"
+  actual_name="${actual_name#/}"
+  [ -n "$actual_id" ] || return 1
+  [ "$actual_name" = "$container_name" ] || return 1
+  printf '%s\n' "$actual_id"
+}
+
+k_provision_container_id_for_name() {
+  local container_name="$1"
+  local service="$2"
+  local metadata=""
+  local id=""
+  local actual_name=""
+  local project=""
+  local actual_service=""
+
+  id="$(k_provision_container_id_for_exact_name "$container_name")" || return 1
+  [ -n "$id" ] || return 1
+  metadata="$(k_provision_container_metadata "$id" 2>/dev/null)" || return 1
+  IFS='|' read -r id actual_name project actual_service <<< "$metadata"
+  actual_name="${actual_name#/}"
+  [ "$project" = "$K_COMPOSE_PROJECT" ] || return 1
+  [ "$actual_service" = "$service" ] || return 1
+  [ "$actual_name" = "$container_name" ] || return 1
+  [ -n "$id" ] || return 1
+  printf '%s\n' "$id"
+}
+
+k_provision_record_runtime_resources() {
+  local network_metadata=""
+  local network_id=""
+  local network_project=""
+  local complete=1
+
+  K_PROVISION_GATEWAY_ID="$(k_provision_container_id_for_name "${K_EXPECTED_GATEWAY_NAME:-classroompath-gateway}" gateway 2>/dev/null || true)"
+  K_PROVISION_API_ID="$(k_provision_container_id_for_name "${K_EXPECTED_API_NAME:-classroompath-api}" api 2>/dev/null || true)"
+  K_PROVISION_SPA_ID="$(k_provision_container_id_for_name "${K_EXPECTED_SPA_NAME:-classroompath-spa}" spa 2>/dev/null || true)"
+  K_PROVISION_PROVISION_ID="$(k_provision_container_id_for_name "${K_EXPECTED_PROVISION_NAME:-classroompath-openpath-windows-offline-installer-provision}" windows-offline-installer-provision 2>/dev/null || true)"
+  network_metadata="$(PATH="$K_EFFECTIVE_HOST_PATH" docker network inspect -f '{{.Id}}|{{.Name}}|{{index .Labels "com.docker.compose.project"}}' "$K_EXPECTED_NETWORKS" 2>/dev/null || true)"
+  IFS='|' read -r network_id _ network_project <<< "$network_metadata"
+  [ "$network_project" = "$K_COMPOSE_PROJECT" ] || complete=0
+  [ -n "$network_id" ] || complete=0
+  K_PROVISION_NETWORK_ID="$network_id"
+  K_PROVISION_ATTEMPT_STATUS=RUNTIME_CREATED
+  export K_PROVISION_GATEWAY_ID K_PROVISION_API_ID K_PROVISION_SPA_ID K_PROVISION_PROVISION_ID K_PROVISION_NETWORK_ID K_PROVISION_ATTEMPT_STATUS
+  k_provision_update_attempt || return 1
+  [ -n "$K_PROVISION_GATEWAY_ID" ] || complete=0
+  [ -n "$K_PROVISION_API_ID" ] || complete=0
+  [ -n "$K_PROVISION_SPA_ID" ] || complete=0
+  [ -n "$K_PROVISION_PROVISION_ID" ] || complete=0
+  [ "$complete" -eq 1 ]
+}
+
+k_provision_verify_container_owner() {
+  local container_id="$1"
+  local expected_name="$2"
+  local expected_service="$3"
+  local metadata=""
+  local actual_id=""
+  local actual_name=""
+  local project=""
+  local service=""
+
+  metadata="$(k_provision_container_metadata "$container_id")" || return 1
+  IFS='|' read -r actual_id actual_name project service <<< "$metadata"
+  actual_name="${actual_name#/}"
+  [ "$actual_id" = "$container_id" ] || return 1
+  [ "$actual_name" = "$expected_name" ] || return 1
+  [ "$project" = "$K_COMPOSE_PROJECT" ] || return 1
+  [ "$service" = "$expected_service" ]
+}
+
+k_provision_verify_volume_owner() {
+  local volume_name="$1"
+  local expected_key="$2"
+  local metadata=""
+  local actual_name=""
+  local project=""
+  local compose_key=""
+
+  metadata="$(PATH="$K_EFFECTIVE_HOST_PATH" docker volume inspect -f '{{.Name}}|{{index .Labels "com.docker.compose.project"}}|{{index .Labels "com.docker.compose.volume"}}' "$volume_name")" || return 1
+  IFS='|' read -r actual_name project compose_key <<< "$metadata"
+  [ "$actual_name" = "$volume_name" ] || return 1
+  [ "$project" = "$K_COMPOSE_PROJECT" ] || return 1
+  [ "$compose_key" = "$expected_key" ]
+}
+
+k_provision_verify_network_owner() {
+  local network_id="$1"
+  local metadata=""
+  local actual_id=""
+  local actual_name=""
+  local project=""
+
+  metadata="$(PATH="$K_EFFECTIVE_HOST_PATH" docker network inspect -f '{{.Id}}|{{.Name}}|{{index .Labels "com.docker.compose.project"}}' "$network_id")" || return 1
+  IFS='|' read -r actual_id actual_name project <<< "$metadata"
+  [ "$actual_id" = "$network_id" ] || return 1
+  [ "$actual_name" = "$K_EXPECTED_NETWORKS" ] || return 1
+  [ "$project" = "$K_COMPOSE_PROJECT" ]
+}
+
+k_provision_cleanup_attempt() {
+  local status=""
+  local current=""
+  local cleanup_failed=0
+  local resource=""
+  local volume=""
+  local id=""
+  local expected_name=""
+  local expected_service=""
+  local current_id=""
+  local volume_name=""
+  local expected_key=""
+  local network_metadata=""
+  local volume_listing=""
+  local network_listing=""
+  local network_id=""
+
+  k_provision_load_attempt || return 1
+  current="$(tr -d '\r\n' < "$K_DEPLOY_ROOT/release-state/current" 2>/dev/null || true)"
+  [ -z "$current" ] || {
+    k_error 'Provisioning cleanup refuses to remove resources after current became authoritative'
+    K_PROVISION_ATTEMPT_STATUS=CLEANUP_BLOCKED
+    k_provision_update_attempt || true
+    return 1
+  }
+  status="$K_PROVISION_ATTEMPT_STATUS"
+  case "$status" in
+    CLEANED) return 0 ;;
+    ACTIVE)
+      k_error 'Provisioning attempt is marked active without an authoritative current pointer'
+      return 1
+      ;;
+    PREPARING|RUNTIME_CREATED|CLEANUP_FAILED) ;;
+    *) k_error "Provisioning cleanup refuses unknown attempt status: $status"; return 1 ;;
+  esac
+  [ "$K_PROVISION_OWNERSHIP_CONFIRMED" = true ] || {
+    k_error 'Provisioning cleanup lacks an ownership proof for the attempt resources'
+    return 1
+  }
+  [ "$K_PROVISION_RESOURCES_ABSENT_BEFORE" = true ] || {
+    k_error 'Provisioning cleanup lacks proof that resource names were absent before this attempt'
+    return 1
+  }
+
+  for resource in \
+    "${K_PROVISION_GATEWAY_ID:-}|${K_EXPECTED_GATEWAY_NAME:-classroompath-gateway}|gateway" \
+    "${K_PROVISION_API_ID:-}|${K_EXPECTED_API_NAME:-classroompath-api}|api" \
+    "${K_PROVISION_SPA_ID:-}|${K_EXPECTED_SPA_NAME:-classroompath-spa}|spa" \
+    "${K_PROVISION_PROVISION_ID:-}|${K_EXPECTED_PROVISION_NAME:-classroompath-openpath-windows-offline-installer-provision}|windows-offline-installer-provision"; do
+    IFS='|' read -r id expected_name expected_service <<< "$resource"
+    if [ -n "$id" ] && PATH="$K_EFFECTIVE_HOST_PATH" docker inspect "$id" >/dev/null 2>&1; then
+      if ! k_provision_verify_container_owner "$id" "$expected_name" "$expected_service" ||
+        ! PATH="$K_EFFECTIVE_HOST_PATH" docker rm -f "$id" >/dev/null; then
+        cleanup_failed=1
+      fi
+      continue
+    fi
+    current_id="$(k_provision_container_id_for_exact_name "$expected_name" 2>/dev/null)" || {
+      cleanup_failed=1
+      continue
+    }
+    if [ -z "$id" ]; then
+      [ -z "$current_id" ] || cleanup_failed=1
+      continue
+    fi
+    if [ -n "$id" ] && [ -n "$current_id" ] && [ "$id" != "$current_id" ]; then
+      cleanup_failed=1
+      continue
+    fi
+    if [ -n "$current_id" ] &&
+      { ! k_provision_verify_container_owner "$current_id" "$expected_name" "$expected_service" ||
+        ! PATH="$K_EFFECTIVE_HOST_PATH" docker rm -f "$current_id" >/dev/null; }; then
+      cleanup_failed=1
+    fi
+  done
+
+  for volume in \
+    "${K_EXPECTED_API_DATA_VOLUME:-}|api-data" \
+    "${K_EXPECTED_TEMPLATES_VOLUME:-}|windows_offline_installer_templates" \
+    "${K_EXPECTED_ARTIFACTS_VOLUME:-}|windows_offline_installer_artifacts"; do
+    IFS='|' read -r volume_name expected_key <<< "$volume"
+    [ -n "$volume_name" ] || { cleanup_failed=1; continue; }
+    if PATH="$K_EFFECTIVE_HOST_PATH" docker volume inspect "$volume_name" >/dev/null 2>&1; then
+      if ! k_provision_verify_volume_owner "$volume_name" "$expected_key" ||
+        ! PATH="$K_EFFECTIVE_HOST_PATH" docker volume rm "$volume_name" >/dev/null; then
+        cleanup_failed=1
+      fi
+    else
+      volume_listing="$(PATH="$K_EFFECTIVE_HOST_PATH" docker volume ls -q --filter "name=$volume_name" 2>/dev/null)" || {
+        cleanup_failed=1
+        continue
+      }
+      if printf '%s\n' "$volume_listing" | awk -v expected="$volume_name" '$0 == expected { found = 1 } END { exit(found ? 0 : 1) }'; then
+        # Inspect failed but the exact name still exists; do not guess ownership.
+        cleanup_failed=1
+      fi
+    fi
+  done
+
+  if [ -n "${K_PROVISION_NETWORK_ID:-}" ]; then
+    if ! k_provision_verify_network_owner "$K_PROVISION_NETWORK_ID" ||
+      ! PATH="$K_EFFECTIVE_HOST_PATH" docker network rm "$K_PROVISION_NETWORK_ID" >/dev/null; then
+      cleanup_failed=1
+    fi
+  else
+    if network_metadata="$(PATH="$K_EFFECTIVE_HOST_PATH" docker network inspect -f '{{.Id}}|{{.Name}}|{{index .Labels "com.docker.compose.project"}}' "$K_EXPECTED_NETWORKS" 2>/dev/null)"; then
+      if [ -n "$network_metadata" ]; then
+        # Without the network ID persisted by this attempt, a matching name is
+        # not enough to prove ownership. Leave it in place and make the attempt
+        # retryable instead of deleting a resource created by another actor.
+        cleanup_failed=1
+      fi
+    else
+      network_listing="$(PATH="$K_EFFECTIVE_HOST_PATH" docker network ls --format '{{.Name}}' --filter "name=$K_EXPECTED_NETWORKS" 2>/dev/null)" || {
+        cleanup_failed=1
+        network_listing=""
+      }
+      if printf '%s\n' "$network_listing" | awk -v expected="$K_EXPECTED_NETWORKS" '$0 == expected { found = 1 } END { exit(found ? 0 : 1) }'; then
+        cleanup_failed=1
+      fi
+    fi
+  fi
+
+  if [ "$cleanup_failed" -ne 0 ]; then
+    K_PROVISION_ATTEMPT_STATUS=CLEANUP_FAILED
+    k_provision_update_attempt || true
+    k_error 'Provisioning cleanup did not prove removal of every attempt-owned resource'
+    return 1
+  fi
+  K_PROVISION_ATTEMPT_STATUS=CLEANED
+  k_provision_update_attempt
+}
+
+k_provision_reconcile_attempt() {
+  local attempt_file=""
+  local status=""
+  local current=""
+
+  attempt_file="$(k_provision_attempt_file)" || return 1
+  [ -e "$attempt_file" ] || return 0
+  k_provision_load_attempt || {
+    k_error 'Provisioning attempt marker is unreadable; refusing to guess ownership'
+    return 1
+  }
+  status="$K_PROVISION_ATTEMPT_STATUS"
+  current="$(tr -d '\r\n' < "$K_DEPLOY_ROOT/release-state/current" 2>/dev/null || true)"
+  case "$status" in
+    ACTIVE)
+      [ "$current" = "${K_P_RELEASE_ID:-}" ] || {
+        k_error 'Active provisioning attempt does not match authoritative P'
+        return 1
+      }
+      ;;
+    CLEANED)
+      [ -z "$current" ] || { k_error 'Cleaned provisioning attempt contradicts current pointer'; return 1; }
+      ;;
+    PREPARING|RUNTIME_CREATED|CLEANUP_FAILED)
+      if [ "$current" = "${K_P_RELEASE_ID:-}" ] && [ -n "$current" ]; then
+        # Activation is the authority.  If writing the attempt marker failed
+        # immediately after activation, retain the live P and repair only the
+        # secondary marker on the next invocation.
+        K_PROVISION_ATTEMPT_STATUS=ACTIVE
+        k_provision_update_attempt || return 1
+        return 0
+      fi
+      [ -z "$current" ] || { k_error 'Incomplete provisioning attempt conflicts with an authoritative current pointer'; return 1; }
+      k_provision_cleanup_attempt || return 1
+      ;;
+    CLEANUP_BLOCKED)
+      if [ "$current" = "${K_P_RELEASE_ID:-}" ] && [ -n "$current" ]; then
+        # A failed activation write may have published current=P before the
+        # secondary attempt marker recorded the failure. Authority wins; do
+        # not remove the now-live P resources on the next retry.
+        K_PROVISION_ATTEMPT_STATUS=ACTIVE
+        k_provision_update_attempt || return 1
+        return 0
+      fi
+      [ -z "$current" ] || { k_error 'Blocked provisioning attempt conflicts with an authoritative current pointer'; return 1; }
+      k_provision_cleanup_attempt || return 1
+      ;;
+    *) k_error "Unknown provisioning attempt status: $status"; return 1 ;;
+  esac
+}
+
+k_provision_p() (
   local state_dir="$K_DEPLOY_ROOT/release-state"
   local app_dir="${K_APP_DIR:-$K_DEPLOY_ROOT/app}"
   local runtime_dir=""
@@ -3421,6 +4643,11 @@ k_provision_p() {
   local pre_activation=""
   local post_activation=""
   local previous_requirement="${K_ATTESTATION_DURABLE_STATE_REQUIRED:-1}"
+  local provision_status=0
+
+  K_PROVISION_ATTEMPT_CREATED=0
+  K_PROVISION_ACTIVATED=0
+  trap 'provision_status=$?; if [ "${K_PROVISION_ATTEMPT_CREATED:-0}" = 1 ] && [ "${K_PROVISION_ACTIVATED:-0}" != 1 ]; then k_provision_record_runtime_resources || true; k_provision_cleanup_attempt || true; fi; exit "$provision_status"' EXIT
 
   k_require_mutation_confirmation || return 1
   K_APP_DIR="$app_dir"
@@ -3433,6 +4660,7 @@ k_provision_p() {
   k_validate_host_contract || return 1
   k_validate_release_inputs P || return 1
   k_validate_app_path "$app_dir" || return 1
+  k_provision_reconcile_attempt || return 1
   current="$(tr -d '\r\n' < "$state_dir/current" 2>/dev/null || true)"
   if [ -n "$current" ]; then
     [ "$current" = "$K_P_RELEASE_ID" ] || { k_error 'Provisioning refuses contradictory current state'; return 1; }
@@ -3447,7 +4675,7 @@ k_provision_p() {
       return 1
     }
   else
-    [ -z "$(PATH="$K_EFFECTIVE_HOST_PATH" docker ps -aq --filter "label=com.docker.compose.project=$K_COMPOSE_PROJECT" 2>/dev/null || true)" ] || {
+    [ -z "$(PATH="$K_EFFECTIVE_HOST_PATH" docker ps -aq --filter "label=com.docker.compose.project=$K_COMPOSE_PROJECT" 2>/dev/null)" ] || {
       k_error 'Provisioning refuses existing containers without durable current state'
       return 1
     }
@@ -3468,6 +4696,10 @@ k_provision_p() {
   if [ -z "$current" ]; then
     k_require_fresh_runtime_resources || return 1
   fi
+  if [ -z "$current" ]; then
+    k_provision_begin_attempt || return 1
+    K_PROVISION_ATTEMPT_CREATED=1
+  fi
   k_validate_firefox_release_root || return 1
   k_verify_bundle_in_verifier P "$runtime_dir" || return 1
   k_set_attestation_expectations P || return 1
@@ -3475,6 +4707,7 @@ k_provision_p() {
   if [ -n "$current" ]; then
     k_collect_snapshot "$K_EVIDENCE_DIR/p-existing.snapshot" || return 1
     k_validate_attestation "$K_EVIDENCE_DIR/p-existing.snapshot" || return 1
+    K_PROVISION_ACTIVATED=1
     k_info 'P is already provisioned and K0-valid'
     return 0
   fi
@@ -3496,8 +4729,9 @@ k_provision_p() {
   export COMPOSE_PROJECT_NAME="$K_COMPOSE_PROJECT"
   k_prepare_openpath_assets || return 1
   PATH="$K_EFFECTIVE_HOST_PATH" docker compose --env-file "$env_file" -p "$K_COMPOSE_PROJECT" -f "$compose_file" pull gateway api windows-offline-installer-provision spa || return 1
-  PATH="$K_EFFECTIVE_HOST_PATH" docker compose --env-file "$env_file" -p "$K_COMPOSE_PROJECT" -f "$compose_file" up -d --force-recreate --no-build || return 1
   PATH="$K_EFFECTIVE_HOST_PATH" bash "$app_dir/scripts/run-migrations-docker.sh" --cp --openpath --app-dir "$app_dir" --env-file "$env_file" --runner-image "$K_P_MIGRATIONS_IMAGE" || return 1
+  PATH="$K_EFFECTIVE_HOST_PATH" docker compose --env-file "$env_file" -p "$K_COMPOSE_PROJECT" -f "$compose_file" up -d --force-recreate --no-build || return 1
+  k_provision_record_runtime_resources || return 1
   K_ATTESTATION_DURABLE_STATE_REQUIRED=0
   export K_ATTESTATION_DURABLE_STATE_REQUIRED
   k_collect_snapshot "$pre_activation" pre-activation "$K_P_RELEASE_ID" "$K_P_BUNDLE_FILE" "$K_P_CONTRACT_FILE" "$K_P_VERIFIER_RUNTIME_FILE" || {
@@ -3514,21 +4748,28 @@ k_provision_p() {
   export K_ATTESTATION_DURABLE_STATE_REQUIRED
   k_persist_release_bundle "$state_dir" "$K_P_BUNDLE_FILE" "$K_P_CONTRACT_FILE" "$K_P_RELEASE_ID" "$K_P_RC_RUN_ID" "$K_P_VERIFIER_IMAGE" || return 1
   k_activate_release_bundle "$state_dir" "$K_P_RELEASE_ID" "$K_P_VERIFIER_IMAGE" || return 1
+  K_PROVISION_ACTIVATED=1
+  K_PROVISION_ATTEMPT_STATUS=ACTIVE
+  k_provision_update_attempt || return 1
   k_collect_snapshot "$post_activation" || return 1
   k_validate_attestation "$post_activation" || return 1
   k_info 'P provisioning completed; K remains pending'
-}
+)
 
 k_execute_fault_leg() {
   local baseline="$K_EVIDENCE_DIR/baseline.snapshot"
   local records="$K_EVIDENCE_DIR/records.jsonl"
   local forward_status=0
-  local rollback_status=0
   local watchdog_pid=0
-  local watchdog_status=0
+  local watchdog_status=1
   local phase_file="$K_DEPLOY_ROOT/release-state/deployment-phase.env"
   local post_rollback="$K_EVIDENCE_DIR/post-rollback.snapshot"
-  local rollback_observer_status=1
+  local finalize_status=1
+  local boundary=""
+  local target_id=""
+  local baseline_hash=""
+  local post_rollback_hash=""
+  local post_rollback_contract_status=0
 
   k_require_mutation_confirmation || return 1
   k_validate_host_contract || return 1
@@ -3537,37 +4778,40 @@ k_execute_fault_leg() {
   K_BASELINE_GATEWAY_ID="$(k_read_required_file_value "$baseline" LIVE_GATEWAY_ID)"
   K_PREVIOUS_RELEASE_ID="$(k_read_required_file_value "$baseline" STATE_CURRENT_RELEASE_ID)"
   K_PREVIOUS_APP_SHA="$K_P_APP_SHA"
-  export K_BASELINE_GATEWAY_ID K_PREVIOUS_RELEASE_ID
-  export K_PREVIOUS_APP_SHA
+  export K_BASELINE_GATEWAY_ID K_PREVIOUS_RELEASE_ID K_PREVIOUS_APP_SHA
   k_capture_previous_release "$K_DEPLOY_ROOT/release-state" "$K_P_VERIFIER_IMAGE" || return 1
+  k_initialize_leg_outcomes
   k_initialize_transaction_history || return 1
-  k_record "$records" identity candidate_sha "$K_CANDIDATE_SHA"
-  k_record "$records" identity recovery_sha "$K_RECOVERY_SHA"
-  k_record "$records" identity previous_release_id "$K_PREVIOUS_RELEASE_ID"
-  k_record "$records" identity environment_id "$K_ENVIRONMENT_ID"
-  k_record "$records" identity previous_release_app_sha "$K_PREVIOUS_APP_SHA"
-  k_record "$records" identity candidate_release_id "$K_C_RELEASE_ID"
-  k_record "$records" identity previous_rc_run_id "$K_P_RC_RUN_ID"
-  k_record "$records" identity candidate_rc_run_id "$K_C_RC_RUN_ID"
-  k_record "$records" identity previous_openpath_sha "$K_P_OPENPATH_SHA"
-  k_record "$records" identity candidate_openpath_sha "$K_C_OPENPATH_SHA"
-  k_record "$records" artifact previous_bundle_sha256 "$K_P_BUNDLE_SHA256"
-  k_record "$records" artifact candidate_bundle_sha256 "$K_C_BUNDLE_SHA256"
-  k_record "$records" artifact previous_contract_sha256 "$K_P_CONTRACT_SHA256"
-  k_record "$records" artifact candidate_contract_sha256 "$K_C_CONTRACT_SHA256"
-  k_record "$records" topology compose_project "$K_COMPOSE_PROJECT"
-  k_record "$records" topology normal_staging_allowed "$K_NORMAL_STAGING_ALLOWED"
-  k_record "$records" isolation database_identity "$K_DATABASE_IDENTITY"
-  k_record "$records" isolation database_endpoint_sha256 "$K_DATABASE_ENDPOINT_SHA256"
-  k_record "$records" isolation database_scope "$K_DATABASE_SCOPE"
-  k_record "$records" isolation credentials_scope "$K_CREDENTIALS_SCOPE"
-  k_record "$records" isolation base_url_sha256 "$K_BASE_URL_SHA256"
-  k_record "$records" host node_npm_unavailable "${K_HOST_NODE_NPM_UNAVAILABLE:-false}"
-  k_record "$records" host contract_passed true
-  k_record "$records" host node_observed "${K_HOST_NODE_OBSERVED:-unknown}"
-  k_record "$records" host npm_observed "${K_HOST_NPM_OBSERVED:-unknown}"
-  k_record "$records" host docker_daemon_id "${K_DOCKER_DAEMON_ID_OBSERVED:-unknown}"
-  k_record "$records" host gateway_download_device_sha256 "${K_GATEWAY_DOWNLOAD_DEVICE_SHA256_OBSERVED:-unknown}"
+  k_initialize_transaction_attempt || return 1
+  mkdir -p "$K_EVIDENCE_DIR" || return 1
+  k_record "$records" identity transaction_id "$K_TRANSACTION_ID" || return 1
+  k_record "$records" identity candidate_sha "$K_CANDIDATE_SHA" || return 1
+  k_record "$records" identity recovery_sha "$K_RECOVERY_SHA" || return 1
+  k_record "$records" identity previous_release_id "$K_PREVIOUS_RELEASE_ID" || return 1
+  k_record "$records" identity environment_id "$K_ENVIRONMENT_ID" || return 1
+  k_record "$records" identity previous_release_app_sha "$K_PREVIOUS_APP_SHA" || return 1
+  k_record "$records" identity candidate_release_id "$K_C_RELEASE_ID" || return 1
+  k_record "$records" identity previous_rc_run_id "$K_P_RC_RUN_ID" || return 1
+  k_record "$records" identity candidate_rc_run_id "$K_C_RC_RUN_ID" || return 1
+  k_record "$records" identity previous_openpath_sha "$K_P_OPENPATH_SHA" || return 1
+  k_record "$records" identity candidate_openpath_sha "$K_C_OPENPATH_SHA" || return 1
+  k_record "$records" artifact previous_bundle_sha256 "$K_P_BUNDLE_SHA256" || return 1
+  k_record "$records" artifact candidate_bundle_sha256 "$K_C_BUNDLE_SHA256" || return 1
+  k_record "$records" artifact previous_contract_sha256 "$K_P_CONTRACT_SHA256" || return 1
+  k_record "$records" artifact candidate_contract_sha256 "$K_C_CONTRACT_SHA256" || return 1
+  k_record "$records" topology compose_project "$K_COMPOSE_PROJECT" || return 1
+  k_record "$records" topology normal_staging_allowed "$K_NORMAL_STAGING_ALLOWED" || return 1
+  k_record "$records" isolation database_identity "$K_DATABASE_IDENTITY" || return 1
+  k_record "$records" isolation database_endpoint_sha256 "$K_DATABASE_ENDPOINT_SHA256" || return 1
+  k_record "$records" isolation database_scope "$K_DATABASE_SCOPE" || return 1
+  k_record "$records" isolation credentials_scope "$K_CREDENTIALS_SCOPE" || return 1
+  k_record "$records" isolation base_url_sha256 "$K_BASE_URL_SHA256" || return 1
+  k_record "$records" host node_npm_unavailable "${K_HOST_NODE_NPM_UNAVAILABLE:-false}" || return 1
+  k_record "$records" host contract_passed true || return 1
+  k_record "$records" host node_observed "${K_HOST_NODE_OBSERVED:-unknown}" || return 1
+  k_record "$records" host npm_observed "${K_NPM_OBSERVED:-unknown}" || return 1
+  k_record "$records" host docker_daemon_id "${K_DOCKER_DAEMON_ID_OBSERVED:-unknown}" || return 1
+  k_record "$records" host gateway_download_device_sha256 "${K_GATEWAY_DOWNLOAD_DEVICE_SHA256_OBSERVED:-unknown}" || return 1
   k_validate_release_inputs C || return 1
   k_validate_candidate_identity || return 1
   k_validate_candidate_source_checkout || return 1
@@ -3581,90 +4825,151 @@ k_execute_fault_leg() {
   k_stage_candidate_entrypoint || return 1
   k_stage_stable_rollback_wrapper || return 1
   k_stage_diagnostic_fallback || return 1
-  mkdir -p "$(dirname "$records")"
-  k_record "$records" recovery source_sha "$K_RECOVERY_SOURCE_SHA"
-  k_record "$records" recovery contract_version "$K_RECOVERY_CONTRACT_VERSION"
-  k_record "$records" recovery source_version "$K_RECOVERY_SOURCE_VERSION"
-  k_record "$records" recovery artifact_sha256 "$K_RECOVERY_ARTIFACT_SHA256"
-  k_record "$records" recovery executor_sha256 "$K_RECOVERY_EXECUTOR_SHA256"
-  k_record "$records" recovery preflight_before_boundary true
-  k_record "$records" migration risk "$(k_read_required_file_value "$K_EVIDENCE_DIR/migration.env" MIGRATION_RISK_LEVEL)"
-  k_record "$records" migration changed_files "$(k_read_file_value "$K_EVIDENCE_DIR/migration.env" MIGRATION_CHANGED_FILES || true)"
-  k_record "$records" migration destructive_files "$(k_read_file_value "$K_EVIDENCE_DIR/migration.env" MIGRATION_DESTRUCTIVE_FILES || true)"
-  k_record "$records" pointer baseline_current "$(k_read_required_file_value "$baseline" STATE_CURRENT_RELEASE_ID)"
-  k_record "$records" pointer baseline_previous "$(k_read_file_value "$baseline" STATE_PREVIOUS_RELEASE_ID || true)"
-  k_watchdog_loop &
-  watchdog_pid=$!
-  if k_run_forward_from_stdin; then forward_status=0; else forward_status=$?; fi
-  if wait "$watchdog_pid"; then watchdog_status=0; else watchdog_status=$?; fi
-  k_record "$records" fault watchdog_status "$watchdog_status"
-  k_record_phase_state "$records" || true
-  k_collect_diagnostic || return 1
-  k_record "$records" diagnostic provenance "$K_DIAGNOSTIC_PROVENANCE"
-  k_validate_transaction_history "$K_TRANSACTION_HISTORY_FILE" \
-    PREPARED SWITCHING ACTIVATED_UNVERIFIED FAILED || return 1
-  k_record_transaction_history "$records" "$K_TRANSACTION_HISTORY_FILE" || return 1
-  [ "$forward_status" -ne 0 ] || {
-    k_error 'Fault leg did not fail the candidate after the controlled fault'
-    return 1
-  }
-  [ "$(k_read_file_value "$phase_file" MUTATION_BOUNDARY_REACHED || true)" = 1 ] || {
-    k_error 'Fault leg did not cross the mutation boundary'
-    return 1
-  }
-  [ -f "${K_FAULT_TARGET_FILE:-$K_EVIDENCE_DIR/fault-target.env}" ] || {
-    k_error 'Fault watchdog did not identify candidate C'
-    return 1
-  }
-  k_record "$records" fault target_container_id "$(k_read_required_file_value "${K_FAULT_TARGET_FILE:-$K_EVIDENCE_DIR/fault-target.env}" FAULT_TARGET_CONTAINER_ID)"
-  k_record "$records" fault target_phase "$(k_read_required_file_value "${K_FAULT_TARGET_FILE:-$K_EVIDENCE_DIR/fault-target.env}" FAULT_PHASE)"
-  k_require_durable_recovery_artifact || return 1
-  k_validate_recovery "$K_EVIDENCE_DIR/recovery-identity.env" || return 1
-  k_run_rollback_observed || true
-  rollback_status="${K_ROLLBACK_STATUS:-1}"
-  rollback_observer_status="${K_ROLLBACK_OBSERVER_STATUS:-1}"
-  k_record "$records" rollback invoked true
-  k_record "$records" rollback observer_status "$rollback_observer_status"
-  k_record_rollback_phase_observations "$records" || true
-  if [ "$rollback_observer_status" -eq 0 ]; then
-    if [ "$rollback_status" -eq 0 ]; then
-      k_validate_rollback_phase_observations "$K_ROLLBACK_PHASE_OBSERVATIONS_FILE" 1 || return 1
-    else
-      k_validate_rollback_phase_observations "$K_ROLLBACK_PHASE_OBSERVATIONS_FILE" 0 || return 1
-    fi
+  k_record "$records" recovery source_sha "$K_RECOVERY_SOURCE_SHA" || return 1
+  k_record "$records" recovery contract_version "$K_RECOVERY_CONTRACT_VERSION" || return 1
+  k_record "$records" recovery source_version "$K_RECOVERY_SOURCE_VERSION" || return 1
+  k_record "$records" recovery artifact_sha256 "$K_RECOVERY_ARTIFACT_SHA256" || return 1
+  k_record "$records" recovery executor_sha256 "$K_RECOVERY_EXECUTOR_SHA256" || return 1
+  k_record "$records" recovery preflight_before_boundary true || return 1
+  k_record "$records" migration risk "$(k_read_required_file_value "$K_EVIDENCE_DIR/migration.env" MIGRATION_RISK_LEVEL)" || return 1
+  k_record "$records" migration changed_files "$(k_read_file_value "$K_EVIDENCE_DIR/migration.env" MIGRATION_CHANGED_FILES || true)" || return 1
+  k_record "$records" migration destructive_files "$(k_read_file_value "$K_EVIDENCE_DIR/migration.env" MIGRATION_DESTRUCTIVE_FILES || true)" || return 1
+  k_record "$records" pointer baseline_current "$(k_read_required_file_value "$baseline" STATE_CURRENT_RELEASE_ID)" || return 1
+  k_record "$records" pointer baseline_previous "$(k_read_file_value "$baseline" STATE_PREVIOUS_RELEASE_ID || true)" || return 1
+
+  # The watchdog may start before the executor, but it cannot act until it
+  # observes this exact transaction in PREPARED and later ACTIVATED_UNVERIFIED.
+  k_watchdog_loop "$K_TRANSACTION_ID" "$K_C_RELEASE_ID" "$K_CANDIDATE_SHA" &
+  watchdog_pid="$!"
+  if k_run_forward_from_stdin; then forward_status=0; else forward_status="$?"; fi
+  # Do not wait out the watchdog timeout once the forward has returned.  If it
+  # never observed PREPARED, this is a pre-boundary failure; if it did observe
+  # the boundary, the shared policy below must classify and recover it.
+  if kill -0 "$watchdog_pid" 2>/dev/null; then
+    kill "$watchdog_pid" 2>/dev/null || true
+  fi
+  if wait "$watchdog_pid"; then watchdog_status=0; else watchdog_status="$?"; fi
+
+  # Recovery is intentionally before every strict evidence check below.
+  k_process_post_forward "$forward_status" fault "$records" "$phase_file"
+  k_record_best_effort "$records" fault watchdog_status "$watchdog_status"
+  if [ "$forward_status" -eq 0 ]; then
+    k_mark_evidence_incomplete 'Fault leg forward unexpectedly succeeded'
+  fi
+  if [ "$watchdog_status" -ne 0 ]; then
+    k_mark_evidence_incomplete 'Fault watchdog did not complete its expected action'
+  fi
+  boundary="$(k_read_file_value "$phase_file" MUTATION_BOUNDARY_REACHED || true)"
+  if [ "$boundary" != 1 ]; then
+    k_mark_evidence_incomplete 'Fault leg did not prove that the mutation boundary was reached'
+  fi
+  if target_id="$(k_validate_fault_target_evidence)"; then
+    k_record_best_effort "$records" fault target_container_id "$target_id"
   else
-    k_record "$records" rollback result INCOMPLETE || true
-    k_build_evidence "$records" "$K_EVIDENCE_DIR" || true
-    k_error 'Rollback phase observation was incomplete; refusing to claim rollback proof'
+    k_mark_evidence_incomplete 'Fault target evidence is missing or belongs to another transaction'
+  fi
+
+  if [ "${K_RECOVERY_ATTEMPTED:-false}" = true ]; then
+    if [ "${K_RECOVERY_RESULT:-FAILED}" = ROLLED_BACK ]; then
+      k_record_best_effort "$records" rollback result ROLLED_BACK
+    else
+      k_record_best_effort "$records" rollback result FAILED
+    fi
+    if [ -f "${K_ROLLBACK_PHASE_OBSERVATIONS_FILE:-$K_EVIDENCE_DIR/rollback-phase-observations.env}" ]; then
+      k_record_rollback_phase_observations "$records" ||
+        k_mark_evidence_incomplete 'Rollback phase observations could not be recorded'
+    else
+      k_mark_evidence_incomplete 'Rollback phase observations are missing'
+    fi
+  fi
+
+  if [ "${K_RECOVERY_RESULT:-NOT_REQUIRED}" = ROLLED_BACK ]; then
+    if ! k_set_attestation_expectations P; then
+      k_mark_evidence_incomplete 'P attestation expectations could not be restored'
+      post_rollback_contract_status=1
+    fi
+    if ! k_collect_snapshot "$post_rollback"; then
+      k_mark_evidence_incomplete 'Post-recovery P snapshot could not be collected'
+      post_rollback_contract_status=1
+    elif ! k_validate_attestation "$post_rollback" "$baseline"; then
+      k_mark_evidence_incomplete 'Post-recovery P attestation did not match the baseline'
+      post_rollback_contract_status=1
+    fi
+    if ! k_validate_transition "$phase_file"; then
+      k_mark_evidence_incomplete 'Post-recovery durable transition is invalid'
+      post_rollback_contract_status=1
+    fi
+    if [ "$(k_read_file_value "$phase_file" DEPLOYMENT_PHASE || true)" != ROLLED_BACK ]; then
+      k_mark_evidence_incomplete 'Recovery did not leave the durable phase at ROLLED_BACK'
+      post_rollback_contract_status=1
+    fi
+    if [ "$(k_read_file_value "$phase_file" CURRENT_RELEASE_ID || true)" != "$K_PREVIOUS_RELEASE_ID" ]; then
+      k_mark_evidence_incomplete 'Recovery did not restore current to P'
+      post_rollback_contract_status=1
+    fi
+    if [ "$post_rollback_contract_status" -eq 0 ]; then
+      k_record_best_effort "$records" rollback health 200
+      k_record_best_effort "$records" rollback ready true
+      k_record_best_effort "$records" rollback same_persistent_topology true
+    else
+      k_record_best_effort "$records" rollback health unproven
+      k_record_best_effort "$records" rollback ready unproven
+      k_record_best_effort "$records" rollback same_persistent_topology unproven
+    fi
+    k_record_best_effort "$records" rollback current "$K_PREVIOUS_RELEASE_ID"
+  elif [ "${K_RECOVERY_ATTEMPTED:-false}" = true ]; then
+    k_mark_evidence_incomplete 'Automated recovery did not prove that P was restored'
+  fi
+
+  baseline_hash="$(k_hash_file "$baseline" 2>/dev/null || true)"
+  k_record_best_effort "$records" evidence baseline_snapshot_sha256 "$baseline_hash"
+  if [ -f "$post_rollback" ]; then
+    post_rollback_hash="$(k_hash_file "$post_rollback" 2>/dev/null || true)"
+    k_record_best_effort "$records" evidence post_rollback_snapshot_sha256 "$post_rollback_hash"
+  fi
+  if k_validate_recovery "$K_EVIDENCE_DIR/recovery-identity.env"; then
+    k_record_best_effort "$records" recovery exact_identity_valid true
+  else
+    k_mark_evidence_incomplete 'Recovery identity evidence is incomplete'
+  fi
+
+  if k_finalize_leg_evidence fault "$records" "$K_TRANSACTION_HISTORY_FILE"; then
+    finalize_status=0
+  else
+    finalize_status="$?"
+  fi
+
+  # A fault rehearsal is successful only when the expected fault happened,
+  # recovery restored P, and the evidence is complete.  Recovery success
+  # never turns the forward leg into success.
+  if [ "$forward_status" -eq 0 ] ||
+    [ "${K_FORWARD_OUTCOME:-STATE_UNKNOWN_AFTER_FORWARD}" = FORWARD_COMMITTED_FAULT ] ||
+    [ "${K_FORWARD_OUTCOME:-STATE_UNKNOWN_AFTER_FORWARD}" = FORWARD_SUCCESS_COMMITTED ] ||
+    [ "$boundary" != 1 ] ||
+    [ "${K_RECOVERY_RESULT:-FAILED}" != ROLLED_BACK ] ||
+    [ "${K_SAFETY_OUTCOME:-RECOVERY_FAILED}" != ROLLED_BACK ] ||
+    [ "${K_EVIDENCE_OUTCOME:-INCOMPLETE}" != COMPLETE ] ||
+    [ "$finalize_status" -ne 0 ]; then
+    k_error 'fault-leg failed; inspect evidence and recovery outcome'
     return 1
   fi
-  [ "$rollback_status" -eq 0 ] || {
-    k_record "$records" rollback result FAILED || true
-    k_build_evidence "$records" "$K_EVIDENCE_DIR" || true
-    k_error 'Automated rollback failed; use the documented emergency procedure'
-    return 1
-  }
-  k_set_attestation_expectations P || return 1
-  k_collect_snapshot "$post_rollback" || return 1
-  k_validate_attestation "$post_rollback" "$baseline" || return 1
-  k_validate_transition "$phase_file" || return 1
-  [ "$(k_read_required_file_value "$phase_file" DEPLOYMENT_PHASE)" = ROLLED_BACK ] || return 1
-  [ "$(k_read_required_file_value "$phase_file" CURRENT_RELEASE_ID)" = "$K_PREVIOUS_RELEASE_ID" ] || return 1
-  k_record_phase_state "$records" || return 1
-  k_record "$records" rollback result ROLLED_BACK
-  k_record "$records" rollback same_persistent_topology true
-  k_record "$records" evidence baseline_snapshot_sha256 "$(k_hash_file "$baseline")"
-  k_record "$records" evidence post_rollback_snapshot_sha256 "$(k_hash_file "$post_rollback")"
-  k_build_evidence "$records" "$K_EVIDENCE_DIR"
-  return 0
+  k_info 'fault-leg completed with the expected fault and P restored; K evidence is still pending'
 }
 
 k_execute_success_leg() {
   local baseline="$K_EVIDENCE_DIR/baseline.snapshot"
-  local forward_status=0
   local records="$K_EVIDENCE_DIR/records.jsonl"
+  local forward_status=0
   local phase_file="$K_DEPLOY_ROOT/release-state/deployment-phase.env"
   local post_commit="$K_EVIDENCE_DIR/post-commit.snapshot"
+  local post_recovery="$K_EVIDENCE_DIR/post-recovery.snapshot"
+  local finalize_status=1
+  local phase=""
+  local current=""
+  local baseline_hash=""
+  local post_commit_hash=""
+  local post_recovery_hash=""
+  local post_recovery_contract_status=0
 
   k_require_mutation_confirmation || return 1
   k_validate_host_contract || return 1
@@ -3672,36 +4977,39 @@ k_execute_success_leg() {
   k_load_runtime_secrets || return 1
   K_PREVIOUS_RELEASE_ID="$(k_read_required_file_value "$baseline" STATE_CURRENT_RELEASE_ID)"
   K_PREVIOUS_APP_SHA="$K_P_APP_SHA"
-  export K_PREVIOUS_RELEASE_ID
-  export K_PREVIOUS_APP_SHA
+  export K_PREVIOUS_RELEASE_ID K_PREVIOUS_APP_SHA
   k_capture_previous_release "$K_DEPLOY_ROOT/release-state" "$K_P_VERIFIER_IMAGE" || return 1
+  k_initialize_leg_outcomes
   k_initialize_transaction_history || return 1
-  k_record "$records" identity candidate_sha "$K_CANDIDATE_SHA"
-  k_record "$records" identity previous_release_id "$K_PREVIOUS_RELEASE_ID"
-  k_record "$records" identity environment_id "$K_ENVIRONMENT_ID"
-  k_record "$records" identity previous_release_app_sha "$K_PREVIOUS_APP_SHA"
-  k_record "$records" identity candidate_release_id "$K_C_RELEASE_ID"
-  k_record "$records" identity previous_rc_run_id "$K_P_RC_RUN_ID"
-  k_record "$records" identity candidate_rc_run_id "$K_C_RC_RUN_ID"
-  k_record "$records" identity previous_openpath_sha "$K_P_OPENPATH_SHA"
-  k_record "$records" identity candidate_openpath_sha "$K_C_OPENPATH_SHA"
-  k_record "$records" artifact previous_bundle_sha256 "$K_P_BUNDLE_SHA256"
-  k_record "$records" artifact candidate_bundle_sha256 "$K_C_BUNDLE_SHA256"
-  k_record "$records" artifact previous_contract_sha256 "$K_P_CONTRACT_SHA256"
-  k_record "$records" artifact candidate_contract_sha256 "$K_C_CONTRACT_SHA256"
-  k_record "$records" topology compose_project "$K_COMPOSE_PROJECT"
-  k_record "$records" topology normal_staging_allowed "$K_NORMAL_STAGING_ALLOWED"
-  k_record "$records" isolation database_identity "$K_DATABASE_IDENTITY"
-  k_record "$records" isolation database_endpoint_sha256 "$K_DATABASE_ENDPOINT_SHA256"
-  k_record "$records" isolation database_scope "$K_DATABASE_SCOPE"
-  k_record "$records" isolation credentials_scope "$K_CREDENTIALS_SCOPE"
-  k_record "$records" isolation base_url_sha256 "$K_BASE_URL_SHA256"
-  k_record "$records" host node_npm_unavailable "${K_HOST_NODE_NPM_UNAVAILABLE:-false}"
-  k_record "$records" host contract_passed true
-  k_record "$records" host node_observed "${K_HOST_NODE_OBSERVED:-unknown}"
-  k_record "$records" host npm_observed "${K_HOST_NPM_OBSERVED:-unknown}"
-  k_record "$records" host docker_daemon_id "${K_DOCKER_DAEMON_ID_OBSERVED:-unknown}"
-  k_record "$records" host gateway_download_device_sha256 "${K_GATEWAY_DOWNLOAD_DEVICE_SHA256_OBSERVED:-unknown}"
+  k_initialize_transaction_attempt || return 1
+  mkdir -p "$K_EVIDENCE_DIR" || return 1
+  k_record "$records" identity transaction_id "$K_TRANSACTION_ID" || return 1
+  k_record "$records" identity candidate_sha "$K_CANDIDATE_SHA" || return 1
+  k_record "$records" identity previous_release_id "$K_PREVIOUS_RELEASE_ID" || return 1
+  k_record "$records" identity environment_id "$K_ENVIRONMENT_ID" || return 1
+  k_record "$records" identity previous_release_app_sha "$K_PREVIOUS_APP_SHA" || return 1
+  k_record "$records" identity candidate_release_id "$K_C_RELEASE_ID" || return 1
+  k_record "$records" identity previous_rc_run_id "$K_P_RC_RUN_ID" || return 1
+  k_record "$records" identity candidate_rc_run_id "$K_C_RC_RUN_ID" || return 1
+  k_record "$records" identity previous_openpath_sha "$K_P_OPENPATH_SHA" || return 1
+  k_record "$records" identity candidate_openpath_sha "$K_C_OPENPATH_SHA" || return 1
+  k_record "$records" artifact previous_bundle_sha256 "$K_P_BUNDLE_SHA256" || return 1
+  k_record "$records" artifact candidate_bundle_sha256 "$K_C_BUNDLE_SHA256" || return 1
+  k_record "$records" artifact previous_contract_sha256 "$K_P_CONTRACT_SHA256" || return 1
+  k_record "$records" artifact candidate_contract_sha256 "$K_C_CONTRACT_SHA256" || return 1
+  k_record "$records" topology compose_project "$K_COMPOSE_PROJECT" || return 1
+  k_record "$records" topology normal_staging_allowed "$K_NORMAL_STAGING_ALLOWED" || return 1
+  k_record "$records" isolation database_identity "$K_DATABASE_IDENTITY" || return 1
+  k_record "$records" isolation database_endpoint_sha256 "$K_DATABASE_ENDPOINT_SHA256" || return 1
+  k_record "$records" isolation database_scope "$K_DATABASE_SCOPE" || return 1
+  k_record "$records" isolation credentials_scope "$K_CREDENTIALS_SCOPE" || return 1
+  k_record "$records" isolation base_url_sha256 "$K_BASE_URL_SHA256" || return 1
+  k_record "$records" host node_npm_unavailable "${K_HOST_NODE_NPM_UNAVAILABLE:-false}" || return 1
+  k_record "$records" host contract_passed true || return 1
+  k_record "$records" host node_observed "${K_HOST_NODE_OBSERVED:-unknown}" || return 1
+  k_record "$records" host npm_observed "${K_NPM_OBSERVED:-unknown}" || return 1
+  k_record "$records" host docker_daemon_id "${K_DOCKER_DAEMON_ID_OBSERVED:-unknown}" || return 1
+  k_record "$records" host gateway_download_device_sha256 "${K_GATEWAY_DOWNLOAD_DEVICE_SHA256_OBSERVED:-unknown}" || return 1
   k_validate_release_inputs C || return 1
   k_validate_candidate_identity || return 1
   k_validate_candidate_source_checkout || return 1
@@ -3715,34 +5023,105 @@ k_execute_success_leg() {
   k_stage_candidate_entrypoint || return 1
   k_stage_stable_rollback_wrapper || return 1
   k_stage_diagnostic_fallback || return 1
-  k_record "$records" recovery source_sha "$K_RECOVERY_SOURCE_SHA"
-  k_record "$records" recovery contract_version "$K_RECOVERY_CONTRACT_VERSION"
-  k_record "$records" recovery source_version "$K_RECOVERY_SOURCE_VERSION"
-  k_record "$records" recovery artifact_sha256 "$K_RECOVERY_ARTIFACT_SHA256"
-  k_record "$records" recovery executor_sha256 "$K_RECOVERY_EXECUTOR_SHA256"
-  k_record "$records" recovery preflight_before_boundary true
-  k_record "$records" migration risk "$(k_read_required_file_value "$K_EVIDENCE_DIR/migration.env" MIGRATION_RISK_LEVEL)"
-  k_record "$records" migration changed_files "$(k_read_file_value "$K_EVIDENCE_DIR/migration.env" MIGRATION_CHANGED_FILES || true)"
-  k_record "$records" migration destructive_files "$(k_read_file_value "$K_EVIDENCE_DIR/migration.env" MIGRATION_DESTRUCTIVE_FILES || true)"
-  if k_run_forward_from_stdin; then forward_status=0; else forward_status=$?; fi
-  [ "$forward_status" -eq 0 ] || { k_collect_diagnostic || true; return 1; }
-  k_require_durable_recovery_artifact || return 1
-  k_validate_recovery "$K_EVIDENCE_DIR/recovery-identity.env" || return 1
-  k_validate_transaction_history "$K_TRANSACTION_HISTORY_FILE" \
-    PREPARED SWITCHING ACTIVATED_UNVERIFIED VERIFIED COMMITTED || return 1
-  k_record_transaction_history "$records" "$K_TRANSACTION_HISTORY_FILE" || return 1
-  k_validate_transition "$phase_file" || return 1
-  [ "$(k_read_required_file_value "$phase_file" DEPLOYMENT_PHASE)" = COMMITTED ] || return 1
-  [ "$(k_read_required_file_value "$phase_file" CURRENT_RELEASE_ID)" = "$K_C_RELEASE_ID" ] || return 1
-  [ "$(k_read_required_file_value "$phase_file" PREVIOUS_RELEASE_ID)" = "$K_PREVIOUS_RELEASE_ID" ] || return 1
-  k_record_phase_state "$records" || return 1
-  k_collect_snapshot "$post_commit" || return 1
-  k_validate_attestation "$post_commit" "$baseline" || return 1
-  k_record "$records" pointer current "$K_C_RELEASE_ID"
-  k_record "$records" pointer previous "$K_PREVIOUS_RELEASE_ID"
-  k_record "$records" evidence baseline_snapshot_sha256 "$(k_hash_file "$baseline")"
-  k_record "$records" evidence post_commit_snapshot_sha256 "$(k_hash_file "$post_commit")"
-  k_build_evidence "$records" "$K_EVIDENCE_DIR"
+  k_record "$records" recovery source_sha "$K_RECOVERY_SOURCE_SHA" || return 1
+  k_record "$records" recovery contract_version "$K_RECOVERY_CONTRACT_VERSION" || return 1
+  k_record "$records" recovery source_version "$K_RECOVERY_SOURCE_VERSION" || return 1
+  k_record "$records" recovery artifact_sha256 "$K_RECOVERY_ARTIFACT_SHA256" || return 1
+  k_record "$records" recovery executor_sha256 "$K_RECOVERY_EXECUTOR_SHA256" || return 1
+  k_record "$records" recovery preflight_before_boundary true || return 1
+  k_record "$records" migration risk "$(k_read_required_file_value "$K_EVIDENCE_DIR/migration.env" MIGRATION_RISK_LEVEL)" || return 1
+  k_record "$records" migration changed_files "$(k_read_file_value "$K_EVIDENCE_DIR/migration.env" MIGRATION_CHANGED_FILES || true)" || return 1
+  k_record "$records" migration destructive_files "$(k_read_file_value "$K_EVIDENCE_DIR/migration.env" MIGRATION_DESTRUCTIVE_FILES || true)" || return 1
+
+  if k_run_forward_from_stdin; then forward_status=0; else forward_status="$?"; fi
+
+  # Classify and recover immediately.  In particular, success-leg failures in
+  # SWITCHING or ACTIVATED_UNVERIFIED are failures of the leg, not excuses to
+  # leave C active.
+  k_process_post_forward "$forward_status" success "$records" "$phase_file"
+  if [ "$forward_status" -ne 0 ]; then
+    k_mark_evidence_incomplete 'success-leg forward executor failed'
+  fi
+
+  if [ "${K_FORWARD_OUTCOME:-STATE_UNKNOWN_AFTER_FORWARD}" = FORWARD_SUCCESS_COMMITTED ]; then
+    if ! k_require_durable_recovery_artifact; then
+      k_mark_evidence_incomplete 'Committed success did not retain exact recovery identity'
+    fi
+    if ! k_validate_recovery "$K_EVIDENCE_DIR/recovery-identity.env"; then
+      k_mark_evidence_incomplete 'Committed success recovery identity evidence is incomplete'
+    fi
+    if ! k_validate_transition "$phase_file"; then
+      k_mark_evidence_incomplete 'Committed success durable transition is invalid'
+    fi
+    phase="$(k_read_file_value "$phase_file" DEPLOYMENT_PHASE || true)"
+    current="$(k_read_file_value "$phase_file" CURRENT_RELEASE_ID || true)"
+    [ "$phase" = COMMITTED ] || k_mark_evidence_incomplete 'success-leg did not end in COMMITTED'
+    [ "$current" = "$K_C_RELEASE_ID" ] || k_mark_evidence_incomplete 'success-leg current does not point to C'
+    if ! k_collect_snapshot "$post_commit"; then
+      k_mark_evidence_incomplete 'Post-commit attestation snapshot could not be collected'
+    elif ! k_validate_attestation "$post_commit" "$baseline"; then
+      k_mark_evidence_incomplete 'Post-commit attestation does not match the baseline contract'
+    fi
+    post_commit_hash="$(k_hash_file "$post_commit" 2>/dev/null || true)"
+    k_record_best_effort "$records" pointer current "$K_C_RELEASE_ID"
+    k_record_best_effort "$records" pointer previous "$K_PREVIOUS_RELEASE_ID"
+    k_record_best_effort "$records" evidence post_commit_snapshot_sha256 "$post_commit_hash"
+  elif [ "${K_RECOVERY_RESULT:-NOT_REQUIRED}" = ROLLED_BACK ]; then
+    if ! k_set_attestation_expectations P; then
+      k_mark_evidence_incomplete 'P attestation expectations could not be restored after success-leg failure'
+      post_recovery_contract_status=1
+    fi
+    if ! k_collect_snapshot "$post_recovery"; then
+      k_mark_evidence_incomplete 'Post-recovery P snapshot could not be collected'
+      post_recovery_contract_status=1
+    elif ! k_validate_attestation "$post_recovery" "$baseline"; then
+      k_mark_evidence_incomplete 'Post-recovery P attestation did not match the baseline'
+      post_recovery_contract_status=1
+    fi
+    if ! k_validate_transition "$phase_file"; then
+      k_mark_evidence_incomplete 'Post-recovery durable transition is invalid'
+      post_recovery_contract_status=1
+    fi
+    if [ "$(k_read_file_value "$phase_file" DEPLOYMENT_PHASE || true)" != ROLLED_BACK ]; then
+      k_mark_evidence_incomplete 'success-leg recovery did not end in ROLLED_BACK'
+      post_recovery_contract_status=1
+    fi
+    if [ "$(k_read_file_value "$phase_file" CURRENT_RELEASE_ID || true)" != "$K_PREVIOUS_RELEASE_ID" ]; then
+      k_mark_evidence_incomplete 'success-leg recovery did not restore P'
+      post_recovery_contract_status=1
+    fi
+    if [ "$post_recovery_contract_status" -eq 0 ]; then
+      k_record_best_effort "$records" rollback health 200
+      k_record_best_effort "$records" rollback ready true
+      k_record_best_effort "$records" rollback same_persistent_topology true
+    else
+      k_record_best_effort "$records" rollback health unproven
+      k_record_best_effort "$records" rollback ready unproven
+      k_record_best_effort "$records" rollback same_persistent_topology unproven
+    fi
+    post_recovery_hash="$(k_hash_file "$post_recovery" 2>/dev/null || true)"
+    k_record_best_effort "$records" rollback current "$K_PREVIOUS_RELEASE_ID"
+    k_record_best_effort "$records" evidence post_recovery_snapshot_sha256 "$post_recovery_hash"
+  else
+    k_mark_evidence_incomplete "success-leg forward outcome was ${K_FORWARD_OUTCOME:-unknown}"
+  fi
+
+  baseline_hash="$(k_hash_file "$baseline" 2>/dev/null || true)"
+  k_record_best_effort "$records" evidence baseline_snapshot_sha256 "$baseline_hash"
+  if k_finalize_leg_evidence success "$records" "$K_TRANSACTION_HISTORY_FILE"; then
+    finalize_status=0
+  else
+    finalize_status="$?"
+  fi
+
+  if [ "$forward_status" -ne 0 ] ||
+    [ "${K_FORWARD_OUTCOME:-STATE_UNKNOWN_AFTER_FORWARD}" != FORWARD_SUCCESS_COMMITTED ] ||
+    [ "${K_SAFETY_OUTCOME:-UNDETERMINED}" != COMMITTED ] ||
+    [ "${K_EVIDENCE_OUTCOME:-INCOMPLETE}" != COMPLETE ] ||
+    [ "$finalize_status" -ne 0 ]; then
+    k_error 'success-leg failed; inspect evidence and recovery outcome'
+    return 1
+  fi
   k_info 'success-leg orchestration completed; K evidence is still pending'
 }
 
@@ -3848,10 +5227,17 @@ k_main() {
           K_APP_DIR="${K_APP_DIR:-$K_DEPLOY_ROOT/app}"
           export K_APP_DIR
           mkdir -p "$K_EVIDENCE_DIR"
-          k_require_mutation_confirmation
-          k_validate_host_contract
-          k_load_runtime_secrets
-          k_validate_recovery "$K_EVIDENCE_DIR/recovery-identity.env"
+          k_require_mutation_confirmation || return 1
+          k_validate_host_contract || return 1
+          k_load_runtime_secrets || return 1
+          K_PREVIOUS_RELEASE_ID="$(k_read_file_value "$K_DEPLOY_ROOT/release-state/deployment-phase.env" PREVIOUS_RELEASE_ID || true)"
+          [ -n "$K_PREVIOUS_RELEASE_ID" ] || {
+            k_error 'Manual rollback cannot determine the durable baseline P'
+            return 1
+          }
+          export K_PREVIOUS_RELEASE_ID
+          K_MANUAL_ROLLBACK=1
+          export K_MANUAL_ROLLBACK
           k_run_rollback_from_stdin
           ;;
       esac

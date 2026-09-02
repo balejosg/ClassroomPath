@@ -116,6 +116,7 @@ the following to exact, current artifacts before using the legs:
 P = K_P_APP_SHA                 previous ClassroomPath commit
 C = K_C_APP_SHA                 candidate ClassroomPath commit
 R = K_RECOVERY_SHA              independently approved recovery commit
+K_CANDIDATE_SHA                 exact C SHA repeated in the transaction payload/state
 
 K_P_RELEASE_ID                  exact P Release Bundle releaseId
 K_C_RELEASE_ID                  exact C Release Bundle releaseId
@@ -181,8 +182,29 @@ contradictory durable `current`, refuses pre-existing project containers with
 no durable state, refuses pre-existing production-named volumes or network
 without a durable P, checks out exact P with its exact OpenPath gitlink, verifies
 the P bundle and OpenPath contract through the immutable verifier, requires
-digest-pinned images, and uses the immutable migration runner. It materializes
-the OpenPath Firefox assets and applies only the verifier runtime projection.
+digest-pinned images, and uses the immutable migration runner. The order is
+deliberately:
+
+```text
+validate environment -> exact P checkout/bundle -> assets and immutable image pull
+-> P migrations -> compose up P -> readiness -> live attestation
+-> persist P bundle -> activate P -> post-activation attestation
+```
+
+`run-migrations-docker.sh` runs the migration runner as a one-shot container and
+does not require the application containers to be running. Thus no application
+runtime is exposed before the database preparation has passed.
+
+Provisioning records its attempt in
+`release-state/provision-attempt.env`. The record proves that the fixed
+production-named resources were absent before that attempt and records every
+container, volume, and network identity created by it. An exit path before
+activation performs an ownership-bound cleanup of only those exact identities;
+it never uses an unscoped `compose down`. A cleanup failure remains durable as
+`CLEANUP_FAILED` and the next `provision` retries that same cleanup after
+revalidating the project, service, labels, names, and IDs. If ownership or the
+durable state is ambiguous, provisioning fails closed and the operator must
+preserve the evidence and use the emergency procedure below.
 
 Before activating durable P it snapshots the live containers and verifies the
 runtime without declaring P current. It then persists the exact P Release
@@ -289,6 +311,33 @@ rollback state file externally and requires the exact `ROLLING_BACK` and
 `ROLLED_BACK` observations before claiming a successful rollback. Missing or
 ambiguous phase evidence fails closed.
 
+Every forward attempt has a fresh durable
+`DEPLOYMENT_TRANSACTION_ID`. The harness classifies the result by rereading
+`release-state/deployment-phase.env`, including the phase, boundary,
+candidate, previous release, and transaction ID. A forward error before
+`MUTATION_BOUNDARY_REACHED=1` fails without rollback. Any forward, observer,
+diagnostic, history, or evidence error after the boundary uses the exact
+persisted R recovery artifact unless the durable state strongly proves the
+intended terminal state. A `COMMITTED` result is terminal only for the normal
+success leg; a fault leg that reaches `COMMITTED` is a failed rehearsal and
+must recover to P.
+
+The leg records two independent results:
+
+```text
+SAFETY_OUTCOME=COMMITTED | ROLLED_BACK | NO_RECOVERY | RECOVERY_FAILED
+EVIDENCE_OUTCOME=COMPLETE | INCOMPLETE
+```
+
+Evidence is best-effort before and after recovery. An incomplete bundle never
+suppresses an already-required recovery: `EVIDENCE_OUTCOME=INCOMPLETE` makes K
+fail while the host may still be safely at P. If the transaction state is
+unreadable or does not match the current attempt, the harness still invokes
+the persisted R path in post-forward mode; it reports `ROLLED_BACK` only after
+the durable state proves `ROLLED_BACK` with `current == P`. A recovery command
+that returns without that proof is `RECOVERY_FAILED` and requires the emergency
+procedure.
+
 ## Fault leg (staging-equivalent only)
 
 The controlled fault is not run by this implementation change. When separately
@@ -300,20 +349,38 @@ scripts/staging-equivalent-harness.sh fault-leg \
 ```
 
 The watchdog captures the baseline P gateway ID, waits for the exact durable
-phase `ACTIVATED_UNVERIFIED`, queries containers by both labels
+transaction's `PREPARED` state, then waits for that same transaction's
+`ACTIVATED_UNVERIFIED` phase, queries containers by both labels
 `com.docker.compose.project=classroompath-production` and
 `com.docker.compose.service=gateway`, and requires a single running candidate
 ID whose ID differs from P and whose image is the exact C gateway digest. Only
 then does it execute `docker stop <candidate-id>`, once. It never selects the
 target by fixed `container_name` alone and cannot stop P.
 
+Stale `COMMITTED`, `ROLLED_BACK`, or other terminal state from an earlier
+attempt cannot arm the watchdog: it must observe the current transaction ID,
+candidate release/SHA, and `PREPARED` after the watchdog starts. If the
+watchdog fails after the current transaction crossed the boundary, the shared
+post-forward safety path recovers. If the forward accidentally reaches
+`COMMITTED` during a fault leg, the leg still fails and the same path restores
+P before any PASS decision.
+
 The leg must prove candidate failure, boundary reach, bounded diagnostic
 collection, exact recovery identity, successful R rollback, and a post-rollback
-K0 against the original persistent-volume baseline. The candidate diagnostic is
-kept when valid; the independent R fallback is used only for missing, failed,
-stale, or contradictory candidate output. A pre-existing diagnostic artifact is
-rejected so a retry cannot reuse stale evidence; both candidate and fallback
-output are scanned for secret-shaped content and bounded before archiving.
+K0 against the original persistent-volume baseline. Recovery is attempted
+before strict diagnostic, transaction-history, fault-target, or evidence-bundle
+validation. The candidate diagnostic is kept when valid; the independent R
+fallback is used only for missing, failed, stale, or contradictory candidate
+output. A pre-existing diagnostic artifact is rejected so a retry cannot reuse
+stale evidence; both candidate and fallback output are scanned for secret-shaped
+content and bounded before archiving.
+
+The success leg follows the same policy. Any non-zero forward result after the
+boundary—including a command error after durable `COMMITTED`—is a failed leg,
+but it first attempts exact-R recovery and requires P to be restored. An error
+in `SWITCHING`, `ACTIVATED_UNVERIFIED`, `VERIFIED`, or an unreadable/ambiguous
+state is therefore never left at C. Recovery success is recorded as
+`SAFETY_OUTCOME=ROLLED_BACK`; it never changes that leg into a success.
 
 ## Rollback and emergency procedure
 
@@ -329,8 +396,11 @@ If that automated attempt fails on the isolated host:
 2. Re-run the fence read-only and inspect `deployment-phase.env`. A boundary
    value of `0` means the runtime rollback path is not authorized. A phase of
    `ROLLING_BACK` means the original process must be observed to exit before a
-   retry. Only a terminal `FAILED` with boundary `1` is eligible for the
-   emergency wrapper retry.
+   retry. A durable `ROLLED_BACK` with `current == previous` is already safe
+   and the manual command is a no-op. Otherwise the manual command accepts only
+   a boundary of `1`, an allowed in-flight/failed phase, the exact persisted R
+   identity, and `previous == P`; it does not depend on candidate helpers or
+   transaction history.
 3. Validate the persisted archive and byte identity:
 
    ```sh
@@ -340,7 +410,8 @@ If that automated attempt fails on the isolated host:
    ```
 
 4. With explicit operator authorization for this isolated host only, invoke
-   the repository-owned emergency path:
+   the repository-owned emergency path. It uses the same hermetic host PATH,
+   revalidates the durable fence, and reads the canonical persisted R bytes:
 
    ```sh
    scripts/staging-equivalent-harness.sh rollback \
@@ -348,8 +419,9 @@ If that automated attempt fails on the isolated host:
    ```
 
 5. Run `attest-p` and preserve its output. If the exact R wrapper still cannot
-   restore P, stop and escalate with the evidence; do not improvise a candidate
-   helper, branch/tag lookup, latest image, or host Node/npm workaround.
+   restore P, record `RECOVERY_RESULT=FAILED`, stop mutation attempts, and
+   escalate with the evidence; do not improvise a candidate helper, branch/tag
+   lookup, latest image, or host Node/npm workaround.
 
 ## Success leg
 
