@@ -626,6 +626,7 @@ k_validate_host_contract() {
     k_error 'Production gateway bind-mount root must not be a symlink'
     return 1
   }
+  k_source_host_contract || return 1
   effective_path="$(k_build_effective_host_path)" || return 1
   K_EFFECTIVE_HOST_PATH="$effective_path"
   if ! PRODUCTION_HOST_NETWORK_URL="$K_NETWORK_PREFLIGHT_URL" \

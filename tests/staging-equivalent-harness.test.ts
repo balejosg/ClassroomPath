@@ -450,6 +450,77 @@ test('effective host path rejects Node/npm even when an operator adds them', () 
   }
 });
 
+test('host contract validation retains the helper after building the effective PATH', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-k-host-contract-'));
+  try {
+    const binDir = join(root, 'bin');
+    const harnessDir = join(root, 'harness');
+    const contractDir = join(harnessDir, 'lib');
+    const deployRoot = join(root, 'deploy-root');
+    const evidenceDir = join(deployRoot, 'k-evidence');
+    const downloadsDir = join(root, 'downloads');
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(contractDir, { recursive: true });
+    mkdirSync(evidenceDir, { recursive: true });
+    mkdirSync(downloadsDir, { recursive: true });
+
+    const dockerPath = join(binDir, 'docker');
+    writeFileSync(
+      dockerPath,
+      '#!/usr/bin/env bash\n[ "$1" = info ] && printf "%s\\n" fixture-daemon\n'
+    );
+    chmodSync(dockerPath, 0o755);
+    writeFileSync(
+      join(contractDir, 'production-host-contract.sh'),
+      [
+        'PRODUCTION_HOST_REQUIRED_COMMANDS=(bash docker df awk sha256sum tr)',
+        'production_host_contract_validate() { return 0; }',
+        '',
+      ].join('\n')
+    );
+
+    const device = execFileSync('df', ['-P', downloadsDir], { encoding: 'utf8' })
+      .trim()
+      .split(/\r?\n/u)[1]
+      ?.trim()
+      .split(/\s+/u)[0];
+    assert.ok(device);
+    const deviceSha = createHash('sha256').update(device).digest('hex');
+
+    assert.doesNotThrow(() =>
+      runShell(
+        [
+          '-c',
+          [
+            'source "$1"',
+            'K_HARNESS_DIR="$2"',
+            'K_DEPLOY_ROOT="$3"',
+            'K_EVIDENCE_DIR="$4"',
+            'K_GATEWAY_DOWNLOAD_HOST_ROOT="$5"',
+            'K_DOCKER_DAEMON_ID=fixture-daemon',
+            'K_GATEWAY_DOWNLOAD_DEVICE_SHA256="$6"',
+            'K_COMPOSE_PROJECT=classroompath-production',
+            'PATH="$7:$PATH"',
+            'export K_HARNESS_DIR K_DEPLOY_ROOT K_EVIDENCE_DIR K_GATEWAY_DOWNLOAD_HOST_ROOT K_DOCKER_DAEMON_ID K_GATEWAY_DOWNLOAD_DEVICE_SHA256 K_COMPOSE_PROJECT PATH',
+            'k_validate_host_contract',
+          ].join('; '),
+          'bash',
+          harnessPath,
+          harnessDir,
+          deployRoot,
+          evidenceDir,
+          downloadsDir,
+          deviceSha,
+          binDir,
+        ],
+        { PATH: `${binDir}:${process.env.PATH ?? ''}` }
+      )
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('runtime credentials are read from a private external file without sourcing or archiving it', () => {
   const root = mkdtempSync(join(tmpdir(), 'classroompath-k-secrets-'));
   try {
