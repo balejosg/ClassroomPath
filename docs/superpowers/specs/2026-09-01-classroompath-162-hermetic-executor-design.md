@@ -7,12 +7,19 @@ contrato mínimo del host, runtime hermético del verifier, contrato de empaquet
 canary/fault injection del executor, estado transaccional, rollback independiente,
 boundary explícito, diagnóstico post-switch y smoke staging/production independiente.
 
-La implementación local permanece en `implementation incomplete / operational proof
-pending` hasta que las regresiones de bootstrap N→N+1, recovery shell independiente
-y diagnóstico post-switch sean aceptadas junto con el resto de criterios del issue.
-No se ejecutan staging, producción, hosts reales, tags, releases, push ni cambios
+La implementación local permanece en `implementation complete / operational proof
+pending`. El harness repository-owned para el host staging-equivalent está
+implementado y cubierto por regresiones contractuales, pero K sigue en
+`K NOT READY` hasta que exista y se preflightée un host aislado real. No se
+ejecutan staging, producción, hosts reales, tags, releases, push ni cambios
 remotos. Las fases K–M quedan explícitamente como prueba operativa pendiente de
 autorización.
+
+El staging normal queda descartado para K porque su namespace Compose y sus
+named volumes no son los de producción. El procedimiento de K está documentado
+en [`docs/runbooks/staging-equivalent-k.md`](../../runbooks/staging-equivalent-k.md)
+y usa `scripts/staging-equivalent-harness.sh` con una fence durable de host,
+daemon Docker, filesystem, deploy root, URL y proyecto Compose.
 
 ## Decisiones
 

@@ -50,6 +50,7 @@ Rules:
 - Public production deployment note: [`docs/runbooks/deploy-production.md`](runbooks/deploy-production.md)
 - Public billing provider note: [`docs/runbooks/configure-stripe-billing.md`](runbooks/configure-stripe-billing.md)
 - Public staging QA note: [`docs/runbooks/staging-qa-fixtures.md`](runbooks/staging-qa-fixtures.md)
+- Staging-equivalent K proof harness for #162: [`docs/runbooks/staging-equivalent-k.md`](runbooks/staging-equivalent-k.md)
 - Public Windows runner recovery note: [`docs/runbooks/windows-runner-recovery.md`](runbooks/windows-runner-recovery.md)
 - Windows offline installer legacy retirement: [`docs/runbooks/windows-offline-installer-legacy-retirement.md`](runbooks/windows-offline-installer-legacy-retirement.md)
 - Deploy target example: [`config/deploy-targets.example.json`](../config/deploy-targets.example.json)

@@ -2,11 +2,14 @@
 # deployment-transaction.sh - Atomic production executor state machine
 # shellcheck shell=bash
 
+# shellcheck disable=SC2034 # sourced helper contract is consumed by callers.
 DEPLOYMENT_TRANSACTION_HELPER_CONTRACT_VERSION=1
 
 DEPLOYMENT_PHASE_PREPARED=PREPARED
 DEPLOYMENT_PHASE_SWITCHING=SWITCHING
+# shellcheck disable=SC2034 # phase constants are part of the sourced contract.
 DEPLOYMENT_PHASE_ACTIVATED_UNVERIFIED=ACTIVATED_UNVERIFIED
+# shellcheck disable=SC2034 # phase constants are part of the sourced contract.
 DEPLOYMENT_PHASE_VERIFIED=VERIFIED
 DEPLOYMENT_PHASE_COMMITTED=COMMITTED
 DEPLOYMENT_PHASE_ROLLING_BACK=ROLLING_BACK
@@ -104,6 +107,28 @@ deployment_transaction_write() {
   return 0
 }
 
+deployment_transaction_append_history() {
+  local history_file="${DEPLOYMENT_TRANSACTION_HISTORY_FILE:-}"
+  local history_dir=""
+
+  [ -n "$history_file" ] || return 0
+  history_dir="$(dirname "$history_file")"
+  mkdir -p "$history_dir" || return 1
+  umask 077
+  printf 'DEPLOYMENT_PHASE=%q DEPLOYMENT_PHASE_UPDATED_AT=%q DEPLOYMENT_STAGE=%q MUTATION_BOUNDARY_REACHED=%q CURRENT_RELEASE_ID=%q PREVIOUS_RELEASE_ID=%q CANDIDATE_RELEASE_ID=%q RECOVERY_SOURCE_SHA=%q RECOVERY_ARTIFACT_SHA256=%q RECOVERY_EXECUTOR_SHA256=%q RECOVERY_ARTIFACT_PATH=%q\n' \
+    "${DEPLOYMENT_PHASE:-}" \
+    "${DEPLOYMENT_PHASE_UPDATED_AT:-}" \
+    "${DEPLOYMENT_STAGE:-}" \
+    "${MUTATION_BOUNDARY_REACHED:-0}" \
+    "${CURRENT_RELEASE_ID:-}" \
+    "${PREVIOUS_RELEASE_ID:-}" \
+    "${CANDIDATE_RELEASE_ID:-}" \
+    "${RECOVERY_SOURCE_SHA:-}" \
+    "${RECOVERY_ARTIFACT_SHA256:-}" \
+    "${RECOVERY_EXECUTOR_SHA256:-}" \
+    "${RECOVERY_ARTIFACT_PATH:-}" >> "$history_file"
+}
+
 deployment_transaction_init() {
   local state_file="$1"
   local previous_release_id="${2:-${PREVIOUS_RELEASE_ID:-}}"
@@ -144,7 +169,8 @@ deployment_transaction_init() {
   export CANDIDATE_SHA RECOVERY_SOURCE_SHA RECOVERY_SOURCE_VERSION RECOVERY_CONTRACT_VERSION
   export RECOVERY_ARTIFACT_VERSION RECOVERY_ARTIFACT_SHA256 RECOVERY_EXECUTOR_SHA256
   export RECOVERY_ARTIFACT_PATH RECOVERY_ARTIFACT_SOURCE_SHA
-  deployment_transaction_write "$state_file"
+  deployment_transaction_write "$state_file" || return 1
+  deployment_transaction_append_history
 }
 
 deployment_transaction_set_release_identity() {
@@ -253,6 +279,10 @@ deployment_transaction_transition() {
     export ROLLBACK_ATTEMPTED ROLLBACK_RESULT
     return 1
   fi
+  deployment_transaction_append_history || {
+    deployment_transaction_log_error "Unable to append deployment transaction history"
+    return 1
+  }
 }
 
 deployment_transaction_mark_failure() {
