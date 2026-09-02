@@ -121,7 +121,7 @@
   },
   "devDependencies": {
     "@commitlint/cli": "^20.4.1",
-    "@commitlint/config-conventional": "^20.4.1",
+    "@commitlint/config-conventional": "^20.5.0",
     "@playwright/test": "^1.57.0",
     "@secretlint/secretlint-rule-preset-recommend": "^11.3.1",
     "@size-limit/preset-app": "file:tools/size-limit-preset-app",
