@@ -107,6 +107,7 @@ function writeConfig(
     '',
   ].join('\n');
   writeFileSync(identityPath, identity);
+  chmodSync(identityPath, 0o600);
 
   const values: Record<string, string> = {
     K_ENVIRONMENT: 'staging-equivalent',
@@ -191,6 +192,7 @@ function writeConfig(
       .map(([key, value]) => `${key}=${value}`)
       .join('\n')}\n`
   );
+  chmodSync(configPath, 0o600);
   return { configPath, deployRoot, identityPath, hostIdPath, values };
 }
 
@@ -326,6 +328,28 @@ test('environment fence rejects non-equivalent topology and production identity'
   }
 });
 
+test('environment admission rejects a non-private marker or harness config', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-k-private-admission-'));
+  try {
+    const fixture = writeConfig(root);
+
+    chmodSync(fixture.configPath, 0o644);
+    expectFailure(
+      () => runHarness(['validate-environment', '--config', fixture.configPath]),
+      'the harness config must require mode 0600'
+    );
+
+    chmodSync(fixture.configPath, 0o600);
+    chmodSync(fixture.identityPath, 0o644);
+    expectFailure(
+      () => runHarness(['validate-environment', '--config', fixture.configPath]),
+      'the durable marker must require mode 0600'
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('K0 rejects code, digest, volume, mount, and readiness drift', () => {
   const root = mkdtempSync(join(tmpdir(), 'classroompath-k0-'));
   try {
@@ -439,6 +463,7 @@ test('runtime credentials are read from a private external file without sourcing
       secrets,
       `DATABASE_URL=${databaseUrl}\nGHCR_USERNAME=fixture-user\nGHCR_TOKEN=fixture-credential\n`
     );
+    chmodSync(secrets, 0o600);
     assert.doesNotThrow(() =>
       runShell([
         '-c',
@@ -489,6 +514,50 @@ test('runtime credentials are read from a private external file without sourcing
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('runtime secrets admission rejects a non-private external file', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-k-private-secrets-'));
+  try {
+    const deployRoot = join(root, 'deploy-root');
+    const appDir = join(deployRoot, 'app');
+    const secrets = join(root, 'runtime.env');
+    mkdirSync(appDir, { recursive: true });
+    writeFileSync(
+      secrets,
+      `DATABASE_URL=${fixtureDatabaseUrl()}\nGHCR_USERNAME=fixture-user\nGHCR_TOKEN=fixture-credential\n`
+    );
+    chmodSync(secrets, 0o644);
+
+    expectFailure(
+      () =>
+        runShell([
+          '-c',
+          'source "$1"; K_DEPLOY_ROOT="$2"; K_RUNTIME_SECRETS_FILE="$3"; k_validate_runtime_secrets_path "$4"',
+          'bash',
+          harnessPath,
+          deployRoot,
+          secrets,
+          appDir,
+        ]),
+      'the runtime secrets file must require mode 0600'
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('leg host evidence records the observed npm field from host admission', () => {
+  const source = readFileSync(
+    resolve(projectRoot, 'scripts/staging-equivalent-harness.sh'),
+    'utf8'
+  );
+  const npmEvidence = source.match(
+    /k_record "\$records" host npm_observed "\$\{K_[A-Z_]+:-unknown\}"/gu
+  );
+  assert.equal(npmEvidence?.length, 2);
+  assert.doesNotMatch(source, /host npm_observed "\$\{K_NPM_OBSERVED:-unknown\}"/u);
+  assert.match(source, /host npm_observed "\$\{K_HOST_NPM_OBSERVED:-unknown\}"/u);
 });
 
 test('provisioning rejects pre-existing production-named persistent resources on a fresh host', () => {

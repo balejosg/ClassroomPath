@@ -43,6 +43,7 @@ PRODUCTION_HOST_REQUIRED_COMMANDS=(
   touch
   tar
   sha256sum
+  stat
   uname
 )
 

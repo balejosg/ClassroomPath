@@ -274,6 +274,7 @@ k_load_config() {
     k_error "Harness config does not exist: $config_file"
     return 1
   }
+  k_validate_private_file_mode "$config_file" 'Harness config' || return 1
   K_CONFIG_FILE="$config_file"
   K_CONFIG_KEYS=()
   while IFS= read -r line || [ -n "$line" ]; do
@@ -311,6 +312,21 @@ k_load_config() {
     printf -v "$key" '%s' "$value"
     K_CONFIG_KEYS+=("$key")
   done < "$config_file"
+}
+
+k_validate_private_file_mode() {
+  local file="$1"
+  local label="$2"
+  local mode=""
+
+  mode="$(stat -c '%a' -- "$file" 2>/dev/null)" || {
+    k_error "$label mode cannot be inspected"
+    return 1
+  }
+  [ "$mode" = 600 ] || {
+    k_error "$label must have mode 0600 (observed 0$mode)"
+    return 1
+  }
 }
 
 k_validate_external_file() {
@@ -480,6 +496,8 @@ k_validate_environment() {
     k_error 'Identity/config files must be outside the deploy root'
     return 1
   fi
+  k_validate_private_file_mode "$identity_real" 'Durable environment identity marker' || return 1
+  k_validate_private_file_mode "$config_real" 'Harness config' || return 1
 
   k_require_sha64 K_IDENTITY_FILE_SHA256 "${K_IDENTITY_FILE_SHA256:-}" || return 1
   actual_hash="$(k_hash_file "$identity_real")"
@@ -1301,7 +1319,8 @@ k_validate_runtime_secrets_path() {
     k_error 'The protected billing backup file is not a runtime secrets source'
     return 1
   }
-  k_validate_external_file "$K_RUNTIME_SECRETS_FILE" 'Runtime secrets file'
+  k_validate_external_file "$K_RUNTIME_SECRETS_FILE" 'Runtime secrets file' || return 1
+  k_validate_private_file_mode "$K_RUNTIME_SECRETS_FILE" 'Runtime secrets file'
 }
 
 k_runtime_secret_value() {
@@ -4809,7 +4828,7 @@ k_execute_fault_leg() {
   k_record "$records" host node_npm_unavailable "${K_HOST_NODE_NPM_UNAVAILABLE:-false}" || return 1
   k_record "$records" host contract_passed true || return 1
   k_record "$records" host node_observed "${K_HOST_NODE_OBSERVED:-unknown}" || return 1
-  k_record "$records" host npm_observed "${K_NPM_OBSERVED:-unknown}" || return 1
+  k_record "$records" host npm_observed "${K_HOST_NPM_OBSERVED:-unknown}" || return 1
   k_record "$records" host docker_daemon_id "${K_DOCKER_DAEMON_ID_OBSERVED:-unknown}" || return 1
   k_record "$records" host gateway_download_device_sha256 "${K_GATEWAY_DOWNLOAD_DEVICE_SHA256_OBSERVED:-unknown}" || return 1
   k_validate_release_inputs C || return 1
@@ -5007,7 +5026,7 @@ k_execute_success_leg() {
   k_record "$records" host node_npm_unavailable "${K_HOST_NODE_NPM_UNAVAILABLE:-false}" || return 1
   k_record "$records" host contract_passed true || return 1
   k_record "$records" host node_observed "${K_HOST_NODE_OBSERVED:-unknown}" || return 1
-  k_record "$records" host npm_observed "${K_NPM_OBSERVED:-unknown}" || return 1
+  k_record "$records" host npm_observed "${K_HOST_NPM_OBSERVED:-unknown}" || return 1
   k_record "$records" host docker_daemon_id "${K_DOCKER_DAEMON_ID_OBSERVED:-unknown}" || return 1
   k_record "$records" host gateway_download_device_sha256 "${K_GATEWAY_DOWNLOAD_DEVICE_SHA256_OBSERVED:-unknown}" || return 1
   k_validate_release_inputs C || return 1
