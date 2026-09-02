@@ -27,6 +27,7 @@ PRODUCTION_HOST_REQUIRED_COMMANDS=(
   id
   tr
   base64
+  basename
   cat
   cmp
   date
@@ -39,6 +40,7 @@ PRODUCTION_HOST_REQUIRED_COMMANDS=(
   sh
   sleep
   tail
+  gzip
   timeout
   touch
   tar

@@ -36,6 +36,7 @@ test('production host contract is POSIX/Docker based and does not require Node',
     'id',
     'tr',
     'base64',
+    'basename',
     'cat',
     'cmp',
     'date',
@@ -48,6 +49,7 @@ test('production host contract is POSIX/Docker based and does not require Node',
     'sh',
     'sleep',
     'tail',
+    'gzip',
     'timeout',
     'touch',
     'tar',
@@ -69,6 +71,18 @@ test('production host contract is POSIX/Docker based and does not require Node',
   assert.equal(report.ok, true);
   assert.equal(report.nodeRequired, false);
   assert.deepEqual(report.errors, []);
+});
+
+test('hermetic host contract exposes recovery packaging dependencies', () => {
+  const shellContract = readFileSync(
+    resolve(projectRoot, 'scripts/lib/production-host-contract.sh'),
+    'utf8'
+  );
+
+  assert.equal(PRODUCTION_HOST_REQUIRED_COMMANDS.includes('basename'), true);
+  assert.equal(PRODUCTION_HOST_REQUIRED_COMMANDS.includes('gzip'), true);
+  assert.match(shellContract, /\n  basename\n/u);
+  assert.match(shellContract, /\n  gzip\n/u);
 });
 
 test('host contract fails before mutation when Docker or state prerequisites are missing', () => {
