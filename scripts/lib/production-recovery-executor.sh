@@ -24,6 +24,11 @@ PRODUCTION_RECOVERY_AUTHORITY_PREFLIGHT_ONLY="${PRODUCTION_RECOVERY_AUTHORITY_PR
 if [ "${1:-}" = "--authority-preflight-only" ]; then
   PRODUCTION_RECOVERY_AUTHORITY_PREFLIGHT_ONLY=1
 fi
+RECOVERY_PREFLIGHT_ONLY=0
+if [ "${PRODUCTION_RECOVERY_PREFLIGHT_ONLY:-0}" = "1" ] ||
+  [ "${1:-}" = "--preflight-only" ]; then
+  RECOVERY_PREFLIGHT_ONLY=1
+fi
 
 recovery_executor_error() {
   printf '[ERROR] %s\n' "$*" >&2
@@ -278,7 +283,14 @@ fi
 
 DEPLOY_DIR="$CLASSROOMPATH_DEPLOY_ROOT"
 STATE_DIR="$DEPLOY_DIR/release-state"
-DEPLOYMENT_TRANSACTION_FILE="$STATE_DIR/deployment-phase.env"
+if [ "$RECOVERY_PREFLIGHT_ONLY" = "1" ] && [ -n "${DEPLOYMENT_TRANSACTION_FILE:-}" ]; then
+  if [ ! -f "$DEPLOYMENT_TRANSACTION_FILE" ] || [ -L "$DEPLOYMENT_TRANSACTION_FILE" ]; then
+    recovery_executor_error "Preflight transaction file must be a regular non-symlink file: $DEPLOYMENT_TRANSACTION_FILE"
+    exit 1
+  fi
+else
+  DEPLOYMENT_TRANSACTION_FILE="$STATE_DIR/deployment-phase.env"
+fi
 PRODUCTION_HOST_CONTRACT_REPORT_FILE="$STATE_DIR/rollback-host-contract.json"
 DEPLOYMENT_STATE_USE_VERIFIER=1
 ROLLBACK_READINESS_USE_VERIFIER=1
@@ -335,8 +347,7 @@ if [ -n "${RECOVERY_ARTIFACT_SHA256:-}" ] &&
   exit 1
 fi
 
-if [ "${PRODUCTION_RECOVERY_PREFLIGHT_ONLY:-0}" = "1" ] ||
-  [ "${1:-}" = "--preflight-only" ]; then
+if [ "$RECOVERY_PREFLIGHT_ONLY" = "1" ]; then
   if [ "${ROLLBACK_USES_V2:-0}" != "1" ]; then
     log_error "Production recovery preflight requires a durable Release Bundle v2 previous pointer"
     exit 1

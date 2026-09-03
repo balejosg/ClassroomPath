@@ -9,6 +9,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -233,6 +234,140 @@ function packageRecoverySourceFixture(sourceRoot: string, recoverySha: string, b
   );
 }
 
+function createRecoveryExecutorTransactionFixture(tempDir: string) {
+  const deployRoot = join(tempDir, 'deploy');
+  const appDir = join(deployRoot, 'app');
+  const binDir = join(tempDir, 'bin');
+  const executorRoot = join(tempDir, 'executor');
+  const bundlePath = join(tempDir, 'recovery.tgz');
+  const callsFile = join(tempDir, 'calls.log');
+  const previousId = 'a'.repeat(64);
+  const candidateSha = '2'.repeat(40);
+  const durableTransactionId = 'd'.repeat(64);
+  const explicitTransactionId = 'e'.repeat(64);
+  const durableArtifactSha = 'f'.repeat(64);
+  const { sourceRoot: recoverySourceRoot, recoverySha } = createRecoverySourceFixture(tempDir);
+
+  mkdirSync(join(deployRoot, 'release-state/releases', previousId), { recursive: true });
+  mkdirSync(binDir, { recursive: true });
+  mkdirSync(executorRoot, { recursive: true });
+  mkdirSync(appDir, { recursive: true });
+  writeFileSync(join(deployRoot, 'release-state/previous'), `${previousId}\n`, 'utf8');
+  writeFileSync(join(deployRoot, 'release-state/current'), `${previousId}\n`, 'utf8');
+  writeFileSync(
+    join(deployRoot, 'release-state/releases', previousId, 'runtime.env'),
+    createPreviousRuntime(previousId),
+    'utf8'
+  );
+  writeFileSync(
+    join(deployRoot, 'release-state/deployment-phase.env'),
+    [
+      'DEPLOYMENT_TRANSACTION_VERSION=1',
+      `DEPLOYMENT_TRANSACTION_ID=${durableTransactionId}`,
+      'DEPLOYMENT_TRANSACTION_HISTORY_STATUS=complete',
+      'DEPLOYMENT_PHASE=FAILED',
+      'DEPLOYMENT_STAGE=VERIFY',
+      'MUTATION_BOUNDARY_REACHED=1',
+      `CURRENT_RELEASE_ID=${previousId}`,
+      `PREVIOUS_RELEASE_ID=${previousId}`,
+      `CANDIDATE_RELEASE_ID=${previousId}`,
+      `CANDIDATE_SHA=${candidateSha}`,
+      `RECOVERY_ARTIFACT_SHA256=${durableArtifactSha}`,
+      '',
+    ].join('\n'),
+    'utf8'
+  );
+
+  packageRecoverySourceFixture(recoverySourceRoot, recoverySha, bundlePath);
+  execFileSync('tar', ['-xzf', bundlePath, '-C', executorRoot]);
+  const executorPath = join(executorRoot, 'production-recovery-executor.sh');
+  const executorSha = createHash('sha256').update(readFileSync(executorPath)).digest('hex');
+  const explicitTransactionPath = join(tempDir, 'explicit-transaction.env');
+  writeFileSync(
+    explicitTransactionPath,
+    [
+      'DEPLOYMENT_TRANSACTION_VERSION=1',
+      `DEPLOYMENT_TRANSACTION_ID=${explicitTransactionId}`,
+      'DEPLOYMENT_TRANSACTION_HISTORY_STATUS=not_configured',
+      'DEPLOYMENT_PHASE=PREPARED',
+      'DEPLOYMENT_STAGE=RESOLVE',
+      'MUTATION_BOUNDARY_REACHED=0',
+      `CURRENT_RELEASE_ID=${previousId}`,
+      `PREVIOUS_RELEASE_ID=${previousId}`,
+      `CANDIDATE_RELEASE_ID=${'c'.repeat(64)}`,
+      `CANDIDATE_SHA=${candidateSha}`,
+      `RECOVERY_ARTIFACT_SHA256=${createHash('sha256')
+        .update(readFileSync(bundlePath))
+        .digest('hex')}`,
+      '',
+    ].join('\n'),
+    'utf8'
+  );
+
+  createFakeDocker(binDir, 'rollback');
+
+  return {
+    deployRoot,
+    appDir,
+    binDir,
+    callsFile,
+    executorPath,
+    executorSha,
+    recoverySha,
+    candidateSha,
+    previousId,
+    durableTransactionId,
+    durableArtifactSha,
+    explicitTransactionId,
+    explicitTransactionPath,
+    currentArtifactSha: createHash('sha256').update(readFileSync(bundlePath)).digest('hex'),
+    durableTransactionPath: join(deployRoot, 'release-state/deployment-phase.env'),
+    currentPointerPath: join(deployRoot, 'release-state/current'),
+    previousPointerPath: join(deployRoot, 'release-state/previous'),
+    runtimePath: join(deployRoot, 'release-state/releases', previousId, 'runtime.env'),
+    baseEnv: {
+      ...process.env,
+      APP_DIR: appDir,
+      CALLS_FILE: callsFile,
+      CLASSROOMPATH_DEPLOY_ROOT: deployRoot,
+      CANDIDATE_SHA: candidateSha,
+      PATH: `${binDir}:/usr/bin:/bin`,
+      PRODUCTION_HOST_NETWORK_CHECK_COMMAND: 'true',
+      PRODUCTION_RECOVERY_CONTRACT_VERSION: '1',
+      PRODUCTION_RECOVERY_EXECUTOR_SHA256: executorSha,
+      PRODUCTION_RECOVERY_SHA: recoverySha,
+      PRODUCTION_RECOVERY_SOURCE_SHA: recoverySha,
+      PRODUCTION_RECOVERY_SOURCE_VERSION: '1',
+    },
+  };
+}
+
+function runRecoveryExecutorFixture(
+  fixture: ReturnType<typeof createRecoveryExecutorTransactionFixture>,
+  options: { args?: string[]; env?: NodeJS.ProcessEnv; trace?: boolean } = {}
+) {
+  const env = { ...fixture.baseEnv, ...options.env };
+  if (
+    !options.env ||
+    !Object.prototype.hasOwnProperty.call(options.env, 'DEPLOYMENT_TRANSACTION_FILE')
+  ) {
+    delete env.DEPLOYMENT_TRANSACTION_FILE;
+  }
+  return spawnSync(
+    'bash',
+    [
+      options.trace ? '-x' : '',
+      fixture.executorPath,
+      ...(options.args ?? ['--preflight-only']),
+    ].filter(Boolean),
+    {
+      cwd: projectRoot,
+      env,
+      encoding: 'utf8',
+    }
+  );
+}
+
 function createPreviousRuntime(releaseId: string) {
   return [
     `RELEASE_ID=${releaseId}`,
@@ -257,6 +392,139 @@ function createPreviousRuntime(releaseId: string) {
     '',
   ].join('\n');
 }
+
+test('recovery preflight honors an explicitly supplied transaction file', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-recovery-preflight-override-'));
+  const fixture = createRecoveryExecutorTransactionFixture(tempDir);
+  const beforeCurrent = readFileSync(fixture.currentPointerPath, 'utf8');
+  const beforePrevious = readFileSync(fixture.previousPointerPath, 'utf8');
+  const beforeRuntime = readFileSync(fixture.runtimePath, 'utf8');
+
+  try {
+    const result = runRecoveryExecutorFixture(fixture, {
+      env: {
+        DEPLOYMENT_TRANSACTION_FILE: fixture.explicitTransactionPath,
+        PRODUCTION_RECOVERY_ARTIFACT_SHA256: fixture.currentArtifactSha,
+      },
+    });
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    assert.equal(result.status, 0, output);
+    assert.match(output, /Production recovery artifact preflight passed/u);
+    assert.equal(readFileSync(fixture.currentPointerPath, 'utf8'), beforeCurrent);
+    assert.equal(readFileSync(fixture.previousPointerPath, 'utf8'), beforePrevious);
+    assert.equal(readFileSync(fixture.runtimePath, 'utf8'), beforeRuntime);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('recovery preflight uses the current transaction ID and artifact identity', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-recovery-preflight-identity-'));
+  const fixture = createRecoveryExecutorTransactionFixture(tempDir);
+
+  try {
+    const result = runRecoveryExecutorFixture(fixture, {
+      trace: true,
+      env: {
+        DEPLOYMENT_TRANSACTION_FILE: fixture.explicitTransactionPath,
+        PRODUCTION_RECOVERY_ARTIFACT_SHA256: fixture.currentArtifactSha,
+      },
+    });
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    assert.equal(result.status, 0, output);
+    assert.match(
+      output,
+      new RegExp(`DEPLOYMENT_TRANSACTION_ID=${fixture.explicitTransactionId}`, 'u')
+    );
+    assert.doesNotMatch(
+      output,
+      new RegExp(`DEPLOYMENT_TRANSACTION_ID=${fixture.durableTransactionId}`, 'u')
+    );
+    assert.match(output, new RegExp(`RECOVERY_ARTIFACT_SHA256=${fixture.currentArtifactSha}`, 'u'));
+    assert.doesNotMatch(
+      output,
+      new RegExp(`RECOVERY_ARTIFACT_SHA256=${fixture.durableArtifactSha}`, 'u')
+    );
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('recovery preflight falls back to the durable transaction without an override', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-recovery-preflight-fallback-'));
+  const fixture = createRecoveryExecutorTransactionFixture(tempDir);
+
+  try {
+    const result = runRecoveryExecutorFixture(fixture, {
+      env: { PRODUCTION_RECOVERY_ARTIFACT_SHA256: fixture.durableArtifactSha },
+    });
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    assert.equal(result.status, 0, output);
+    assert.match(output, /Production recovery artifact preflight passed/u);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('real recovery ignores an externally supplied transaction file', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-recovery-real-transaction-'));
+  const fixture = createRecoveryExecutorTransactionFixture(tempDir);
+  const beforeCurrent = readFileSync(fixture.currentPointerPath, 'utf8');
+  const beforePrevious = readFileSync(fixture.previousPointerPath, 'utf8');
+  const beforeRuntime = readFileSync(fixture.runtimePath, 'utf8');
+
+  try {
+    writeFileSync(
+      fixture.durableTransactionPath,
+      readFileSync(fixture.durableTransactionPath, 'utf8').replace(
+        'MUTATION_BOUNDARY_REACHED=1',
+        'MUTATION_BOUNDARY_REACHED=0'
+      ),
+      'utf8'
+    );
+    const result = runRecoveryExecutorFixture(fixture, {
+      args: [],
+      env: {
+        DEPLOYMENT_TRANSACTION_FILE: fixture.explicitTransactionPath,
+        PRODUCTION_RECOVERY_ARTIFACT_SHA256: fixture.durableArtifactSha,
+      },
+    });
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    assert.equal(result.status, 0, output);
+    assert.match(output, /failed before the mutation boundary/u);
+    assert.equal(readFileSync(fixture.currentPointerPath, 'utf8'), beforeCurrent);
+    assert.equal(readFileSync(fixture.previousPointerPath, 'utf8'), beforePrevious);
+    assert.equal(readFileSync(fixture.runtimePath, 'utf8'), beforeRuntime);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('preflight rejects a symlinked explicitly supplied transaction file', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-recovery-preflight-symlink-'));
+  const fixture = createRecoveryExecutorTransactionFixture(tempDir);
+  const symlinkPath = join(tempDir, 'transaction-link.env');
+  symlinkSync(fixture.explicitTransactionPath, symlinkPath);
+
+  try {
+    const result = runRecoveryExecutorFixture(fixture, {
+      env: {
+        DEPLOYMENT_TRANSACTION_FILE: symlinkPath,
+        PRODUCTION_RECOVERY_ARTIFACT_SHA256: fixture.currentArtifactSha,
+      },
+    });
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    assert.notEqual(result.status, 0, output);
+    assert.match(output, /regular non-symlink file/u);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
 
 function createPreviousReleaseFixture(appDir: string) {
   assert.ok(
