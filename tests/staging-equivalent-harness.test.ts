@@ -450,7 +450,7 @@ test('effective host path rejects Node/npm even when an operator adds them', () 
   }
 });
 
-test('host contract validation retains the helper after building the effective PATH', () => {
+test('host contract validation preserves the caller umask and private artifacts', () => {
   const root = mkdtempSync(join(tmpdir(), 'classroompath-k-host-contract-'));
   try {
     const binDir = join(root, 'bin');
@@ -473,8 +473,8 @@ test('host contract validation retains the helper after building the effective P
     writeFileSync(
       join(contractDir, 'production-host-contract.sh'),
       [
-        'PRODUCTION_HOST_REQUIRED_COMMANDS=(bash docker df awk sha256sum tr)',
-        'production_host_contract_validate() { return 0; }',
+        'PRODUCTION_HOST_REQUIRED_COMMANDS=(bash docker df awk sha256sum tr chmod stat mkdir)',
+        'production_host_contract_validate() { printf "%s\\n" fixture-report > "$3"; chmod 600 "$3"; return 0; }',
         '',
       ].join('\n')
     );
@@ -493,6 +493,8 @@ test('host contract validation retains the helper after building the effective P
           '-c',
           [
             'source "$1"',
+            'umask 022',
+            'before_umask="$(umask)"',
             'K_HARNESS_DIR="$2"',
             'K_DEPLOY_ROOT="$3"',
             'K_EVIDENCE_DIR="$4"',
@@ -503,6 +505,15 @@ test('host contract validation retains the helper after building the effective P
             'PATH="$7:$PATH"',
             'export K_HARNESS_DIR K_DEPLOY_ROOT K_EVIDENCE_DIR K_GATEWAY_DOWNLOAD_HOST_ROOT K_DOCKER_DAEMON_ID K_GATEWAY_DOWNLOAD_DEVICE_SHA256 K_COMPOSE_PROJECT PATH',
             'k_validate_host_contract',
+            'after_umask="$(umask)"',
+            'test "$after_umask" = "$before_umask"',
+            'test "$(stat -c %a "$4/host-contract.json")" = 600',
+            'test "$(stat -c %a "$4/host-isolation.env")" = 600',
+            'checkout_fixture="$3/checkout"',
+            'mkdir -p "$checkout_fixture/docker"',
+            'printf "%s\\n" fixture > "$checkout_fixture/docker/spa-nginx.conf"',
+            'test "$(stat -c %a "$checkout_fixture/docker")" = 755',
+            'test "$(stat -c %a "$checkout_fixture/docker/spa-nginx.conf")" = 644',
           ].join('; '),
           'bash',
           harnessPath,

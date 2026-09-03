@@ -661,18 +661,23 @@ k_validate_host_contract() {
     k_error 'Gateway bind-mount filesystem identity does not match the durable fence'
     return 1
   }
-  umask 077
-  {
-    printf 'STAGING_EQUIVALENT_DOCKER_DAEMON_ID=%s\n' "$actual_daemon_id"
-    printf 'STAGING_EQUIVALENT_GATEWAY_DOWNLOAD_DEVICE_SHA256=%s\n' "$actual_device_sha256"
-    printf 'STAGING_EQUIVALENT_COMPOSE_PROJECT=%s\n' "$K_COMPOSE_PROJECT"
-    printf 'HOST_NODE_OBSERVED=%s\n' "$host_node_observed"
-    printf 'HOST_NPM_OBSERVED=%s\n' "$host_npm_observed"
-    printf 'EFFECTIVE_HOST_NODE=unavailable\n'
-    printf 'EFFECTIVE_HOST_NPM=unavailable\n'
-    printf 'STAGING_EQUIVALENT_HOST_NODE_NPM_UNAVAILABLE=true\n'
-  } > "$isolation_report"
-  chmod 600 "$isolation_report"
+  (
+    umask 077
+    {
+      printf 'STAGING_EQUIVALENT_DOCKER_DAEMON_ID=%s\n' "$actual_daemon_id"
+      printf 'STAGING_EQUIVALENT_GATEWAY_DOWNLOAD_DEVICE_SHA256=%s\n' "$actual_device_sha256"
+      printf 'STAGING_EQUIVALENT_COMPOSE_PROJECT=%s\n' "$K_COMPOSE_PROJECT"
+      printf 'HOST_NODE_OBSERVED=%s\n' "$host_node_observed"
+      printf 'HOST_NPM_OBSERVED=%s\n' "$host_npm_observed"
+      printf 'EFFECTIVE_HOST_NODE=unavailable\n'
+      printf 'EFFECTIVE_HOST_NPM=unavailable\n'
+      printf 'STAGING_EQUIVALENT_HOST_NODE_NPM_UNAVAILABLE=true\n'
+    } > "$isolation_report"
+    chmod 600 "$isolation_report"
+  ) || {
+    rm -rf "$effective_path"
+    return 1
+  }
   K_HOST_NODE_NPM_UNAVAILABLE=true
   K_HOST_NODE_OBSERVED="$host_node_observed"
   K_HOST_NPM_OBSERVED="$host_npm_observed"
