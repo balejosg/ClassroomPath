@@ -161,9 +161,36 @@ single-line `GHCR_TOKEN=...` assignment and exactly one `DATABASE_URL=...`
 assignment; the remainder may be the staging application `.env` contract copied
 during provisioning. The harness hashes the database URL in memory and compares
 it to `K_DATABASE_ENDPOINT_SHA256` and the durable marker without printing it.
-It parses the three assignments without sourcing the file and exports only the
-two registry credentials to the short-lived Docker login/forward/recovery
-processes.
+It parses the assignments without sourcing the file. The two registry
+credentials are exported only to the short-lived Docker login/forward/recovery
+processes. The forward executor receives the following explicit
+application-runtime allowlist, with absent optional assignments represented as
+empty values:
+
+```text
+CP_BILLING_MODE
+CP_PLATFORM_ADMIN_EMAILS
+CP_CLIENT_CANARY_ADMIN_TOKEN
+VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY
+VAPID_CONTACT
+STRIPE_SECRET_KEY
+STRIPE_WEBHOOK_SECRET
+STRIPE_ANNUAL_PRICE_1_10
+STRIPE_ANNUAL_PRICE_11_25
+STRIPE_ANNUAL_PRICE_26_50
+STRIPE_ANNUAL_PRICE_51_100
+STRIPE_ONBOARDING_PRICE_1_25
+STRIPE_ONBOARDING_PRICE_26_100
+STRIPE_PILOT_PRICE
+CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA
+```
+
+No other assignment from the secrets file is forwarded. `CP_EMAIL_PREFLIGHT_MODE`
+is not read from that file: K supplies the explicit `skip` override while the
+production and normal-staging defaults remain unchanged. Runtime secret values
+are kept out of stdout/stderr and evidence; the secrets file is never sourced
+as shell code or archived.
 
 ## Provisioning exact P
 

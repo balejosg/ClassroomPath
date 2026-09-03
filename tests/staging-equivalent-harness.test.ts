@@ -598,6 +598,147 @@ test('runtime credentials are read from a private external file without sourcing
   }
 });
 
+test('K forward receives only the explicit application runtime allowlist', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-k-forward-runtime-'));
+  try {
+    const deployRoot = join(root, 'deploy-root');
+    const appDir = join(deployRoot, 'app');
+    const secrets = join(root, 'runtime.env');
+    const payload = join(root, 'candidate-payload.env');
+    const recovery = join(root, 'recovery.tgz');
+    const prepared = join(root, 'recovery-prepared.env');
+    const entrypoint = join(root, 'forward-entrypoint.sh');
+    const capture = join(root, 'forward-environment.txt');
+    const evidence = join(root, 'evidence.txt');
+    const databaseUrl = fixtureDatabaseUrl();
+    const databaseEndpointSha = createHash('sha256').update(databaseUrl).digest('hex');
+
+    mkdirSync(appDir, { recursive: true });
+    writeFileSync(payload, 'candidate-payload\n');
+    writeFileSync(recovery, 'recovery-bytes\n');
+    writeFileSync(prepared, 'RECOVERY_PREPARED_BEFORE_BOUNDARY=true\n');
+    writeFileSync(evidence, 'status=only\n');
+    writeFileSync(
+      secrets,
+      [
+        `DATABASE_URL=${databaseUrl}`,
+        'GHCR_USERNAME=fixture-user',
+        'GHCR_TOKEN=fixture-credential',
+        'CP_BILLING_MODE=manual_only',
+        'CP_PLATFORM_ADMIN_EMAILS=admin@classroompath.example.invalid',
+        'CP_CLIENT_CANARY_ADMIN_TOKEN=canary-token-sentinel',
+        'VAPID_PUBLIC_KEY=vapid-public-sentinel',
+        'VAPID_PRIVATE_KEY=vapid-private-sentinel',
+        'VAPID_CONTACT=mailto:vapid@classroompath.example.invalid',
+        'STRIPE_SECRET_KEY=stripe-secret-sentinel',
+        'STRIPE_WEBHOOK_SECRET=stripe-webhook-sentinel',
+        'STRIPE_ANNUAL_PRICE_1_10=price-1-10-sentinel',
+        'STRIPE_ANNUAL_PRICE_11_25=price-11-25-sentinel',
+        'STRIPE_ANNUAL_PRICE_26_50=price-26-50-sentinel',
+        'STRIPE_ANNUAL_PRICE_51_100=price-51-100-sentinel',
+        'STRIPE_ONBOARDING_PRICE_1_25=price-onboarding-1-25-sentinel',
+        'STRIPE_ONBOARDING_PRICE_26_100=price-onboarding-26-100-sentinel',
+        'STRIPE_PILOT_PRICE=price-pilot-sentinel',
+        'CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA=1',
+        'CP_EMAIL_PREFLIGHT_MODE=required',
+        'ARBITRARY_RUNTIME_SECRET=must-not-forward-sentinel',
+        '',
+      ].join('\n')
+    );
+    chmodSync(secrets, 0o600);
+    writeFileSync(
+      entrypoint,
+      [
+        '#!/usr/bin/env bash',
+        'set -euo pipefail',
+        'printf "forward_email=%s\\n" "${CP_EMAIL_PREFLIGHT_MODE:-unset}" > "$K_CAPTURE_FILE"',
+        'for name in CP_BILLING_MODE CP_PLATFORM_ADMIN_EMAILS CP_CLIENT_CANARY_ADMIN_TOKEN VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY VAPID_CONTACT STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET STRIPE_ANNUAL_PRICE_1_10 STRIPE_ANNUAL_PRICE_11_25 STRIPE_ANNUAL_PRICE_26_50 STRIPE_ANNUAL_PRICE_51_100 STRIPE_ONBOARDING_PRICE_1_25 STRIPE_ONBOARDING_PRICE_26_100 STRIPE_PILOT_PRICE CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA; do',
+        '  if [ -n "${!name:-}" ]; then printf "%s=present\\n" "$name" >> "$K_CAPTURE_FILE"; else printf "%s=absent\\n" "$name" >> "$K_CAPTURE_FILE"; fi',
+        'done',
+        'if [ -n "${ARBITRARY_RUNTIME_SECRET:-}" ]; then printf "arbitrary=present\\n" >> "$K_CAPTURE_FILE"; else printf "arbitrary=absent\\n" >> "$K_CAPTURE_FILE"; fi',
+        '',
+      ].join('\n')
+    );
+    chmodSync(entrypoint, 0o755);
+
+    const output = runShell(
+      [
+        '-c',
+        [
+          'source "$1"',
+          'K_APP_DIR="$2"',
+          'K_C_PAYLOAD_FILE="$3"',
+          'K_RECOVERY_TRANSMITTED_FILE="$4"',
+          'K_RECOVERY_PREPARED_FILE="$5"',
+          'K_C_FORWARD_ENTRYPOINT_FILE="$6"',
+          'K_DEPLOY_ROOT="$7"',
+          'K_RUNTIME_SECRETS_FILE="$8"',
+          'K_DATABASE_ENDPOINT_SHA256="$9"',
+          'K_EFFECTIVE_HOST_PATH="$PATH"',
+          `K_CANDIDATE_SHA="${candidateSha}"`,
+          `K_RECOVERY_SHA="${recoverySha}"`,
+          `K_RECOVERY_SOURCE_SHA="${recoverySha}"`,
+          'K_RECOVERY_CONTRACT_VERSION=1',
+          'K_RECOVERY_SOURCE_VERSION=1',
+          `K_RECOVERY_ARTIFACT_SHA256="${bundleSha}"`,
+          `K_RECOVERY_EXECUTOR_SHA256="${runtimeSha}"`,
+          'K_COMPOSE_PROJECT=classroompath-production',
+          'K_NETWORK_PREFLIGHT_URL=https://registry.example.invalid/v2/',
+          'K_CONTAINER_PLATFORM=linux/amd64',
+          'export K_APP_DIR K_C_PAYLOAD_FILE K_RECOVERY_TRANSMITTED_FILE K_RECOVERY_PREPARED_FILE K_C_FORWARD_ENTRYPOINT_FILE K_DEPLOY_ROOT K_RUNTIME_SECRETS_FILE K_DATABASE_ENDPOINT_SHA256 K_EFFECTIVE_HOST_PATH K_CANDIDATE_SHA K_RECOVERY_SHA K_RECOVERY_SOURCE_SHA K_RECOVERY_CONTRACT_VERSION K_RECOVERY_SOURCE_VERSION K_RECOVERY_ARTIFACT_SHA256 K_RECOVERY_EXECUTOR_SHA256 K_COMPOSE_PROJECT K_NETWORK_PREFLIGHT_URL K_CONTAINER_PLATFORM',
+          'k_validate_candidate_payload() { return 0; }',
+          'k_preflight_recovery() { return 0; }',
+          'k_validate_recovery_transmitted() { return 0; }',
+          'k_load_runtime_secrets',
+          'k_run_forward_from_stdin 2>"$K_FORWARD_STDERR"',
+        ].join('; '),
+        'bash',
+        harnessPath,
+        appDir,
+        payload,
+        recovery,
+        prepared,
+        entrypoint,
+        deployRoot,
+        secrets,
+        databaseEndpointSha,
+      ],
+      { K_CAPTURE_FILE: capture, K_FORWARD_STDERR: join(root, 'forward-stderr.txt') }
+    );
+
+    const captureText = readFileSync(capture, 'utf8');
+    const stderrText = readFileSync(join(root, 'forward-stderr.txt'), 'utf8');
+    for (const name of [
+      'CP_BILLING_MODE',
+      'CP_PLATFORM_ADMIN_EMAILS',
+      'CP_CLIENT_CANARY_ADMIN_TOKEN',
+      'VAPID_PUBLIC_KEY',
+      'VAPID_PRIVATE_KEY',
+      'VAPID_CONTACT',
+      'STRIPE_SECRET_KEY',
+      'STRIPE_WEBHOOK_SECRET',
+      'STRIPE_ANNUAL_PRICE_1_10',
+      'STRIPE_ANNUAL_PRICE_11_25',
+      'STRIPE_ANNUAL_PRICE_26_50',
+      'STRIPE_ANNUAL_PRICE_51_100',
+      'STRIPE_ONBOARDING_PRICE_1_25',
+      'STRIPE_ONBOARDING_PRICE_26_100',
+      'STRIPE_PILOT_PRICE',
+      'CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA',
+    ]) {
+      assert.match(captureText, new RegExp(`^${name}=present$`, 'mu'));
+    }
+    assert.match(captureText, /^forward_email=skip$/mu);
+    assert.match(captureText, /^arbitrary=absent$/mu);
+    assert.doesNotMatch(output, /sentinel/u);
+    assert.doesNotMatch(stderrText, /sentinel/u);
+    assert.doesNotMatch(captureText, /sentinel/u);
+    assert.doesNotMatch(readFileSync(evidence, 'utf8'), /sentinel/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('runtime secrets admission rejects a non-private external file', () => {
   const root = mkdtempSync(join(tmpdir(), 'classroompath-k-private-secrets-'));
   try {
@@ -627,6 +768,65 @@ test('runtime secrets admission rejects a non-private external file', () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('K runtime allowlist matches production deploy inputs and keeps K email policy isolated', () => {
+  const applicationRuntimeNames = [
+    'CP_BILLING_MODE',
+    'CP_PLATFORM_ADMIN_EMAILS',
+    'CP_CLIENT_CANARY_ADMIN_TOKEN',
+    'VAPID_PUBLIC_KEY',
+    'VAPID_PRIVATE_KEY',
+    'VAPID_CONTACT',
+    'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+    'STRIPE_ANNUAL_PRICE_1_10',
+    'STRIPE_ANNUAL_PRICE_11_25',
+    'STRIPE_ANNUAL_PRICE_26_50',
+    'STRIPE_ANNUAL_PRICE_51_100',
+    'STRIPE_ONBOARDING_PRICE_1_25',
+    'STRIPE_ONBOARDING_PRICE_26_100',
+    'STRIPE_PILOT_PRICE',
+    'CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA',
+  ];
+  const harnessSource = readFileSync(harnessPath, 'utf8');
+  const allowlistBlock = harnessSource.match(
+    /K_FORWARD_RUNTIME_ENV_NAMES=\((?<allowlist>[\s\S]*?)\n\)/u
+  )?.groups?.allowlist;
+  assert.ok(allowlistBlock);
+  for (const name of applicationRuntimeNames) {
+    assert.match(allowlistBlock, new RegExp(`\\b${name}\\b`, 'u'));
+  }
+
+  const productionWorkflow = readFileSync(
+    resolve(projectRoot, '.github/workflows/deploy.yml'),
+    'utf8'
+  );
+  const productionEnvLine = productionWorkflow
+    .split(/\r?\n/u)
+    .find((line) => line.includes('envs: GHCR_USERNAME'));
+  assert.ok(productionEnvLine);
+  for (const name of applicationRuntimeNames) {
+    assert.match(productionEnvLine, new RegExp(`(?:^|,)${name}(?:,|$)`, 'u'));
+  }
+  assert.match(productionEnvLine, /(?:^|,)CP_EMAIL_PREFLIGHT_MODE$/u);
+
+  const productionSource = readFileSync(
+    resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
+    'utf8'
+  );
+  assert.match(
+    productionSource,
+    /CP_EMAIL_PREFLIGHT_MODE="\$\{CP_EMAIL_PREFLIGHT_MODE:-required\}"/u
+  );
+  assert.doesNotMatch(productionSource, /CP_EMAIL_PREFLIGHT_MODE=skip/u);
+
+  const stagingSource = readFileSync(
+    resolve(projectRoot, 'scripts/lib/staging-deploy-local-runtime.sh'),
+    'utf8'
+  );
+  assert.doesNotMatch(stagingSource, /CP_EMAIL_PREFLIGHT_MODE=skip/u);
+  assert.doesNotMatch(stagingSource, /K_FORWARD_RUNTIME_ENV_NAMES/u);
 });
 
 test('K forward skips email preflight without changing production or staging policy', () => {

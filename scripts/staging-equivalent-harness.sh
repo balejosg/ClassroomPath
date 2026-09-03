@@ -43,6 +43,27 @@ K_RUNTIME_PROJECTION_KEYS=(
   RC_RUN_ID
 )
 K_RUNTIME_PROJECTION_VALUE_RE='^[A-Za-z0-9_@%+=:,./-]+$'
+# This is the application-runtime configuration contract forwarded by the
+# production workflow.  Transport and deployment identity variables remain
+# explicit arguments to the streamed executor and are intentionally excluded.
+K_FORWARD_RUNTIME_ENV_NAMES=(
+  CP_BILLING_MODE
+  CP_PLATFORM_ADMIN_EMAILS
+  CP_CLIENT_CANARY_ADMIN_TOKEN
+  VAPID_PUBLIC_KEY
+  VAPID_PRIVATE_KEY
+  VAPID_CONTACT
+  STRIPE_SECRET_KEY
+  STRIPE_WEBHOOK_SECRET
+  STRIPE_ANNUAL_PRICE_1_10
+  STRIPE_ANNUAL_PRICE_11_25
+  STRIPE_ANNUAL_PRICE_26_50
+  STRIPE_ANNUAL_PRICE_51_100
+  STRIPE_ONBOARDING_PRICE_1_25
+  STRIPE_ONBOARDING_PRICE_26_100
+  STRIPE_PILOT_PRICE
+  CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA
+)
 
 k_error() {
   printf '[staging-equivalent] ERROR: %s\n' "$*"
@@ -1331,6 +1352,7 @@ k_validate_runtime_secrets_path() {
 
 k_runtime_secret_value() {
   local expected_key="$1"
+  local required="${2:-required}"
   local line=""
   local key=""
   local value=""
@@ -1349,6 +1371,9 @@ k_runtime_secret_value() {
     count=$((count + 1))
     printf '%s\n' "$value"
   done < "$K_RUNTIME_SECRETS_FILE"
+  if [ "$count" -eq 0 ] && [ "$required" = optional ]; then
+    return 0
+  fi
   [ "$count" -eq 1 ] || {
     k_error "Runtime secrets file must contain exactly one $expected_key assignment"
     return 1
@@ -1359,6 +1384,8 @@ k_load_runtime_secrets() {
   local app_dir="${K_APP_DIR:-$K_DEPLOY_ROOT/app}"
   local ghcr_username=""
   local ghcr_token=""
+  local runtime_name=""
+  local runtime_value=""
 
   K_APP_DIR="$app_dir"
   export K_APP_DIR
@@ -1370,6 +1397,11 @@ k_load_runtime_secrets() {
   GHCR_USERNAME="$ghcr_username"
   GHCR_TOKEN="$ghcr_token"
   export GHCR_USERNAME GHCR_TOKEN
+
+  for runtime_name in "${K_FORWARD_RUNTIME_ENV_NAMES[@]}"; do
+    runtime_value="$(k_runtime_secret_value "$runtime_name" optional)" || return 1
+    printf -v "$runtime_name" '%s' "$runtime_value"
+  done
 }
 
 k_validate_database_endpoint() {
@@ -3376,6 +3408,8 @@ k_run_forward_from_stdin() {
   local payload_b64=""
   local recovery_b64=""
   local effective_path="${K_EFFECTIVE_HOST_PATH:-${PATH:-}}"
+  local runtime_name=""
+  local -a forward_runtime_env=()
 
   k_validate_candidate_payload || return 1
   k_preflight_recovery || return 1
@@ -3386,6 +3420,9 @@ k_run_forward_from_stdin() {
   }
   payload_b64="$(base64 "$K_C_PAYLOAD_FILE" | tr -d '\r\n')"
   recovery_b64="$(base64 "$K_RECOVERY_TRANSMITTED_FILE" | tr -d '\r\n')"
+  for runtime_name in "${K_FORWARD_RUNTIME_ENV_NAMES[@]}"; do
+    forward_runtime_env+=("$runtime_name=${!runtime_name-}")
+  done
   (
     cd "$K_APP_DIR"
     PATH="$effective_path" env \
@@ -3406,6 +3443,7 @@ k_run_forward_from_stdin() {
       PRODUCTION_RECOVERY_ARTIFACT_SHA256="$K_RECOVERY_ARTIFACT_SHA256" PRODUCTION_RECOVERY_EXECUTOR_SHA256="$K_RECOVERY_EXECUTOR_SHA256" \
       PRODUCTION_RECOVERY_BUNDLE_B64="$recovery_b64" \
       CLASSROOMPATH_CONTAINER_PLATFORM="${K_CONTAINER_PLATFORM:-linux/amd64}" \
+      "${forward_runtime_env[@]}" \
       bash -s < "$K_C_FORWARD_ENTRYPOINT_FILE"
   )
 }
