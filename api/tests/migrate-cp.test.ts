@@ -27,6 +27,15 @@ test('uses a migration ledger isolated from OpenPath', async () => {
   });
 });
 
+test('Drizzle Kit config uses the same isolated ClassroomPath ledger', async () => {
+  const configModule = await import('../drizzle.config.ts');
+  const config = configModule.default as {
+    migrations?: { table?: string };
+  };
+
+  assert.equal(config.migrations?.table, '__classroompath_migrations');
+});
+
 test('filters deferred legacy retirement from normal migration runs', () => {
   const migrationFolder = resolveClassroomPathMigrationsFolder({});
 

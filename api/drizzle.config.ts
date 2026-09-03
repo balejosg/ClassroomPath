@@ -10,5 +10,8 @@ export default defineConfig({
   dbCredentials: {
     url: connectionString,
   },
+  migrations: {
+    table: '__classroompath_migrations',
+  },
   tablesFilter: ['cp_*'], // Only manage ClassroomPath tables
 });
