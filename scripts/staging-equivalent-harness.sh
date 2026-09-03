@@ -2724,10 +2724,25 @@ k_ready_response_is_semantically_ready() {
 k_http_probe() {
   local url="$1"
   local body_file="$2"
+  local attempts="${K_HTTP_PROBE_ATTEMPTS:-30}"
+  local delay="${K_HTTP_PROBE_DELAY_SECONDS:-1}"
+  local attempt=1
   local status=""
 
-  status="$(curl -sS --max-time "${K_CURL_TIMEOUT_SECONDS:-10}" -o "$body_file" -w '%{http_code}' "$url" 2>/dev/null || true)"
-  [[ "$status" =~ ^[0-9]{3}$ ]] || status=000
+  case "$attempts" in
+    ''|*[!0-9]*|0)
+      k_error 'K_HTTP_PROBE_ATTEMPTS must be a positive integer'
+      return 1
+      ;;
+  esac
+  : > "$body_file" || return 1
+  while [ "$attempt" -le "$attempts" ]; do
+    status="$(curl -sS --max-time "${K_CURL_TIMEOUT_SECONDS:-10}" -o "$body_file" -w '%{http_code}' "$url" 2>/dev/null || true)"
+    [[ "$status" =~ ^[0-9]{3}$ ]] || status=000
+    [ "$status" = 200 ] && break
+    [ "$attempt" -lt "$attempts" ] && sleep "$delay"
+    attempt=$((attempt + 1))
+  done
   printf '%s\n' "$status"
 }
 

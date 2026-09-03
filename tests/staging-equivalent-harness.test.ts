@@ -1617,6 +1617,60 @@ test('provisioning orders migrations before application runtime and records owne
   assert.doesNotMatch(provisionSource, /docker compose[^\n]*down/u);
 });
 
+test('HTTP snapshot probes retry while the freshly started runtime becomes ready', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-http-probe-'));
+  try {
+    const fakeBin = join(root, 'bin');
+    const countFile = join(root, 'curl-count');
+    const bodyFile = join(root, 'ready.body');
+    mkdirSync(fakeBin, { recursive: true });
+    writeFileSync(countFile, '0\n');
+    writeFileSync(
+      join(fakeBin, 'curl'),
+      [
+        '#!/bin/sh',
+        'set -eu',
+        'count=$(cat "$FAKE_CURL_COUNT_FILE")',
+        'count=$((count + 1))',
+        'printf "%s\n" "$count" > "$FAKE_CURL_COUNT_FILE"',
+        "body=''",
+        'while [ "$#" -gt 0 ]; do',
+        '  case "$1" in',
+        '    -o) body="$2"; shift 2 ;;',
+        '    *) shift ;;',
+        '  esac',
+        'done',
+        'if [ "$count" -lt 3 ]; then exit 7; fi',
+        'printf "%s\n" \'{"ready":true}\' > "$body"',
+        'printf "200\n"',
+        '',
+      ].join('\n')
+    );
+    chmodSync(join(fakeBin, 'curl'), 0o755);
+
+    const output = runShell(
+      [
+        '-c',
+        'source "$1"; K_HTTP_PROBE_ATTEMPTS=3; K_HTTP_PROBE_DELAY_SECONDS=0; k_http_probe "$2" "$3"',
+        'bash',
+        harnessPath,
+        'http://127.0.0.1:3000/cp/ready',
+        bodyFile,
+      ],
+      {
+        PATH: [fakeBin, process.env.PATH ?? '/usr/bin:/bin'].join(':'),
+        FAKE_CURL_COUNT_FILE: countFile,
+      }
+    ).trim();
+
+    assert.equal(output, '200');
+    assert.equal(readFileSync(countFile, 'utf8').trim(), '3');
+    assert.equal(readFileSync(bodyFile, 'utf8').trim(), '{"ready":true}');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('post-forward policy matrix never abandons a non-terminal boundary state', () => {
   const root = mkdtempSync(join(tmpdir(), 'classroompath-post-forward-matrix-'));
   try {
