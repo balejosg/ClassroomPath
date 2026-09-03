@@ -618,6 +618,96 @@ test('runtime secrets admission rejects a non-private external file', () => {
   }
 });
 
+test('K forward skips email preflight without changing production or staging policy', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-k-email-preflight-'));
+  try {
+    const appDir = join(root, 'app');
+    const payload = join(root, 'candidate-payload.env');
+    const recovery = join(root, 'recovery.tgz');
+    const prepared = join(root, 'recovery-prepared.env');
+    const entrypoint = join(root, 'forward-entrypoint.sh');
+    const capture = join(root, 'forward-environment.txt');
+    mkdirSync(appDir, { recursive: true });
+    writeFileSync(payload, 'candidate-payload\n');
+    writeFileSync(recovery, 'recovery-bytes\n');
+    writeFileSync(prepared, 'RECOVERY_PREPARED_BEFORE_BOUNDARY=true\n');
+    writeFileSync(
+      entrypoint,
+      [
+        '#!/usr/bin/env bash',
+        'printf "forward_email=%s\\n" "${CP_EMAIL_PREFLIGHT_MODE:-unset}" > "$K_CAPTURE_FILE"',
+        'printf "forward_staging=%s\\n" "${STAGING_EMAIL_PREFLIGHT_MODE:-unset}" >> "$K_CAPTURE_FILE"',
+        '',
+      ].join('\n')
+    );
+    chmodSync(entrypoint, 0o755);
+
+    const output = runShell(
+      [
+        '-c',
+        [
+          'source "$1"',
+          'K_APP_DIR="$2"',
+          'K_C_PAYLOAD_FILE="$3"',
+          'K_RECOVERY_TRANSMITTED_FILE="$4"',
+          'K_RECOVERY_PREPARED_FILE="$5"',
+          'K_C_FORWARD_ENTRYPOINT_FILE="$6"',
+          'K_EFFECTIVE_HOST_PATH="$PATH"',
+          `K_CANDIDATE_SHA="${candidateSha}"`,
+          `K_RECOVERY_SHA="${recoverySha}"`,
+          `K_RECOVERY_SOURCE_SHA="${recoverySha}"`,
+          'K_RECOVERY_CONTRACT_VERSION=1',
+          'K_RECOVERY_SOURCE_VERSION=1',
+          `K_RECOVERY_ARTIFACT_SHA256="${bundleSha}"`,
+          `K_RECOVERY_EXECUTOR_SHA256="${runtimeSha}"`,
+          `K_DEPLOY_ROOT="${root}"`,
+          'K_COMPOSE_PROJECT=classroompath-production',
+          'K_NETWORK_PREFLIGHT_URL=https://registry.example.invalid/v2/',
+          'K_CONTAINER_PLATFORM=linux/amd64',
+          'export K_APP_DIR K_C_PAYLOAD_FILE K_RECOVERY_TRANSMITTED_FILE K_RECOVERY_PREPARED_FILE K_C_FORWARD_ENTRYPOINT_FILE K_EFFECTIVE_HOST_PATH K_CANDIDATE_SHA K_RECOVERY_SHA K_RECOVERY_SOURCE_SHA K_RECOVERY_CONTRACT_VERSION K_RECOVERY_SOURCE_VERSION K_RECOVERY_ARTIFACT_SHA256 K_RECOVERY_EXECUTOR_SHA256 K_DEPLOY_ROOT K_COMPOSE_PROJECT K_NETWORK_PREFLIGHT_URL K_CONTAINER_PLATFORM',
+          'k_validate_candidate_payload() { return 0; }',
+          'k_preflight_recovery() { return 0; }',
+          'k_validate_recovery_transmitted() { return 0; }',
+          'k_run_forward_from_stdin',
+          'printf "parent_email=%s\\n" "$CP_EMAIL_PREFLIGHT_MODE"',
+        ].join('; '),
+        'bash',
+        harnessPath,
+        appDir,
+        payload,
+        recovery,
+        prepared,
+        entrypoint,
+      ],
+      { K_CAPTURE_FILE: capture, CP_EMAIL_PREFLIGHT_MODE: 'required' }
+    );
+
+    assert.match(readFileSync(capture, 'utf8'), /forward_email=skip/u);
+    assert.match(readFileSync(capture, 'utf8'), /forward_staging=unset/u);
+    assert.match(output, /parent_email=required/u);
+
+    const productionSource = readFileSync(
+      resolve(projectRoot, 'scripts/deploy-production-remote.sh'),
+      'utf8'
+    );
+    assert.match(
+      productionSource,
+      /CP_EMAIL_PREFLIGHT_MODE="\$\{CP_EMAIL_PREFLIGHT_MODE:-required\}"/u
+    );
+    assert.doesNotMatch(productionSource, /CP_EMAIL_PREFLIGHT_MODE=skip/u);
+
+    const stagingSource = readFileSync(
+      resolve(projectRoot, 'scripts/lib/staging-deploy-local-runtime.sh'),
+      'utf8'
+    );
+    assert.match(stagingSource, /STAGING_EMAIL_PREFLIGHT_MODE/u);
+    assert.match(stagingSource, /export CP_EMAIL_PREFLIGHT_MODE/u);
+    assert.doesNotMatch(stagingSource, /CP_EMAIL_PREFLIGHT_MODE=skip/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('leg host evidence records the observed npm field from host admission', () => {
   const source = readFileSync(
     resolve(projectRoot, 'scripts/staging-equivalent-harness.sh'),
