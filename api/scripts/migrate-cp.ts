@@ -9,6 +9,7 @@ import { closeConnection, db } from '../src/db/index.js';
 import {
   LEGACY_WINDOWS_OFFLINE_RETIREMENT_FLAG,
   LEGACY_WINDOWS_OFFLINE_RETIREMENT_TAG,
+  CLASSROOMPATH_MIGRATIONS_TABLE,
   shouldApplyLegacyWindowsOfflineRetirement,
 } from './baseline-cp-migrations.js';
 
@@ -54,6 +55,16 @@ export function resolveClassroomPathMigrationsFolder(
   };
 }
 
+export function buildClassroomPathMigrationConfig(folder: string): {
+  migrationsFolder: string;
+  migrationsTable: string;
+} {
+  return {
+    migrationsFolder: folder,
+    migrationsTable: CLASSROOMPATH_MIGRATIONS_TABLE,
+  };
+}
+
 export async function migrateClassroomPath(
   env: Record<string, string | undefined> = process.env,
   args: readonly string[] = []
@@ -66,7 +77,7 @@ export async function migrateClassroomPath(
         `[MIGRATIONS] Deferring ${LEGACY_WINDOWS_OFFLINE_RETIREMENT_TAG} until the explicit legacy drain gate`
       );
     }
-    await migrate(db, { migrationsFolder: migrationFolder.folder });
+    await migrate(db, buildClassroomPathMigrationConfig(migrationFolder.folder));
   } finally {
     if (migrationFolder.temporary) {
       rmSync(migrationFolder.folder, { recursive: true, force: true });

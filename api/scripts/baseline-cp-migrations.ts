@@ -18,6 +18,7 @@ export const LEGACY_WINDOWS_OFFLINE_RETIREMENT_FLAG =
   '--confirm-windows-offline-installer-legacy-retirement';
 export const LEGACY_WINDOWS_OFFLINE_RETIREMENT_CONFIRMATION_ENV =
   'CLASSROOMPATH_WINDOWS_OFFLINE_LEGACY_RETIREMENT_CONFIRMED';
+export const CLASSROOMPATH_MIGRATIONS_TABLE = '__classroompath_migrations';
 
 export const REQUIRED_SCHEMA_MARKERS: SchemaMarkers = {
   cp_organizations: ['id'],
@@ -103,7 +104,7 @@ function getConnectionString(): string {
 async function ensureMigrationLedger(client: Client): Promise<void> {
   await client.query('CREATE SCHEMA IF NOT EXISTS drizzle');
   await client.query(`
-    CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
+    CREATE TABLE IF NOT EXISTS drizzle.${CLASSROOMPATH_MIGRATIONS_TABLE} (
       id SERIAL PRIMARY KEY,
       hash text NOT NULL,
       created_at bigint
@@ -113,7 +114,7 @@ async function ensureMigrationLedger(client: Client): Promise<void> {
 
 async function getMigrationLedgerRowCount(client: Client): Promise<number> {
   const result = await client.query<{ count: string }>(
-    'SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations'
+    `SELECT count(*)::text AS count FROM drizzle.${CLASSROOMPATH_MIGRATIONS_TABLE}`
   );
   return Number(result.rows[0]?.count ?? 0);
 }
@@ -164,7 +165,7 @@ export async function baselineClassroomPathMigrations(client: Client): Promise<s
   try {
     for (const entry of entries) {
       await client.query(
-        'INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)',
+        `INSERT INTO drizzle.${CLASSROOMPATH_MIGRATIONS_TABLE} (hash, created_at) VALUES ($1, $2)`,
         [entry.hash, entry.createdAt]
       );
     }

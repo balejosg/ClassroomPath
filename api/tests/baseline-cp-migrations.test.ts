@@ -5,11 +5,32 @@ import { test } from 'node:test';
 import { tmpdir } from 'node:os';
 
 import {
+  baselineClassroomPathMigrations,
   findMissingSchemaMarkers,
   LEGACY_WINDOWS_OFFLINE_RETIREMENT_TAG,
   readMigrationLedgerEntriesForBaseline,
   readMigrationLedgerEntries,
 } from '../scripts/baseline-cp-migrations.js';
+
+test('baselining uses a migration ledger isolated from OpenPath', async () => {
+  const queries: string[] = [];
+  const client = {
+    async query(query: string) {
+      queries.push(query);
+      if (query.includes('count(*)::text AS count')) {
+        return { rows: [{ count: '0' }] };
+      }
+      return { rows: [] };
+    },
+  };
+
+  assert.equal(await baselineClassroomPathMigrations(client as never), 'fresh-schema');
+  assert.ok(queries.some((query) => query.includes('drizzle.__classroompath_migrations')));
+  assert.equal(
+    queries.some((query) => query.includes('drizzle.__drizzle_migrations')),
+    false
+  );
+});
 
 test('reads migration ledger entries with Drizzle-compatible hashes', () => {
   const dir = join(tmpdir(), `cp-migrations-${process.pid}-${Date.now()}`);

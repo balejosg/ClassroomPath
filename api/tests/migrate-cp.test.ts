@@ -7,6 +7,26 @@ import { resolveClassroomPathMigrationsFolder } from '../scripts/migrate-cp.js';
 const LEGACY_WINDOWS_OFFLINE_RETIREMENT_FLAG =
   '--confirm-windows-offline-installer-legacy-retirement';
 
+test('uses a migration ledger isolated from OpenPath', async () => {
+  const migrationModule = await import('../scripts/migrate-cp.js');
+  const buildMigrationConfig = (
+    migrationModule as unknown as {
+      buildClassroomPathMigrationConfig?: (folder: string) => {
+        migrationsFolder: string;
+        migrationsTable: string;
+      };
+    }
+  ).buildClassroomPathMigrationConfig;
+
+  assert.equal(typeof buildMigrationConfig, 'function');
+  if (typeof buildMigrationConfig !== 'function') return;
+
+  assert.deepEqual(buildMigrationConfig('/tmp/classroompath-migrations'), {
+    migrationsFolder: '/tmp/classroompath-migrations',
+    migrationsTable: '__classroompath_migrations',
+  });
+});
+
 test('filters deferred legacy retirement from normal migration runs', () => {
   const migrationFolder = resolveClassroomPathMigrationsFolder({});
 
