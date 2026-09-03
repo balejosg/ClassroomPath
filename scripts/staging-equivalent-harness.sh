@@ -2587,6 +2587,7 @@ k_snapshot_service() {
   local project=""
   local actual_service=""
   local image=""
+  local image_id=""
   local status=""
   local digest=""
   local networks=""
@@ -2596,7 +2597,9 @@ k_snapshot_service() {
   metadata="$(docker inspect -f '{{.Id}}|{{.Name}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{.Config.Image}}|{{.State.Status}}' "$id")" || return 1
   IFS='|' read -r id name project actual_service image status <<< "$metadata"
   name="${name#/}"
-  digest="$(docker inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "$id" | awk 'NF { if (count++) printf ","; printf "%s", $0 }')" || return 1
+  image_id="$(docker inspect -f '{{.Image}}' "$id")" || return 1
+  [ -n "$image_id" ] || { k_error "Container $id has no immutable image ID"; return 1; }
+  digest="$(docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "$image_id" | awk 'NF { if (count++) printf ","; printf "%s", $0 }')" || return 1
   networks="$(docker inspect -f '{{range $name, $network := .NetworkSettings.Networks}}{{println $name}}{{end}}' "$id" | awk 'NF { if (count++) printf ","; printf "%s", $0 }')" || return 1
   mounts="$(k_snapshot_mounts "$id")" || return 1
   printf 'LIVE_%s_ID=%s\n' "$prefix" "$id"

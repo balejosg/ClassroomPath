@@ -631,6 +631,21 @@ test('leg host evidence records the observed npm field from host admission', () 
   assert.match(source, /host npm_observed "\$\{K_HOST_NPM_OBSERVED:-unknown\}"/u);
 });
 
+test('runtime snapshot resolves image digests from the inspected image object', () => {
+  const source = readFileSync(
+    resolve(projectRoot, 'scripts/staging-equivalent-harness.sh'),
+    'utf8'
+  );
+  const snapshotService = source.slice(
+    source.indexOf('k_snapshot_service()'),
+    source.indexOf('\nk_snapshot_volume()', source.indexOf('k_snapshot_service()'))
+  );
+
+  assert.match(snapshotService, /image_id="\$\(docker inspect -f '\{\{\.Image\}\}' "\$id"\)"/u);
+  assert.match(snapshotService, /docker image inspect -f '\{\{range \.RepoDigests\}\}/u);
+  assert.doesNotMatch(snapshotService, /docker inspect -f '\{\{range \.RepoDigests\}\}/u);
+});
+
 test('provisioning rejects pre-existing production-named persistent resources on a fresh host', () => {
   const root = mkdtempSync(join(tmpdir(), 'classroompath-k-resources-'));
   try {
