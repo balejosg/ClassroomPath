@@ -346,7 +346,7 @@ function runRecoveryExecutorFixture(
   fixture: ReturnType<typeof createRecoveryExecutorTransactionFixture>,
   options: { args?: string[]; env?: NodeJS.ProcessEnv; trace?: boolean } = {}
 ) {
-  const env = { ...fixture.baseEnv, ...options.env };
+  const env: NodeJS.ProcessEnv = { ...fixture.baseEnv, ...options.env };
   if (
     !options.env ||
     !Object.prototype.hasOwnProperty.call(options.env, 'DEPLOYMENT_TRANSACTION_FILE')
