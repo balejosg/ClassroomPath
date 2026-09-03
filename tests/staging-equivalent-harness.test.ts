@@ -829,6 +829,100 @@ test('K runtime allowlist matches production deploy inputs and keeps K email pol
   assert.doesNotMatch(stagingSource, /K_FORWARD_RUNTIME_ENV_NAMES/u);
 });
 
+test('recovery readiness ignores a stale terminal transaction from an earlier leg', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-k-recovery-retry-'));
+  try {
+    const deployRoot = join(root, 'deploy-root');
+    const stateDir = join(deployRoot, 'release-state');
+    const evidenceDir = join(root, 'evidence');
+    const artifact = join(root, 'recovery.tgz');
+    const executor = join(root, 'production-recovery-executor.sh');
+    const capture = join(root, 'preflight-transaction.txt');
+    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(evidenceDir, { recursive: true });
+    writeFileSync(join(stateDir, 'current'), `${releaseId}\n`);
+    writeFileSync(join(stateDir, 'previous'), `${releaseId}\n`);
+    writeFileSync(
+      join(stateDir, 'deployment-phase.env'),
+      [
+        'DEPLOYMENT_PHASE=ROLLED_BACK',
+        `DEPLOYMENT_TRANSACTION_ID=${staleTransactionId}`,
+        `CANDIDATE_RELEASE_ID=${releaseId}`,
+        `CANDIDATE_SHA=${candidateSha}`,
+        `CURRENT_RELEASE_ID=${releaseId}`,
+        `PREVIOUS_RELEASE_ID=${releaseId}`,
+        'MUTATION_BOUNDARY_REACHED=1',
+        `RECOVERY_SOURCE_SHA=${recoverySha}`,
+        `RECOVERY_ARTIFACT_SHA256=${'9'.repeat(64)}`,
+        `RECOVERY_EXECUTOR_SHA256=${runtimeSha}`,
+        `RECOVERY_ARTIFACT_PATH=${join(deployRoot, 'recovery', 'stale.tgz')}`,
+        '',
+      ].join('\n')
+    );
+    writeFileSync(
+      executor,
+      [
+        '#!/usr/bin/env bash',
+        'set -euo pipefail',
+        'grep -E "^(DEPLOYMENT_TRANSACTION_ID|DEPLOYMENT_PHASE|MUTATION_BOUNDARY_REACHED|CURRENT_RELEASE_ID|PREVIOUS_RELEASE_ID|CANDIDATE_RELEASE_ID|CANDIDATE_SHA|RECOVERY_SOURCE_SHA|RECOVERY_ARTIFACT_SHA256|RECOVERY_EXECUTOR_SHA256|RECOVERY_ARTIFACT_PATH)=" "$DEPLOYMENT_TRANSACTION_FILE" > "$CAPTURE"',
+        '',
+      ].join('\n')
+    );
+    chmodSync(executor, 0o755);
+    execFileSync('tar', ['-czf', artifact, '-C', root, 'production-recovery-executor.sh']);
+
+    runShell(
+      [
+        '-c',
+        [
+          'source "$1"',
+          'K_DEPLOY_ROOT="$2"',
+          'K_EVIDENCE_DIR="$3"',
+          'K_RECOVERY_ARTIFACT_FILE="$4"',
+          `K_TRANSACTION_ID="${transactionId}"`,
+          `K_C_RELEASE_ID="${releaseId}"`,
+          `K_CANDIDATE_SHA="${candidateSha}"`,
+          `K_PREVIOUS_RELEASE_ID="${releaseId}"`,
+          `K_RECOVERY_SHA="${recoverySha}"`,
+          `K_RECOVERY_SOURCE_SHA="${recoverySha}"`,
+          'K_RECOVERY_SOURCE_VERSION=1',
+          'K_RECOVERY_CONTRACT_VERSION=1',
+          `K_RECOVERY_ARTIFACT_SHA256="${bundleSha}"`,
+          `K_RECOVERY_EXECUTOR_SHA256="${runtimeSha}"`,
+          `K_RECOVERY_PERSISTED_FILE="${join(deployRoot, 'recovery', 'releases', bundleSha, 'production-recovery-bundle.tgz')}"`,
+          'K_EFFECTIVE_HOST_PATH="$PATH"',
+          'K_BASE_URL=https://k.example.invalid',
+          'K_CONTAINER_PLATFORM=linux/amd64',
+          'export K_DEPLOY_ROOT K_EVIDENCE_DIR K_RECOVERY_ARTIFACT_FILE K_TRANSACTION_ID K_C_RELEASE_ID K_CANDIDATE_SHA K_PREVIOUS_RELEASE_ID K_RECOVERY_SHA K_RECOVERY_SOURCE_SHA K_RECOVERY_SOURCE_VERSION K_RECOVERY_CONTRACT_VERSION K_RECOVERY_ARTIFACT_SHA256 K_RECOVERY_EXECUTOR_SHA256 K_RECOVERY_PERSISTED_FILE K_EFFECTIVE_HOST_PATH K_BASE_URL K_CONTAINER_PLATFORM',
+          'k_validate_prepared_recovery_artifact() { return 0; }',
+          'k_preflight_recovery_against_previous',
+        ].join('; '),
+        'bash',
+        harnessPath,
+        deployRoot,
+        evidenceDir,
+        artifact,
+      ],
+      { CAPTURE: capture }
+    );
+
+    const preflightTransaction = readFileSync(capture, 'utf8');
+    assert.match(
+      preflightTransaction,
+      new RegExp(`^DEPLOYMENT_TRANSACTION_ID=${transactionId}$`, 'mu')
+    );
+    assert.match(preflightTransaction, /^DEPLOYMENT_PHASE=PREPARED$/mu);
+    assert.match(preflightTransaction, /^MUTATION_BOUNDARY_REACHED=0$/mu);
+    assert.match(preflightTransaction, new RegExp(`^CANDIDATE_RELEASE_ID=${releaseId}$`, 'mu'));
+    assert.match(preflightTransaction, new RegExp(`^CANDIDATE_SHA=${candidateSha}$`, 'mu'));
+    assert.match(preflightTransaction, new RegExp(`^RECOVERY_ARTIFACT_SHA256=${bundleSha}$`, 'mu'));
+    assert.doesNotMatch(preflightTransaction, new RegExp(staleTransactionId, 'u'));
+    assert.doesNotMatch(preflightTransaction, new RegExp(`${'9'.repeat(64)}`, 'u'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('K forward skips email preflight without changing production or staging policy', () => {
   const root = mkdtempSync(join(tmpdir(), 'classroompath-k-email-preflight-'));
   try {

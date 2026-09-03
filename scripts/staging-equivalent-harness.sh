@@ -1810,6 +1810,46 @@ k_validate_recovery_source_checkout() {
   done
 }
 
+k_write_recovery_readiness_transaction() {
+  local transaction_file="$1"
+  local now=""
+
+  k_require_transaction_id "${K_TRANSACTION_ID:-}" || return 1
+  [ -n "${K_C_RELEASE_ID:-}" ] || return 1
+  [ -n "${K_CANDIDATE_SHA:-}" ] || return 1
+  [ -n "${K_PREVIOUS_RELEASE_ID:-}" ] || return 1
+  [ -n "${K_RECOVERY_SOURCE_SHA:-}" ] || return 1
+  [ -n "${K_RECOVERY_ARTIFACT_SHA256:-}" ] || return 1
+  [ -n "${K_RECOVERY_EXECUTOR_SHA256:-}" ] || return 1
+  [ -n "${K_RECOVERY_PERSISTED_FILE:-}" ] || return 1
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)" || return 1
+  mkdir -p "$(dirname "$transaction_file")" || return 1
+  {
+    printf 'DEPLOYMENT_TRANSACTION_VERSION=%q\n' 1
+    printf 'DEPLOYMENT_TRANSACTION_ID=%q\n' "$K_TRANSACTION_ID"
+    printf 'DEPLOYMENT_TRANSACTION_HISTORY_STATUS=%q\n' not_configured
+    printf 'DEPLOYMENT_PHASE=%q\n' PREPARED
+    printf 'DEPLOYMENT_STAGE=%q\n' RESOLVE
+    printf 'DEPLOYMENT_PHASE_STARTED_AT=%q\n' "$now"
+    printf 'DEPLOYMENT_PHASE_UPDATED_AT=%q\n' "$now"
+    printf 'MUTATION_BOUNDARY_REACHED=%q\n' 0
+    printf 'REQUESTED_RELEASE_ID=%q\n' "$K_C_RELEASE_ID"
+    printf 'CANDIDATE_RELEASE_ID=%q\n' "$K_C_RELEASE_ID"
+    printf 'CURRENT_RELEASE_ID=%q\n' "$K_PREVIOUS_RELEASE_ID"
+    printf 'PREVIOUS_RELEASE_ID=%q\n' "$K_PREVIOUS_RELEASE_ID"
+    printf 'CANDIDATE_SHA=%q\n' "$K_CANDIDATE_SHA"
+    printf 'RECOVERY_SOURCE_SHA=%q\n' "$K_RECOVERY_SOURCE_SHA"
+    printf 'RECOVERY_SOURCE_VERSION=%q\n' "$K_RECOVERY_SOURCE_VERSION"
+    printf 'RECOVERY_CONTRACT_VERSION=%q\n' "$K_RECOVERY_CONTRACT_VERSION"
+    printf 'RECOVERY_ARTIFACT_VERSION=%q\n' 1
+    printf 'RECOVERY_ARTIFACT_SHA256=%q\n' "$K_RECOVERY_ARTIFACT_SHA256"
+    printf 'RECOVERY_EXECUTOR_SHA256=%q\n' "$K_RECOVERY_EXECUTOR_SHA256"
+    printf 'RECOVERY_ARTIFACT_PATH=%q\n' "$K_RECOVERY_PERSISTED_FILE"
+    printf 'RECOVERY_ARTIFACT_SOURCE_SHA=%q\n' "$K_RECOVERY_SOURCE_SHA"
+  } > "$transaction_file" || return 1
+  chmod 600 "$transaction_file"
+}
+
 k_prepare_recovery_artifact() {
   local source_dir="${K_RECOVERY_SOURCE_DIR:-}"
   local artifact="${K_RECOVERY_ARTIFACT_FILE:-}"
@@ -1887,9 +1927,9 @@ k_validate_prepared_recovery_artifact() {
 
 k_preflight_recovery_against_previous() {
   local state_dir="$K_DEPLOY_ROOT/release-state"
-  local phase_file="$state_dir/deployment-phase.env"
   local preflight_file="$K_EVIDENCE_DIR/recovery-readiness.env"
   local temp_dir=""
+  local readiness_transaction_file=""
   local current=""
   local previous=""
 
@@ -1910,11 +1950,17 @@ k_preflight_recovery_against_previous() {
     k_error 'Unable to extract the exact recovery artifact for readiness preflight'
     return 1
   }
+  readiness_transaction_file="$temp_dir/deployment-phase.env"
+  k_write_recovery_readiness_transaction "$readiness_transaction_file" || {
+    rm -rf "$temp_dir"
+    k_error 'Unable to create the current transaction for recovery readiness preflight'
+    return 1
+  }
   if ! (
     PATH="$K_EFFECTIVE_HOST_PATH" \
     CLASSROOMPATH_DEPLOY_ROOT="$K_DEPLOY_ROOT" \
     APP_DIR="$K_APP_DIR" \
-    DEPLOYMENT_TRANSACTION_FILE="$phase_file" \
+    DEPLOYMENT_TRANSACTION_FILE="$readiness_transaction_file" \
     DEPLOYMENT_STATE_USE_VERIFIER=1 \
     ROLLBACK_READINESS_USE_VERIFIER=1 \
     PRODUCTION_HOST_NETWORK_URL="$K_NETWORK_PREFLIGHT_URL" \
