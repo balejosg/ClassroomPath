@@ -307,7 +307,7 @@ wait_for_production_runtime_readiness_impl() {
   if ! curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
     log_error "Gateway deployment failed. Check logs:"
     docker logs classroompath-gateway --tail 30
-    exit 1
+    return 1
   fi
 
   release_execution_mark_stage readiness
@@ -355,7 +355,7 @@ wait_for_production_runtime_readiness_impl() {
       log_error "Code rollback can be attempted automatically; DB migrated=$DB_MIGRATED backup=${PRODUCTION_BACKUP_REFERENCE:-none}"
       log_error "Debug: docker logs classroompath-gateway --tail 50"
       log_error "Debug: docker logs classroompath-api --tail 50"
-      exit 1
+      return 1
     fi
   done
 }
