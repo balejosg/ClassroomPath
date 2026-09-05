@@ -37,6 +37,7 @@ deployment_transaction_log_error() {
 deployment_transaction_is_allowed_transition() {
   local current_phase="$1"
   local next_phase="$2"
+  local explicit_recovery="${3:-${DEPLOYMENT_EXPLICIT_RECOVERY:-0}}"
 
   case "$current_phase:$next_phase" in
     PREPARED:SWITCHING|PREPARED:FAILED) return 0 ;;
@@ -45,6 +46,9 @@ deployment_transaction_is_allowed_transition() {
     VERIFIED:COMMITTED|VERIFIED:FAILED|VERIFIED:ROLLING_BACK) return 0 ;;
     FAILED:ROLLING_BACK) return 0 ;;
     ROLLING_BACK:ROLLED_BACK|ROLLING_BACK:FAILED) return 0 ;;
+    COMMITTED:ROLLING_BACK)
+      [ "$explicit_recovery" = 1 ]
+      ;;
     *) return 1 ;;
   esac
 }
@@ -283,7 +287,8 @@ deployment_transaction_transition() {
   if [ -z "$current_phase" ] && [ -n "${DEPLOYMENT_TRANSACTION_FILE:-}" ]; then
     current_phase="$(deployment_transaction_read_phase "$DEPLOYMENT_TRANSACTION_FILE")" || return 1
   fi
-  if ! deployment_transaction_is_allowed_transition "$current_phase" "$next_phase"; then
+  if ! deployment_transaction_is_allowed_transition \
+    "$current_phase" "$next_phase" "${DEPLOYMENT_EXPLICIT_RECOVERY:-0}"; then
     deployment_transaction_log_error "Invalid deployment transition: $current_phase -> $next_phase"
     return 1
   fi

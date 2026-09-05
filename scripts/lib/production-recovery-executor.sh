@@ -29,6 +29,11 @@ if [ "${PRODUCTION_RECOVERY_PREFLIGHT_ONLY:-0}" = "1" ] ||
   [ "${1:-}" = "--preflight-only" ]; then
   RECOVERY_PREFLIGHT_ONLY=1
 fi
+# An inherited value must never authorize a rollback. The explicit recovery
+# path enables this only after the exact R artifact and stored P have passed
+# preflight and the mutating recovery operation is about to begin.
+DEPLOYMENT_EXPLICIT_RECOVERY=0
+export DEPLOYMENT_EXPLICIT_RECOVERY
 
 recovery_executor_error() {
   printf '[ERROR] %s\n' "$*" >&2
@@ -440,6 +445,8 @@ if ! require_windows_offline_installer_runtime_pin; then
 fi
 
 if [ "${ROLLBACK_USES_V2:-0}" = "1" ]; then
+  DEPLOYMENT_EXPLICIT_RECOVERY=1
+  export DEPLOYMENT_EXPLICIT_RECOVERY
   if ! rollback_executor_begin; then
     log_error "Unable to mark the rollback transaction as ROLLING_BACK"
     exit 1

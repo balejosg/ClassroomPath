@@ -774,6 +774,58 @@ exit 97
   }
 });
 
+test('explicit recovery restores P when a fault leg accidentally reaches COMMITTED', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-production-committed-recovery-'));
+  const fixture = createRecoveryExecutorTransactionFixture(tempDir);
+  const committedId = 'c'.repeat(64);
+  createFakeGit(fixture.binDir);
+  createFakeCurl(fixture.binDir);
+  mkdirSync(join(fixture.appDir, 'docker'), { recursive: true });
+  mkdirSync(join(fixture.appDir, 'config'), { recursive: true });
+  writeFileSync(join(fixture.appDir, 'config/.env'), 'SENTINEL=before-rollback\n', 'utf8');
+
+  try {
+    writeFileSync(fixture.currentPointerPath, `${committedId}\n`, 'utf8');
+    writeFileSync(
+      fixture.durableTransactionPath,
+      readFileSync(fixture.durableTransactionPath, 'utf8')
+        .replace('DEPLOYMENT_PHASE=FAILED', 'DEPLOYMENT_PHASE=COMMITTED')
+        .replace(`CURRENT_RELEASE_ID=${fixture.previousId}`, `CURRENT_RELEASE_ID=${committedId}`)
+        .replace(
+          `CANDIDATE_RELEASE_ID=${fixture.previousId}`,
+          `CANDIDATE_RELEASE_ID=${committedId}`
+        ),
+      'utf8'
+    );
+
+    const result = runRecoveryExecutorFixture(fixture, {
+      args: [],
+      env: {
+        GHCR_TOKEN: 'fixture-token',
+        GHCR_USERNAME: 'fixture-user',
+        OPENPATH_SHA: '3'.repeat(40),
+        OPENPATH_FIREFOX_RELEASE_HOST_ROOT: join(fixture.deployRoot, 'firefox-release'),
+        PRODUCTION_CONTAINER_PLATFORM: 'linux/amd64',
+        PRODUCTION_RECOVERY_ARTIFACT_SHA256: fixture.durableArtifactSha,
+        TARGET_SHA: fixture.candidateSha,
+        TRACE_FILE: fixture.callsFile,
+      },
+    });
+    const output = `${result.stdout}\n${result.stderr}`;
+    const finalState = readFileSync(fixture.durableTransactionPath, 'utf8');
+
+    assert.equal(result.status, 0, output);
+    assert.match(output, /Rollback health and readiness checks passed/u);
+    assert.equal(readFileSync(fixture.currentPointerPath, 'utf8').trim(), fixture.previousId);
+    assert.match(finalState, /^DEPLOYMENT_PHASE=ROLLED_BACK$/mu);
+    assert.match(finalState, new RegExp(`CURRENT_RELEASE_ID=${fixture.previousId}`, 'u'));
+    assert.match(finalState, new RegExp(`PREVIOUS_RELEASE_ID=${fixture.previousId}`, 'u'));
+    assert.match(finalState, /^ROLLBACK_RESULT=success$/mu);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('real rollback rejects transmitted bytes that differ from the persisted R artifact', () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-recovery-byte-mismatch-'));
   const deployRoot = join(tempDir, 'deploy');

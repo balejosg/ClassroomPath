@@ -98,3 +98,48 @@ test('shell transaction marker persists commit and rollback transitions atomical
     rmSync(tempDir, { force: true, recursive: true });
   }
 });
+
+test('explicit recovery alone permits COMMITTED to roll back while normal commit stays terminal', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-committed-recovery-'));
+  const stateFile = join(tempDir, 'deployment-phase.env');
+  const helperPath = resolve(projectRoot, 'scripts/lib/deployment-transaction.sh');
+  const shellScript = [
+    'set -euo pipefail',
+    'source "$1"',
+    'deployment_transaction_init "$2" \\',
+    '  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \\',
+    '  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"',
+    'deployment_transaction_transition SWITCHING SWITCH',
+    'deployment_transaction_transition ACTIVATED_UNVERIFIED SWITCH',
+    'deployment_transaction_transition VERIFIED VERIFY',
+    'deployment_transaction_transition COMMITTED COMMIT',
+    'if deployment_transaction_transition ROLLING_BACK ROLLBACK; then',
+    '  exit 10',
+    'fi',
+    'DEPLOYMENT_EXPLICIT_RECOVERY=1',
+    'export DEPLOYMENT_EXPLICIT_RECOVERY',
+    'deployment_transaction_begin_rollback',
+    'deployment_transaction_mark_rollback_success',
+  ].join('\n');
+
+  try {
+    execFileSync('bash', ['-c', shellScript, 'bash', helperPath, stateFile], {
+      cwd: projectRoot,
+      stdio: 'pipe',
+    });
+
+    const marker = readFileSync(stateFile, 'utf8');
+    assert.match(marker, /^DEPLOYMENT_PHASE=ROLLED_BACK$/mu);
+    assert.match(
+      marker,
+      /^CURRENT_RELEASE_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa$/mu
+    );
+    assert.match(
+      marker,
+      /^PREVIOUS_RELEASE_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa$/mu
+    );
+    assert.match(marker, /^ROLLBACK_RESULT=success$/mu);
+  } finally {
+    rmSync(tempDir, { force: true, recursive: true });
+  }
+});
