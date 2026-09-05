@@ -316,7 +316,7 @@ k_load_config() {
         # This is a path to a private operator-managed file. Its contents are
         # never parsed into evidence or sourced by the harness.
         ;;
-      K_HARNESS_*|K_CONFIG_FILE|K_CONFIRM_STAGING_EQUIVALENT|K_*_OPTION|K_EFFECTIVE_HOST_PATH|K_SNAPSHOT_TEMP|K_RUNTIME_PROJECTION_KEYS|K_HOST_NODE_NPM_UNAVAILABLE|K_HOST_NODE_OBSERVED|K_HOST_NPM_OBSERVED|K_DOCKER_DAEMON_ID_OBSERVED|K_GATEWAY_DOWNLOAD_DEVICE_SHA256_OBSERVED|K_TRANSACTION_ID|K_PROVISION_ATTEMPT_*|K_PROVISION_RESOURCES_ABSENT_BEFORE|K_SAFETY_OUTCOME|K_EVIDENCE_OUTCOME|K_EVIDENCE_FAILURE_REASON|K_FORWARD_*|K_RECOVERY_ATTEMPTED|K_RECOVERY_RESULT|K_RECOVERY_REQUIRED_AFTER_FORWARD|K_MANUAL_ROLLBACK*)
+      K_HARNESS_*|K_CONFIG_FILE|K_CONFIRM_STAGING_EQUIVALENT|K_*_OPTION|K_EFFECTIVE_HOST_PATH|K_SNAPSHOT_TEMP|K_RUNTIME_PROJECTION_KEYS|K_HOST_NODE_NPM_UNAVAILABLE|K_HOST_NODE_OBSERVED|K_HOST_NPM_OBSERVED|K_DOCKER_DAEMON_ID_OBSERVED|K_GATEWAY_DOWNLOAD_DEVICE_SHA256_OBSERVED|K_TRANSACTION_ID|K_PROVISION_ATTEMPT_*|K_PROVISION_RESOURCES_ABSENT_BEFORE|K_SAFETY_OUTCOME|K_EVIDENCE_OUTCOME|K_EVIDENCE_FAILURE_REASON|K_FORWARD_*|K_FAULT_*|K_RECOVERY_ATTEMPTED|K_RECOVERY_RESULT|K_RECOVERY_REQUIRED_AFTER_FORWARD|K_MANUAL_ROLLBACK*)
         k_error "Harness config attempts to override an internal variable: $key"
         return 1
         ;;
@@ -3469,6 +3469,15 @@ k_run_forward_from_stdin() {
   for runtime_name in "${K_FORWARD_RUNTIME_ENV_NAMES[@]}"; do
     forward_runtime_env+=("$runtime_name=${!runtime_name-}")
   done
+  if [ "${K_FAULT_MODE:-}" = staging-equivalent-gateway-stop ]; then
+    for runtime_name in \
+      K_ENVIRONMENT K_ENVIRONMENT_ID K_RUNTIME_ENVIRONMENT K_PRODUCTION_TARGET \
+      K_NORMAL_STAGING_ALLOWED K_COMPOSE_PROJECT K_DEPLOY_ROOT_SHA256 \
+      K_FAULT_MODE K_FAULT_BARRIER_READY_FIFO K_FAULT_BARRIER_ACK_FIFO \
+      K_FAULT_BARRIER_TIMEOUT_SECONDS K_FAULT_BARRIER_AUTHORIZATION K_FAULT_TRANSACTION_ID; do
+      forward_runtime_env+=("$runtime_name=${!runtime_name-}")
+    done
+  fi
   (
     cd "$K_APP_DIR"
     PATH="$effective_path" env \
@@ -3666,6 +3675,71 @@ k_watchdog_attempt_is_activated() {
   [ "$(k_read_file_value "$phase_file" CANDIDATE_SHA || true)" = "$expected_candidate_sha" ] || return 1
 }
 
+k_validate_fault_barrier_fence() {
+  local ready_fifo="${K_FAULT_BARRIER_READY_FIFO:-}"
+  local ack_fifo="${K_FAULT_BARRIER_ACK_FIFO:-}"
+  local deploy_root_real=""
+  local expected_authorization=""
+  local fifo=""
+  local mode=""
+
+  [ "${K_FAULT_MODE:-}" = staging-equivalent-gateway-stop ] || {
+    k_error 'K fault barrier mode is not authorized'
+    return 1
+  }
+  [ "${K_ENVIRONMENT:-}" = staging-equivalent ] || return 1
+  [ "${K_RUNTIME_ENVIRONMENT:-}" = staging-equivalent ] || return 1
+  [ "${K_PRODUCTION_TARGET:-}" = false ] || return 1
+  [ "${K_NORMAL_STAGING_ALLOWED:-}" = false ] || return 1
+  [ "${K_COMPOSE_PROJECT:-}" = "$K_HARNESS_COMPOSE_PROJECT" ] || return 1
+  [[ "${K_ENVIRONMENT_ID:-}" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+  k_require_sha64 K_DEPLOY_ROOT_SHA256 "${K_DEPLOY_ROOT_SHA256:-}" || return 1
+  k_require_transaction_id "${K_FAULT_TRANSACTION_ID:-}" || return 1
+  [ -n "$ready_fifo" ] && [ "$ready_fifo" != "$ack_fifo" ] || return 1
+  for fifo in "$ready_fifo" "$ack_fifo"; do
+    [[ "$fifo" = /* ]] || return 1
+    [ -p "$fifo" ] && [ ! -L "$fifo" ] || return 1
+    mode="$(stat -c '%a' -- "$fifo" 2>/dev/null)" || return 1
+    [ "$mode" = 600 ] || return 1
+  done
+  deploy_root_real="$(k_canonical_dir "$K_DEPLOY_ROOT")" || return 1
+  [ "$(k_hash_text "$deploy_root_real")" = "$K_DEPLOY_ROOT_SHA256" ] || return 1
+  expected_authorization="$(k_hash_text \
+    "classroompath-k-fault-v1|$K_ENVIRONMENT_ID|$K_DEPLOY_ROOT_SHA256|$K_FAULT_TRANSACTION_ID")"
+  [ "${K_FAULT_BARRIER_AUTHORIZATION:-}" = "$expected_authorization" ] || return 1
+  case "${K_FAULT_BARRIER_TIMEOUT_SECONDS:-}" in
+    ''|*[!0-9]*|0) return 1 ;;
+  esac
+}
+
+k_initialize_fault_barrier() {
+  local ready_fifo="$K_EVIDENCE_DIR/fault-injection-ready.fifo"
+  local ack_fifo="$K_EVIDENCE_DIR/fault-injection-ack.fifo"
+  local fifo=""
+
+  k_validate_configured_path K_EVIDENCE_DIR || return 1
+  mkdir -p "$K_EVIDENCE_DIR" || return 1
+  for fifo in "$ready_fifo" "$ack_fifo"; do
+    k_validate_evidence_path "$fifo" 'K fault barrier FIFO' || return 1
+    [ ! -e "$fifo" ] && [ ! -L "$fifo" ] || {
+      k_error 'K fault barrier refuses stale FIFO evidence'
+      return 1
+    }
+    PATH="$K_EFFECTIVE_HOST_PATH" mkfifo "$fifo" || return 1
+    chmod 600 "$fifo" || return 1
+  done
+  K_FAULT_MODE=staging-equivalent-gateway-stop
+  K_FAULT_BARRIER_READY_FIFO="$ready_fifo"
+  K_FAULT_BARRIER_ACK_FIFO="$ack_fifo"
+  K_FAULT_BARRIER_TIMEOUT_SECONDS=120
+  K_FAULT_BARRIER_AUTHORIZATION="$(k_hash_text \
+    "classroompath-k-fault-v1|$K_ENVIRONMENT_ID|$K_DEPLOY_ROOT_SHA256|$K_TRANSACTION_ID")"
+  K_FAULT_TRANSACTION_ID="$K_TRANSACTION_ID"
+  export K_FAULT_MODE K_FAULT_BARRIER_READY_FIFO K_FAULT_BARRIER_ACK_FIFO
+  export K_FAULT_BARRIER_TIMEOUT_SECONDS K_FAULT_BARRIER_AUTHORIZATION K_FAULT_TRANSACTION_ID
+  k_validate_fault_barrier_fence
+}
+
 k_watchdog_act_once() {
   local phase_file="$1"
   local records_file="$2"
@@ -3721,57 +3795,69 @@ k_watchdog_act_once() {
   } > "$marker_file"
 }
 
-k_watchdog_loop() {
+k_watchdog_handshake_loop() {
   local expected_transaction_id="${1:-${K_TRANSACTION_ID:-}}"
   local expected_release_id="${2:-${K_C_RELEASE_ID:-}}"
   local expected_candidate_sha="${3:-${K_CANDIDATE_SHA:-}}"
   local phase_file="$K_DEPLOY_ROOT/release-state/deployment-phase.env"
   local records_file="${K_WATCHDOG_RECORDS_FILE:-$K_EVIDENCE_DIR/watchdog-containers.txt}"
   local marker_file="${K_FAULT_TARGET_FILE:-$K_EVIDENCE_DIR/fault-target.env}"
-  local attempts="${K_WATCHDOG_MAX_ATTEMPTS:-120}"
-  local attempt=0
+  local ready_fifo="${K_FAULT_BARRIER_READY_FIFO:-}"
+  local ack_fifo="${K_FAULT_BARRIER_ACK_FIFO:-}"
+  local timeout_seconds="${K_FAULT_BARRIER_TIMEOUT_SECONDS:-}"
+  local request=""
   local id=""
   local metadata=""
-  local phase=""
-  local prepared_observed=0
+
+  k_validate_fault_barrier_fence || return 1
+  [ "$expected_transaction_id" = "$K_FAULT_TRANSACTION_ID" ] || return 1
+  k_require_transaction_id "$expected_transaction_id" || return 1
+  k_require_sha40 watchdog_candidate_sha "$expected_candidate_sha" || return 1
+  [ -n "$expected_release_id" ] || return 1
+  request="$(PATH="$K_EFFECTIVE_HOST_PATH" timeout "$timeout_seconds" bash -c \
+    'IFS= read -r value < "$1" && printf "%s" "$value"' \
+    k-fault-watchdog "$ready_fifo")" || {
+    k_error 'K fault watchdog did not receive the forward handshake'
+    return 1
+  }
+  [ "$request" = "$expected_transaction_id" ] || {
+    k_error 'K fault watchdog handshake belongs to another transaction'
+    return 1
+  }
+  k_watchdog_attempt_is_activated \
+    "$phase_file" "$expected_transaction_id" "$expected_release_id" "$expected_candidate_sha" || {
+    k_error 'K fault watchdog handshake did not identify ACTIVATED_UNVERIFIED'
+    return 1
+  }
+  : > "$records_file"
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    metadata="$(PATH="$K_EFFECTIVE_HOST_PATH" docker inspect -f '{{.Id}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{.Config.Image}}|{{.Name}}|{{.State.Status}}' "$id")" || return 1
+    printf '%s\n' "$metadata" >> "$records_file"
+  done < <(PATH="$K_EFFECTIVE_HOST_PATH" docker ps -aq --filter "label=com.docker.compose.project=$K_COMPOSE_PROJECT" --filter 'label=com.docker.compose.service=gateway')
+  k_watchdog_act_once \
+    "$phase_file" "$records_file" "$K_BASELINE_GATEWAY_ID" "$K_C_GATEWAY_IMAGE" \
+    "$(PATH="$K_EFFECTIVE_HOST_PATH" command -v docker)" "$marker_file" \
+    "$expected_transaction_id" "$expected_release_id" "$expected_candidate_sha" || return 1
+  PATH="$K_EFFECTIVE_HOST_PATH" timeout "$timeout_seconds" bash -c \
+    'printf "%s\\n" "$1" > "$2"' \
+    k-fault-watchdog "FAULT_INJECTED:$expected_transaction_id" "$ack_fifo"
+}
+
+k_watchdog_loop() {
+  local expected_transaction_id="${1:-${K_TRANSACTION_ID:-}}"
+  local expected_release_id="${2:-${K_C_RELEASE_ID:-}}"
+  local expected_candidate_sha="${3:-${K_CANDIDATE_SHA:-}}"
 
   k_require_immutable_image K_C_GATEWAY_IMAGE "${K_C_GATEWAY_IMAGE:-}" || return 1
   k_require_transaction_id "$expected_transaction_id" || return 1
   k_require_sha40 watchdog_candidate_sha "$expected_candidate_sha" || return 1
   [ -n "$expected_release_id" ] || { k_error 'Watchdog requires the current candidate release ID'; return 1; }
-  for ((attempt = 1; attempt <= attempts; attempt += 1)); do
-    phase="$(k_read_file_value "$phase_file" DEPLOYMENT_PHASE || true)"
-    if [ "$prepared_observed" -eq 0 ]; then
-      if k_watchdog_attempt_is_prepared "$phase_file" "$expected_transaction_id" "$expected_release_id" "$expected_candidate_sha"; then
-        prepared_observed=1
-      else
-        sleep "${K_WATCHDOG_POLL_SECONDS:-1}"
-        continue
-      fi
-    fi
-    if k_watchdog_attempt_is_activated "$phase_file" "$expected_transaction_id" "$expected_release_id" "$expected_candidate_sha"; then
-      : > "$records_file"
-      while IFS= read -r id; do
-        [ -n "$id" ] || continue
-        metadata="$(docker inspect -f '{{.Id}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{.Config.Image}}|{{.Name}}|{{.State.Status}}' "$id")" || return 1
-        printf '%s\n' "$metadata" >> "$records_file"
-      done < <(docker ps -aq --filter "label=com.docker.compose.project=$K_COMPOSE_PROJECT" --filter 'label=com.docker.compose.service=gateway')
-      k_watchdog_act_once "$phase_file" "$records_file" "$K_BASELINE_GATEWAY_ID" "$K_C_GATEWAY_IMAGE" "$(command -v docker)" "$marker_file" "$expected_transaction_id" "$expected_release_id" "$expected_candidate_sha"
-      return $?
-    fi
-    if [ "$phase" = FAILED ] && [ "$(k_read_file_value "$phase_file" MUTATION_BOUNDARY_REACHED || true)" = 0 ]; then
-      k_info 'Watchdog observed the current attempt fail before the mutation boundary'
-      return 0
-    fi
-    case "$phase" in
-      VERIFIED|COMMITTED|ROLLED_BACK|FAILED)
-        k_error 'Watchdog phase window closed for the current transaction attempt'
-        return 1
-        ;;
-    esac
-    sleep "${K_WATCHDOG_POLL_SECONDS:-1}"
-  done
-  k_error 'Watchdog timed out waiting for PREPARED and ACTIVATED_UNVERIFIED of the current transaction'
+  [ "${K_FAULT_MODE:-}" = staging-equivalent-gateway-stop ] || {
+    k_error 'K fault watchdog requires the deterministic handshake mode'
+    return 1
+  }
+  k_watchdog_handshake_loop "$expected_transaction_id" "$expected_release_id" "$expected_candidate_sha"
 }
 
 k_validate_fault_target_evidence() {
@@ -4912,6 +4998,7 @@ k_execute_fault_leg() {
   k_initialize_transaction_history || return 1
   k_initialize_transaction_attempt || return 1
   mkdir -p "$K_EVIDENCE_DIR" || return 1
+  k_initialize_fault_barrier || return 1
   k_record "$records" identity transaction_id "$K_TRANSACTION_ID" || return 1
   k_record "$records" identity candidate_sha "$K_CANDIDATE_SHA" || return 1
   k_record "$records" identity recovery_sha "$K_RECOVERY_SHA" || return 1
@@ -4940,6 +5027,7 @@ k_execute_fault_leg() {
   k_record "$records" host npm_observed "${K_HOST_NPM_OBSERVED:-unknown}" || return 1
   k_record "$records" host docker_daemon_id "${K_DOCKER_DAEMON_ID_OBSERVED:-unknown}" || return 1
   k_record "$records" host gateway_download_device_sha256 "${K_GATEWAY_DOWNLOAD_DEVICE_SHA256_OBSERVED:-unknown}" || return 1
+  k_record "$records" fault synchronization deterministic-fifo || return 1
   k_validate_release_inputs C || return 1
   k_validate_candidate_identity || return 1
   k_validate_candidate_source_checkout || return 1
@@ -5100,6 +5188,8 @@ k_execute_success_leg() {
   local post_recovery_contract_status=0
 
   k_require_mutation_confirmation || return 1
+  unset K_FAULT_MODE K_FAULT_BARRIER_READY_FIFO K_FAULT_BARRIER_ACK_FIFO
+  unset K_FAULT_BARRIER_TIMEOUT_SECONDS K_FAULT_BARRIER_AUTHORIZATION K_FAULT_TRANSACTION_ID
   k_validate_host_contract || return 1
   k_prepare_p_baseline "$baseline" || return 1
   k_load_runtime_secrets || return 1

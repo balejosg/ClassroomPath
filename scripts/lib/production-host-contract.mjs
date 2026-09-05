@@ -44,6 +44,7 @@ export const PRODUCTION_HOST_REQUIRED_COMMANDS = Object.freeze([
   'tar',
   'sha256sum',
   'uname',
+  'mkfifo',
 ]);
 
 export const PRODUCTION_HOST_FORBIDDEN_RUNTIME_COMMANDS = Object.freeze(['node', 'npm']);

@@ -47,6 +47,7 @@ PRODUCTION_HOST_REQUIRED_COMMANDS=(
   sha256sum
   stat
   uname
+  mkfifo
 )
 
 production_host_contract_log_error() {

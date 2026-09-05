@@ -1927,6 +1927,137 @@ test('watchdog ignores stale terminal state, arms only after current PREPARED, a
   }
 });
 
+test('K fault handshake stops the candidate before forward verification without polling', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-k-fault-handshake-'));
+  try {
+    const stateDir = join(root, 'release-state');
+    const evidenceDir = join(root, 'evidence');
+    const readyFifo = join(evidenceDir, 'fault-ready.fifo');
+    const ackFifo = join(evidenceDir, 'fault-ack.fifo');
+    const recordsPath = join(evidenceDir, 'watchdog-containers.txt');
+    const markerPath = join(evidenceDir, 'fault-target.env');
+    const phasePath = join(stateDir, 'deployment-phase.env');
+    const eventPath = join(root, 'events.log');
+    const dockerPath = join(root, 'docker');
+    const deployRootSha = createHash('sha256').update(resolve(root)).digest('hex');
+    const authorization = createHash('sha256')
+      .update(`classroompath-k-fault-v1|fixture-k-162|${deployRootSha}|${transactionId}`)
+      .digest('hex');
+
+    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(evidenceDir, { recursive: true });
+    writeFileSync(
+      phasePath,
+      [
+        'DEPLOYMENT_PHASE=ACTIVATED_UNVERIFIED',
+        `DEPLOYMENT_TRANSACTION_ID=${transactionId}`,
+        `CANDIDATE_RELEASE_ID=${releaseId}`,
+        `CANDIDATE_SHA=${candidateSha}`,
+        `CURRENT_RELEASE_ID=${previousSha}`,
+        `PREVIOUS_RELEASE_ID=${previousSha}`,
+        'MUTATION_BOUNDARY_REACHED=1',
+        '',
+      ].join('\n')
+    );
+    execFileSync('mkfifo', ['-m', '600', readyFifo, ackFifo]);
+    writeFileSync(
+      dockerPath,
+      `#!/usr/bin/env bash
+case "\${1:-}" in
+  ps) printf '%s\\n' gateway-c ;;
+  inspect) printf '%s\\n' 'gateway-c|classroompath-production|gateway|${gatewayImage}|classroompath-gateway|running' ;;
+  stop) printf 'stopped\\n' >> "\${EVENT_FILE:?}" ;;
+esac
+`
+    );
+    chmodSync(dockerPath, 0o755);
+
+    const output = runShell(
+      [
+        '-c',
+        [
+          'set -euo pipefail',
+          'source "$1"',
+          'source "$2"',
+          `K_DEPLOY_ROOT="${root}"`,
+          `K_EVIDENCE_DIR="${evidenceDir}"`,
+          `K_EFFECTIVE_HOST_PATH="${root}:/usr/bin:/bin"`,
+          `K_C_GATEWAY_IMAGE="${gatewayImage}"`,
+          'K_BASELINE_GATEWAY_ID=gateway-p',
+          'K_FAULT_MODE=staging-equivalent-gateway-stop',
+          `K_FAULT_BARRIER_READY_FIFO="${readyFifo}"`,
+          `K_FAULT_BARRIER_ACK_FIFO="${ackFifo}"`,
+          `K_FAULT_TARGET_FILE="${markerPath}"`,
+          `K_WATCHDOG_RECORDS_FILE="${recordsPath}"`,
+          `K_FAULT_TRANSACTION_ID="${transactionId}"`,
+          'K_FAULT_BARRIER_TIMEOUT_SECONDS=5',
+          'K_ENVIRONMENT=staging-equivalent',
+          'K_ENVIRONMENT_ID=fixture-k-162',
+          'K_RUNTIME_ENVIRONMENT=staging-equivalent',
+          'K_PRODUCTION_TARGET=false',
+          'K_NORMAL_STAGING_ALLOWED=false',
+          'K_COMPOSE_PROJECT=classroompath-production',
+          `K_DEPLOY_ROOT_SHA256="${deployRootSha}"`,
+          `K_FAULT_BARRIER_AUTHORIZATION="${authorization}"`,
+          `CLASSROOMPATH_DEPLOY_ROOT="${root}"`,
+          `DEPLOYMENT_TRANSACTION_FILE="${phasePath}"`,
+          'export K_DEPLOY_ROOT K_EVIDENCE_DIR K_EFFECTIVE_HOST_PATH K_C_GATEWAY_IMAGE K_BASELINE_GATEWAY_ID K_FAULT_MODE K_FAULT_BARRIER_READY_FIFO K_FAULT_BARRIER_ACK_FIFO K_FAULT_TARGET_FILE K_WATCHDOG_RECORDS_FILE K_FAULT_TRANSACTION_ID K_FAULT_BARRIER_TIMEOUT_SECONDS K_ENVIRONMENT K_ENVIRONMENT_ID K_RUNTIME_ENVIRONMENT K_PRODUCTION_TARGET K_NORMAL_STAGING_ALLOWED K_COMPOSE_PROJECT K_DEPLOY_ROOT_SHA256 K_FAULT_BARRIER_AUTHORIZATION CLASSROOMPATH_DEPLOY_ROOT DEPLOYMENT_TRANSACTION_FILE',
+          `EVENT_FILE="${eventPath}"; export EVENT_FILE`,
+          `k_watchdog_loop "${transactionId}" "${releaseId}" "${candidateSha}" & watchdog_pid=\$!`,
+          'production_runtime_wait_for_k_fault_injection',
+          'printf "VERIFIED\\n" >> "$EVENT_FILE"',
+          'wait "$watchdog_pid"',
+          'printf "HANDSHAKE_COMPLETE\\n"',
+        ].join('; '),
+        'bash',
+        harnessPath,
+        resolve(projectRoot, 'scripts/lib/deploy-production-runtime.sh'),
+      ],
+      { EVENT_FILE: eventPath }
+    );
+
+    assert.match(output, /HANDSHAKE_COMPLETE/u);
+    assert.deepEqual(readFileSync(eventPath, 'utf8').trim().split('\n'), ['stopped', 'VERIFIED']);
+    assert.equal(
+      readFileSync(markerPath, 'utf8').includes(`FAULT_TRANSACTION_ID=${transactionId}`),
+      true
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('K fault barrier is disabled by default and rejects a production fence', () => {
+  const root = mkdtempSync(join(tmpdir(), 'classroompath-k-fault-fence-'));
+  try {
+    const readyFifo = join(root, 'ready.fifo');
+    const ackFifo = join(root, 'ack.fifo');
+    execFileSync('mkfifo', ['-m', '600', readyFifo, ackFifo]);
+    const output = runShell([
+      '-c',
+      [
+        'source "$1"',
+        'K_FAULT_MODE=',
+        'K_FAULT_BARRIER_READY_FIFO="$2"',
+        'K_FAULT_BARRIER_ACK_FIFO="$3"',
+        'production_runtime_wait_for_k_fault_injection',
+        'K_FAULT_MODE=staging-equivalent-gateway-stop',
+        'K_ENVIRONMENT=production',
+        'K_PRODUCTION_TARGET=true',
+        'if production_runtime_wait_for_k_fault_injection; then exit 10; fi',
+        'printf "FENCE_REJECTED\\n"',
+      ].join('; '),
+      'bash',
+      resolve(projectRoot, 'scripts/lib/deploy-production-runtime.sh'),
+      readyFifo,
+      ackFifo,
+    ]);
+    assert.match(output, /FENCE_REJECTED/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('fault target evidence is bound to the current transaction and watchdog inventory', () => {
   const root = mkdtempSync(join(tmpdir(), 'classroompath-fault-target-evidence-'));
   try {

@@ -55,6 +55,7 @@ test('production host contract is POSIX/Docker based and does not require Node',
     'tar',
     'sha256sum',
     'uname',
+    'mkfifo',
   ]);
   assert.deepEqual(PRODUCTION_HOST_FORBIDDEN_RUNTIME_COMMANDS, ['node', 'npm']);
 
@@ -81,8 +82,10 @@ test('hermetic host contract exposes recovery packaging dependencies', () => {
 
   assert.equal(PRODUCTION_HOST_REQUIRED_COMMANDS.includes('basename'), true);
   assert.equal(PRODUCTION_HOST_REQUIRED_COMMANDS.includes('gzip'), true);
+  assert.equal(PRODUCTION_HOST_REQUIRED_COMMANDS.includes('mkfifo'), true);
   assert.match(shellContract, /\n  basename\n/u);
   assert.match(shellContract, /\n  gzip\n/u);
+  assert.match(shellContract, /\n  mkfifo\n/u);
 });
 
 test('host contract fails before mutation when Docker or state prerequisites are missing', () => {

@@ -367,22 +367,28 @@ procedure.
 
 ## Fault leg (staging-equivalent only)
 
-The controlled fault is not run by this implementation change. When separately
-authorized, the future command is:
+The controlled fault is available only to the separately authorized
+staging-equivalent command:
 
 ```sh
 scripts/staging-equivalent-harness.sh fault-leg \
   --config "$K_CONFIG" --confirm-staging-equivalent
 ```
 
-The watchdog captures the baseline P gateway ID, waits for the exact durable
-transaction's `PREPARED` state, then waits for that same transaction's
-`ACTIVATED_UNVERIFIED` phase, queries containers by both labels
+The fault leg creates two private mode-`0600` FIFOs for the current transaction.
+After the forward persists `ACTIVATED_UNVERIFIED`, it writes that exact
+transaction ID to the ready FIFO and blocks before readiness can reach
+`VERIFIED`. The watchdog reads that request, revalidates the exact durable
+transaction and staging-equivalent fence, queries containers by both labels
 `com.docker.compose.project=classroompath-production` and
 `com.docker.compose.service=gateway`, and requires a single running candidate
 ID whose ID differs from P and whose image is the exact C gateway digest. Only
-then does it execute `docker stop <candidate-id>`, once. It never selects the
-target by fixed `container_name` alone and cannot stop P.
+then does it execute `docker stop <candidate-id>`, once, records the target, and
+writes a matching acknowledgement. The forward cannot enter `VERIFIED` until
+that acknowledgement is received. The injection path uses this blocking
+handshake rather than phase polling or timing; production, success-leg, and
+executions without K fault mode do not wait on it. It never selects the target
+by fixed `container_name` alone and cannot stop P.
 
 Stale `COMMITTED`, `ROLLED_BACK`, or other terminal state from an earlier
 attempt cannot arm the watchdog: it must observe the current transaction ID,
@@ -390,7 +396,11 @@ candidate release/SHA, and `PREPARED` after the watchdog starts. If the
 watchdog fails after the current transaction crossed the boundary, the shared
 post-forward safety path recovers. If the forward accidentally reaches
 `COMMITTED` during a fault leg, the leg still fails and the same path restores
-P before any PASS decision.
+P before any PASS decision. A durable `COMMITTED -> ROLLING_BACK` transition
+is accepted only after the explicit recovery executor has passed its preflight;
+normal success-leg `COMMITTED` remains terminal. Thus an accidental `COMMITTED`
+in a fault leg is still a failed rehearsal, but its explicit recovery can
+restore P through `ROLLING_BACK -> ROLLED_BACK`.
 
 The leg must prove candidate failure, boundary reach, bounded diagnostic
 collection, exact recovery identity, successful R rollback, and a post-rollback

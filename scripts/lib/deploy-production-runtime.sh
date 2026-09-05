@@ -1,6 +1,141 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
+production_runtime_fault_barrier_error() {
+  if declare -f log_error >/dev/null 2>&1; then
+    log_error "$*"
+  else
+    printf '[ERROR] %s\n' "$*" >&2
+  fi
+}
+
+production_runtime_fault_barrier_validate() {
+  local ready_fifo="${K_FAULT_BARRIER_READY_FIFO:-}"
+  local ack_fifo="${K_FAULT_BARRIER_ACK_FIFO:-}"
+  local deploy_root_real=""
+  local actual_root_sha256=""
+  local expected_authorization=""
+  local fifo=""
+  local mode=""
+
+  [ "${K_FAULT_MODE:-}" = staging-equivalent-gateway-stop ] || {
+    production_runtime_fault_barrier_error 'K fault barrier mode is not authorized'
+    return 1
+  }
+  [ "${K_ENVIRONMENT:-}" = staging-equivalent ] || {
+    production_runtime_fault_barrier_error 'K fault barrier requires the staging-equivalent environment'
+    return 1
+  }
+  [ "${K_RUNTIME_ENVIRONMENT:-}" = staging-equivalent ] || {
+    production_runtime_fault_barrier_error 'K fault barrier runtime environment is not staging-equivalent'
+    return 1
+  }
+  [ "${K_PRODUCTION_TARGET:-}" = false ] || {
+    production_runtime_fault_barrier_error 'K fault barrier cannot run on a production target'
+    return 1
+  }
+  [ "${K_NORMAL_STAGING_ALLOWED:-}" = false ] || {
+    production_runtime_fault_barrier_error 'K fault barrier cannot run on a normal staging target'
+    return 1
+  }
+  [ "${K_COMPOSE_PROJECT:-}" = classroompath-production ] || {
+    production_runtime_fault_barrier_error 'K fault barrier Compose project is not fenced'
+    return 1
+  }
+  [[ "${K_ENVIRONMENT_ID:-}" =~ ^[A-Za-z0-9._-]+$ ]] || {
+    production_runtime_fault_barrier_error 'K fault barrier environment identity is invalid'
+    return 1
+  }
+  [[ "${K_DEPLOY_ROOT_SHA256:-}" =~ ^[0-9a-f]{64}$ ]] || {
+    production_runtime_fault_barrier_error 'K fault barrier deploy-root identity is invalid'
+    return 1
+  }
+  [[ "${K_FAULT_TRANSACTION_ID:-}" =~ ^[0-9a-f]{64}$ ]] || {
+    production_runtime_fault_barrier_error 'K fault barrier transaction identity is invalid'
+    return 1
+  }
+  [ -n "$ready_fifo" ] && [ "$ready_fifo" != "$ack_fifo" ] || {
+    production_runtime_fault_barrier_error 'K fault barrier FIFOs are incomplete or identical'
+    return 1
+  }
+  for fifo in "$ready_fifo" "$ack_fifo"; do
+    [[ "$fifo" = /* ]] || {
+      production_runtime_fault_barrier_error 'K fault barrier FIFO paths must be absolute'
+      return 1
+    }
+    [ -p "$fifo" ] && [ ! -L "$fifo" ] || {
+      production_runtime_fault_barrier_error 'K fault barrier endpoints must be non-symlink FIFOs'
+      return 1
+    }
+    mode="$(stat -c '%a' -- "$fifo" 2>/dev/null)" || {
+      production_runtime_fault_barrier_error 'K fault barrier FIFO mode cannot be inspected'
+      return 1
+    }
+    [ "$mode" = 600 ] || {
+      production_runtime_fault_barrier_error 'K fault barrier FIFOs must have mode 0600'
+      return 1
+    }
+  done
+  [ -d "${CLASSROOMPATH_DEPLOY_ROOT:-}" ] || {
+    production_runtime_fault_barrier_error 'K fault barrier deploy root is unavailable'
+    return 1
+  }
+  deploy_root_real="$(cd "$CLASSROOMPATH_DEPLOY_ROOT" 2>/dev/null && pwd -P)" || {
+    production_runtime_fault_barrier_error 'K fault barrier deploy root cannot be canonicalized'
+    return 1
+  }
+  actual_root_sha256="$(printf '%s' "$deploy_root_real" | sha256sum | awk '{ print $1; exit }')" || return 1
+  [ "$actual_root_sha256" = "$K_DEPLOY_ROOT_SHA256" ] || {
+    production_runtime_fault_barrier_error 'K fault barrier deploy-root identity does not match'
+    return 1
+  }
+  expected_authorization="$(printf '%s' \
+    "classroompath-k-fault-v1|$K_ENVIRONMENT_ID|$K_DEPLOY_ROOT_SHA256|$K_FAULT_TRANSACTION_ID" |
+    sha256sum | awk '{ print $1; exit }')" || return 1
+  [ "${K_FAULT_BARRIER_AUTHORIZATION:-}" = "$expected_authorization" ] || {
+    production_runtime_fault_barrier_error 'K fault barrier authorization does not match the fenced attempt'
+    return 1
+  }
+  case "${K_FAULT_BARRIER_TIMEOUT_SECONDS:-}" in
+    ''|*[!0-9]*|0)
+      production_runtime_fault_barrier_error 'K fault barrier timeout must be a positive integer'
+      return 1
+      ;;
+  esac
+}
+
+production_runtime_wait_for_k_fault_injection() {
+  local ready_fifo="${K_FAULT_BARRIER_READY_FIFO:-}"
+  local ack_fifo="${K_FAULT_BARRIER_ACK_FIFO:-}"
+  local transaction_id="${K_FAULT_TRANSACTION_ID:-}"
+  local timeout_seconds="${K_FAULT_BARRIER_TIMEOUT_SECONDS:-}"
+  local acknowledgement=""
+
+  [ -z "${K_FAULT_MODE:-}" ] && return 0
+  production_runtime_fault_barrier_validate || return 1
+
+  # The K watchdog is already blocked on the ready FIFO. The forward cannot
+  # reach readiness/VERIFIED until the watchdog has stopped the exact target
+  # and written the matching acknowledgement. There is no phase polling or
+  # timing race in this path.
+  if ! timeout "$timeout_seconds" bash -c \
+    'printf "%s\\n" "$1" > "$2"' \
+    k-fault-barrier "$transaction_id" "$ready_fifo"; then
+    production_runtime_fault_barrier_error 'K fault barrier readiness handshake failed'
+    return 1
+  fi
+  acknowledgement="$(timeout "$timeout_seconds" bash -c \
+    'IFS= read -r value < "$1" && printf "%s" "$value"' \
+    k-fault-barrier "$ack_fifo")" || {
+    production_runtime_fault_barrier_error 'K fault barrier acknowledgement timed out'
+    return 1
+  }
+  [ "$acknowledgement" = "FAULT_INJECTED:$transaction_id" ] || {
+    production_runtime_fault_barrier_error 'K fault barrier acknowledgement did not match the current attempt'
+    return 1
+  }
+}
+
 plan_production_runtime_deploy_impl() {
   PRODUCTION_DEPLOY_PLAN="release-candidate"
 }
@@ -121,6 +256,7 @@ apply_production_runtime_deploy_impl() {
   if declare -f deployment_transaction_transition >/dev/null 2>&1; then
     deployment_transaction_transition "$DEPLOYMENT_PHASE_ACTIVATED_UNVERIFIED" "SWITCH" || return 1
   fi
+  production_runtime_wait_for_k_fault_injection || return 1
 
   if [ "${PRODUCTION_DEPLOY_PLAN:-}" != "release-candidate" ]; then
     die "Unknown production deploy plan: ${PRODUCTION_DEPLOY_PLAN:-unset}" 1
