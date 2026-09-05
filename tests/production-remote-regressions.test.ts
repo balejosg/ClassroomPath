@@ -16,8 +16,13 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 
+import { extractShellFunction } from './helpers/ops-contracts.ts';
+
 const projectRoot = resolve(import.meta.dirname, '..');
 const productionDeployScript = resolve(projectRoot, 'scripts/deploy-production-remote.sh');
+const remoteBootstrapHelper = resolve(projectRoot, 'scripts/lib/remote-bootstrap.sh');
+const productionRuntimeHelper = resolve(projectRoot, 'scripts/lib/deploy-production-runtime.sh');
+const deploymentTransactionHelper = resolve(projectRoot, 'scripts/lib/deployment-transaction.sh');
 const productionRollbackScript = resolve(projectRoot, 'scripts/rollback-production-remote.sh');
 const previousReleaseFixtureDir = resolve(
   projectRoot,
@@ -521,6 +526,184 @@ test('preflight rejects a symlinked explicitly supplied transaction file', () =>
 
     assert.notEqual(result.status, 0, output);
     assert.match(output, /regular non-symlink file/u);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('production executor propagates a nested readiness failure to FAILED before recovery', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-production-nested-failure-'));
+  const binDir = join(tempDir, 'bin');
+  const stateFile = join(tempDir, 'deployment-phase.env');
+  const historyFile = join(tempDir, 'deployment-history.log');
+  const rollingBackStateFile = join(tempDir, 'rolling-back-deployment-phase.env');
+  const previousReleaseId = 'a'.repeat(64);
+  const candidateReleaseId = 'b'.repeat(64);
+  const transactionId = 'c'.repeat(64);
+  const productionRemoteContent = readFileSync(productionDeployScript, 'utf8');
+  const executorSetLine = productionRemoteContent.match(/^set -[^\n]+$/mu)?.[0] ?? '';
+  const captureFailure = extractShellFunction(
+    productionRemoteContent,
+    'capture_production_deploy_failure'
+  );
+  const readinessFailure = extractShellFunction(
+    readFileSync(productionRuntimeHelper, 'utf8'),
+    'wait_for_production_runtime_readiness_impl'
+  );
+
+  mkdirSync(binDir, { recursive: true });
+  writeExecutable(
+    join(binDir, 'timeout'),
+    `#!/usr/bin/env bash
+exit 1
+`
+  );
+  writeExecutable(
+    join(binDir, 'sleep'),
+    `#!/usr/bin/env bash
+exit 0
+`
+  );
+  writeExecutable(
+    join(binDir, 'docker'),
+    `#!/usr/bin/env bash
+case "\${1:-}:\${2:-}" in
+  compose:ps) printf '%s\\n' 'classroompath-gateway starting' ;;
+  logs:*) exit 0 ;;
+esac
+exit 0
+`
+  );
+  writeExecutable(
+    join(binDir, 'curl'),
+    `#!/usr/bin/env bash
+exit 22
+`
+  );
+
+  const nestedExecutorScript = [
+    executorSetLine,
+    'source "$1"',
+    'source "$2"',
+    'source "$3"',
+    'DEPLOYMENT_TRANSACTION_FILE="$4"',
+    'DEPLOYMENT_TRANSACTION_HISTORY_FILE="$5"',
+    'DEPLOY_DIR="$6"',
+    'STATE_DIR="$6"',
+    'DEPLOY_DEBUG_FILE="$6/deploy-debug.json"',
+    'export DEPLOYMENT_TRANSACTION_FILE DEPLOYMENT_TRANSACTION_HISTORY_FILE DEPLOY_DIR STATE_DIR DEPLOY_DEBUG_FILE',
+    'deployment_transaction_init "$4" "$7" "$8" "$9"',
+    'deployment_transaction_transition SWITCHING SWITCH',
+    'deployment_transaction_transition ACTIVATED_UNVERIFIED SWITCH',
+    'DB_MIGRATED=0',
+    'FAILURE_STAGE=readiness',
+    'DEPLOY_FAILURE_STAGE=readiness',
+    'export DB_MIGRATED FAILURE_STAGE DEPLOY_FAILURE_STAGE',
+    'log_info() { :; }',
+    'log_warn() { :; }',
+    'log_error() { :; }',
+    'release_execution_mark_stage() { :; }',
+    'write_production_deploy_debug_context() { :; }',
+    captureFailure,
+    'trap capture_production_deploy_failure ERR',
+    readinessFailure,
+    'wait_for_production_runtime_readiness() { wait_for_production_runtime_readiness_impl "$@"; }',
+    'run_remote_deploy_phases wait_for_production_runtime_readiness',
+  ].join('\n');
+
+  try {
+    const forward = spawnSync(
+      'bash',
+      [
+        '-c',
+        nestedExecutorScript,
+        'production-nested-failure',
+        deploymentTransactionHelper,
+        productionRuntimeHelper,
+        remoteBootstrapHelper,
+        stateFile,
+        historyFile,
+        tempDir,
+        previousReleaseId,
+        candidateReleaseId,
+        transactionId,
+      ],
+      {
+        cwd: projectRoot,
+        env: { ...process.env, PATH: `${binDir}:/usr/bin:/bin` },
+        encoding: 'utf8',
+      }
+    );
+    const output = `${forward.stdout}\n${forward.stderr}`;
+
+    assert.equal(forward.status, 1, output);
+
+    const failedMarker = readFileSync(stateFile, 'utf8');
+    assert.match(failedMarker, /^DEPLOYMENT_PHASE=FAILED$/mu);
+    assert.match(failedMarker, new RegExp(`^DEPLOYMENT_TRANSACTION_ID=${transactionId}$`, 'mu'));
+    assert.match(failedMarker, new RegExp(`^CURRENT_RELEASE_ID=${previousReleaseId}$`, 'mu'));
+    assert.doesNotMatch(
+      failedMarker,
+      new RegExp(`^CURRENT_RELEASE_ID=${candidateReleaseId}$`, 'mu')
+    );
+    assert.equal(executorSetLine, 'set -Eeuo pipefail');
+
+    const recoveryScript = [
+      'set -euo pipefail',
+      'source "$1"',
+      'DEPLOYMENT_TRANSACTION_FILE="$2"',
+      'DEPLOYMENT_TRANSACTION_HISTORY_FILE="$3"',
+      'export DEPLOYMENT_TRANSACTION_FILE DEPLOYMENT_TRANSACTION_HISTORY_FILE',
+      'source "$2"',
+      'deployment_transaction_begin_rollback',
+      'cp "$2" "$4"',
+      'deployment_transaction_mark_rollback_success',
+    ].join('\n');
+    execFileSync(
+      'bash',
+      [
+        '-c',
+        recoveryScript,
+        'production-explicit-recovery',
+        deploymentTransactionHelper,
+        stateFile,
+        historyFile,
+        rollingBackStateFile,
+      ],
+      { cwd: projectRoot, env: { ...process.env, PATH: '/usr/bin:/bin' } }
+    );
+
+    const rollingBackMarker = readFileSync(rollingBackStateFile, 'utf8');
+    assert.match(rollingBackMarker, /^DEPLOYMENT_PHASE=ROLLING_BACK$/mu);
+    assert.match(
+      rollingBackMarker,
+      new RegExp(`^DEPLOYMENT_TRANSACTION_ID=${transactionId}$`, 'mu')
+    );
+    assert.match(rollingBackMarker, new RegExp(`^CURRENT_RELEASE_ID=${previousReleaseId}$`, 'mu'));
+    assert.doesNotMatch(
+      rollingBackMarker,
+      new RegExp(`^CURRENT_RELEASE_ID=${candidateReleaseId}$`, 'mu')
+    );
+
+    const rolledBackMarker = readFileSync(stateFile, 'utf8');
+    assert.match(rolledBackMarker, /^DEPLOYMENT_PHASE=ROLLED_BACK$/mu);
+    assert.match(rolledBackMarker, new RegExp(`^CURRENT_RELEASE_ID=${previousReleaseId}$`, 'mu'));
+
+    const history = readFileSync(historyFile, 'utf8');
+    const phases = [...history.matchAll(/^DEPLOYMENT_PHASE=([^ ]+)/gmu)].map((match) => match[1]);
+    assert.deepEqual(phases, [
+      'PREPARED',
+      'SWITCHING',
+      'ACTIVATED_UNVERIFIED',
+      'FAILED',
+      'ROLLING_BACK',
+      'ROLLED_BACK',
+    ]);
+    for (const line of history.trim().split('\n')) {
+      assert.match(line, new RegExp(`DEPLOYMENT_TRANSACTION_ID=${transactionId}(?: |$)`));
+      assert.match(line, new RegExp(`CURRENT_RELEASE_ID=${previousReleaseId}(?: |$)`));
+      assert.doesNotMatch(line, new RegExp(`CURRENT_RELEASE_ID=${candidateReleaseId}(?: |$)`));
+    }
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
