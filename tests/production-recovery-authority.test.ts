@@ -482,3 +482,75 @@ test('authority preflight executes the exact packaged R entrypoint without a hos
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test('production recovery workflow validates the real bundle layout with actionable diagnostics', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-recovery-bundle-layout-'));
+  const { sourceRoot, recoverySha } = createRecoverySourceFixture(tempDir);
+  const bundlePath = join(tempDir, 'production-recovery-bundle.tgz');
+  const evidencePath = join(tempDir, 'recovery-authority.env');
+  const extractedPath = join(tempDir, 'extracted');
+  const incompleteBundlePath = join(tempDir, 'incomplete-recovery-bundle.tgz');
+
+  try {
+    const packageResult = runAuthority([
+      'package',
+      '--recovery-sha',
+      recoverySha,
+      '--candidate-sha',
+      'a'.repeat(40),
+      '--source-root',
+      sourceRoot,
+      '--output',
+      bundlePath,
+      '--evidence',
+      evidencePath,
+    ]);
+    assert.equal(packageResult.status, 0, `${packageResult.stdout}\n${packageResult.stderr}`);
+
+    const archiveEntries = execFileSync('tar', ['-tzf', bundlePath], { encoding: 'utf8' })
+      .trim()
+      .split('\n');
+    assert.equal(
+      archiveEntries.filter((entry) => entry === 'production-recovery-executor.sh').length,
+      1
+    );
+    assert.ok(archiveEntries.includes('lib/'), 'real recovery bundle should contain lib/');
+
+    const blockStart = deployWorkflow.indexOf(
+      '          recovery_bundle_listing="$(tar -tzf "$recovery_bundle_path")"'
+    );
+    const blockEnd = deployWorkflow.indexOf("          printf 'bundle_base64=", blockStart);
+    assert.ok(blockStart >= 0, 'workflow should capture the recovery bundle listing');
+    assert.ok(blockEnd > blockStart, 'workflow bundle validation should precede outputs');
+    const validationBlock = deployWorkflow.slice(blockStart, blockEnd).replace(/^ {10}/gmu, '');
+
+    const runValidation = (archivePath: string) =>
+      spawnSync(
+        'bash',
+        [
+          '-c',
+          `set -euo pipefail\nrecovery_bundle_path="$1"\n${validationBlock}`,
+          'recovery-bundle-validation',
+          archivePath,
+        ],
+        { cwd: projectRoot, encoding: 'utf8' }
+      );
+
+    const validResult = runValidation(bundlePath);
+    assert.equal(validResult.status, 0, `${validResult.stdout}\n${validResult.stderr}`);
+
+    mkdirSync(extractedPath);
+    execFileSync('tar', ['-xzf', bundlePath, '-C', extractedPath]);
+    rmSync(join(extractedPath, 'production-recovery-executor.sh'));
+    execFileSync('tar', ['-czf', incompleteBundlePath, '-C', extractedPath, 'lib']);
+
+    const incompleteResult = runValidation(incompleteBundlePath);
+    assert.notEqual(incompleteResult.status, 0);
+    assert.match(
+      `${incompleteResult.stdout}\n${incompleteResult.stderr}`,
+      /::error::Recovery artifact must contain exactly one root production-recovery-executor\.sh/u
+    );
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});

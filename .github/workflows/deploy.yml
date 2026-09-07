@@ -560,8 +560,16 @@ jobs:
               --recovery-sha "$PRODUCTION_RECOVERY_SHA" \
               --artifact "$recovery_bundle_path" \
               --evidence "$recovery_evidence_path"
-          test "$(tar -tzf "$recovery_bundle_path" | grep -c '^production-recovery-executor\\.sh$')" -eq 1
-          test "$(tar -tzf "$recovery_bundle_path" | grep -c '^lib/')" -ge 1
+          recovery_bundle_listing="$(tar -tzf "$recovery_bundle_path")"
+          printf '%s\n' "$recovery_bundle_listing"
+          if [ "$(printf '%s\n' "$recovery_bundle_listing" | grep -Fxc 'production-recovery-executor.sh')" -ne 1 ]; then
+            echo "::error::Recovery artifact must contain exactly one root production-recovery-executor.sh"
+            exit 1
+          fi
+          if ! printf '%s\n' "$recovery_bundle_listing" | grep -Fqx 'lib/'; then
+            echo "::error::Recovery artifact is missing lib/"
+            exit 1
+          fi
           printf 'bundle_base64=%s\n' "$(base64 "$recovery_bundle_path" | tr -d '\n')" >> "$GITHUB_OUTPUT"
           printf 'artifact_sha256=%s\n' "$artifact_sha256" >> "$GITHUB_OUTPUT"
           printf 'executor_sha256=%s\n' "$executor_sha256" >> "$GITHUB_OUTPUT"
