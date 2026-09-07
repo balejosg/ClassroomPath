@@ -17,6 +17,14 @@ const rollbackExecutorHelper = readFileSync(
   resolve(projectRoot, 'scripts/lib/rollback-executor.sh'),
   'utf8'
 );
+const productionRuntime = readFileSync(
+  resolve(projectRoot, 'scripts/lib/deploy-production-runtime.sh'),
+  'utf8'
+);
+const runtimeExecutor = readFileSync(
+  resolve(projectRoot, 'scripts/lib/deploy-runtime-executor.sh'),
+  'utf8'
+);
 
 test('production deployment collects read-only diagnostics after a possible switch', () => {
   assert.match(deployWorkflow, /production-deploy-diagnostics/u);
@@ -89,6 +97,23 @@ test('recovery executor exposes a no-mutation preflight and persists its artifac
     readFileSync(resolve(projectRoot, 'scripts/lib/production-recovery-artifact.sh'), 'utf8'),
     /production_recovery_artifact_prepare/u
   );
+});
+
+test('the common executor owns recovery and production consumes only the persisted R artifact', () => {
+  assert.match(runtimeExecutor, /deployment_transaction_begin_rollback/u);
+  assert.match(
+    runtimeExecutor,
+    /deploy_runtime_adapter_recover|production_runtime_adapter_recover/u
+  );
+  assert.match(
+    productionRuntime,
+    /deploy_runtime_adapter_recover\(\)[\s\S]*RECOVERY_ARTIFACT_PATH/u
+  );
+  assert.match(productionRuntime, /expected_artifact_path[\s\S]*recovery\/releases/u);
+  assert.match(productionRuntime, /bash "\$recovery_executor_path"/u);
+  assert.doesNotMatch(productionRuntime, /PRODUCTION_RECOVERY_EXECUTOR_PATH/u);
+  assert.match(rollbackScript, /already ROLLED_BACK/u);
+  assert.match(rollbackScript, /DEPLOYMENT_PHASE_ROLLING_BACK/u);
 });
 
 test('scheduled staging and production smoke resolution have independent gates', () => {

@@ -34,6 +34,25 @@ test('production tag identity round-trips the exact release and RC locator', () 
   assert.deepEqual(extractProductionTagIdentity(message), identity);
 });
 
+test('production tag identity can carry the complete immutable RC projection', () => {
+  const identity = buildProductionTagIdentity({
+    releaseId: 'a'.repeat(64),
+    rcRunId: '123456789',
+    classroomPathSha: 'b'.repeat(40),
+    openpathSha: 'c'.repeat(40),
+    contractSha256: 'd'.repeat(64),
+  });
+  const message = [
+    `ClassroomPath-Release-Id: ${identity.releaseId}`,
+    `ClassroomPath-RC-Run-Id: ${identity.rcRunId}`,
+    `ClassroomPath-SHA: ${identity.classroomPathSha}`,
+    `OpenPath-SHA: ${identity.openpathSha}`,
+    `OpenPath-Contract-SHA256: ${identity.contractSha256}`,
+  ].join('\n');
+
+  assert.deepEqual(extractProductionTagIdentity(message), identity);
+});
+
 test('production tag identity rejects missing or conflicting fields', () => {
   assert.throws(
     () => buildProductionTagIdentity({ releaseId: 'a'.repeat(64), rcRunId: '' }),

@@ -72,10 +72,21 @@ export async function runStep({ id, command, env = {}, cwd = process.cwd() }) {
 }
 
 /** @param {any} options */
-export function buildPromotionPlan({
+export function buildPromotionPlan(options = {}) {
+  const normalizedRcRunId = normalizeRcRunId(options.rcRunId, 'rcRunId');
+  if (!normalizedRcRunId) {
+    throw new Error('rcRunId is required');
+  }
+  return buildRcFirstPromotionPlan({ ...options, rcRunId: normalizedRcRunId });
+}
+
+/** Build the sole production promotion plan: explicit RC first, proposed tag last. */
+function buildRcFirstPromotionPlan({
+  rcRunId,
   tag,
   highRiskWindows = false,
   postProductionWindowsCanary = true,
+  localOnly = false,
   transcriptRoot = '.opencode/tmp/release-promote',
 } = {}) {
   if (!tag) {
@@ -85,27 +96,57 @@ export function buildPromotionPlan({
     throw new Error('tag must look like v<major>.<minor>.<patch>');
   }
 
-  const releaseBundleStateDir = join(transcriptRoot, tag, 'bundle');
+  const identityRoot = join(transcriptRoot, `rc-${rcRunId}`);
+  const releaseBundleStateDir = join(identityRoot, 'bundle');
   const releaseBundleStateFile = join(releaseBundleStateDir, 'staging-release.env');
+  const releaseBundleDir = join(releaseBundleStateDir, 'release-bundle');
 
   const steps = [
+    step(
+      'resolve-release-candidate',
+      [
+        'bash',
+        '-lc',
+        [
+          'set -euo pipefail',
+          `bundle_state_dir=${quoteShellArg(releaseBundleStateDir)}`,
+          'mkdir -p "$bundle_state_dir"',
+          `node scripts/wait-for-release-candidate.mjs resolve-bundle --repo ${quoteShellArg(DEFAULT_REPO)} --rc-run-id ${quoteShellArg(rcRunId)} \\`,
+          '  --output-file "$bundle_state_dir/release-candidate-images.env" \\',
+          '  --output-dir "$bundle_state_dir/release-bundle" \\',
+          '  --legacy-manifest-file "$bundle_state_dir/release-manifest.env" > "$bundle_state_dir/outputs.env"',
+          'classroom_path_sha="$(awk -F= \'$1 == "APP_SHA" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
+          'release_id="$(awk -F= \'$1 == "release_id" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
+          'openpath_sha="$(awk -F= \'$1 == "openpath_sha" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
+          'openpath_contract_sha256="$(awk -F= \'$1 == "openpath_contract_sha256" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
+          'test "$classroom_path_sha" = "$(git rev-parse HEAD)"',
+          'test -n "$release_id" && test -n "$openpath_sha" && test -n "$openpath_contract_sha256"',
+          `printf 'STAGING_RELEASE_ID=%s\\nSTAGING_CLASSROOMPATH_SHA=%s\\nSTAGING_OPENPATH_SHA=%s\\nSTAGING_OPENPATH_CONTRACT_SHA256=%s\\nSTAGING_RELEASE_RUN_ID=%s\\n' "$release_id" "$classroom_path_sha" "$openpath_sha" "$openpath_contract_sha256" ${quoteShellArg(rcRunId)} > "$bundle_state_dir/staging-release.env"`,
+        ].join('\n'),
+      ],
+      'Resolve the explicitly selected successful Release Candidate and persist its immutable bundle identity.'
+    ),
     step(
       'verify-clean-repos',
       [
         'bash',
         '-lc',
         [
+          'set -euo pipefail',
+          `locator_file=${quoteShellArg(releaseBundleStateFile)}`,
+          'test -s "$locator_file"',
+          'set -a && . "$locator_file" && set +a',
           'bash scripts/require-main-branch.sh git ClassroomPath',
           'git diff --quiet --ignore-submodules=dirty',
           'git diff --cached --quiet --ignore-submodules=dirty',
-          'git fetch origin main --quiet',
-          'test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"',
           'git -C upstream/openpath diff --quiet',
           'git -C upstream/openpath diff --cached --quiet',
+          'test "$(git rev-parse HEAD)" = "$STAGING_CLASSROOMPATH_SHA"',
+          'test "$(git -C upstream/openpath rev-parse HEAD)" = "$STAGING_OPENPATH_SHA"',
           'test "$(git -C upstream/openpath rev-parse HEAD)" = "$(git rev-parse HEAD:upstream/openpath)"',
-        ].join(' && '),
+        ].join('\n'),
       ],
-      'Verify ClassroomPath is clean at origin/main and OpenPath is clean at the pinned gitlink.'
+      'Verify the checkout is clean and is exactly the selected ClassroomPath/OpenPath identity.'
     ),
     step(
       'verify-promotion-identity',
@@ -114,30 +155,14 @@ export function buildPromotionPlan({
         '-lc',
         [
           'set -euo pipefail',
-          'git fetch origin main --quiet',
-          'current_classroom_path_sha="$(git rev-parse origin/main)"',
-          'test "$(git rev-parse HEAD)" = "$current_classroom_path_sha"',
-          'current_openpath_sha="$(git rev-parse origin/main:upstream/openpath)"',
-          'test "$(git -C upstream/openpath rev-parse HEAD)" = "$current_openpath_sha"',
           `locator_file=${quoteShellArg(releaseBundleStateFile)}`,
-          'if [ ! -s "$locator_file" ]; then',
-          '  echo "No persisted Release Bundle identity; initial promotion check passed."',
-          '  exit 0',
-          'fi',
+          `bundle_file=${quoteShellArg(join(releaseBundleDir, 'classroompath-release-bundle.json'))}`,
+          `contract_file=${quoteShellArg(join(releaseBundleDir, 'openpath-promotion-contract.json'))}`,
+          'test -s "$locator_file" && test -s "$bundle_file" && test -s "$contract_file"',
           'set -a && . "$locator_file" && set +a',
-          'test -n "$STAGING_RELEASE_ID"',
-          'test -n "$STAGING_RELEASE_RUN_ID"',
-          'test -n "$STAGING_CLASSROOMPATH_SHA"',
-          'test -n "$STAGING_OPENPATH_SHA"',
-          'test -n "$STAGING_OPENPATH_CONTRACT_SHA256"',
-          'test "$current_classroom_path_sha" = "$STAGING_CLASSROOMPATH_SHA"',
-          'test "$current_openpath_sha" = "$STAGING_OPENPATH_SHA"',
-          `contract_file=${quoteShellArg(join(releaseBundleStateDir, 'release-bundle/openpath-promotion-contract.json'))}`,
-          `bundle_file=${quoteShellArg(join(releaseBundleStateDir, 'release-bundle/classroompath-release-bundle.json'))}`,
-          'test -s "$contract_file"',
-          'test -s "$bundle_file"',
-          'contract_sha256="$(sha256sum "$contract_file" | awk \'{print $1}\')"',
-          'test "$contract_sha256" = "$STAGING_OPENPATH_CONTRACT_SHA256"',
+          `test "$STAGING_RELEASE_RUN_ID" = ${quoteShellArg(rcRunId)}`,
+          'test "$(git rev-parse HEAD)" = "$STAGING_CLASSROOMPATH_SHA"',
+          'test "$(sha256sum "$contract_file" | awk \'{print $1}\')" = "$STAGING_OPENPATH_CONTRACT_SHA256"',
           'node scripts/release-bundle.mjs verify \\',
           '  --bundle-file "$bundle_file" \\',
           '  --contract-file "$contract_file" \\',
@@ -146,40 +171,7 @@ export function buildPromotionPlan({
           '  --classroompath-sha "$STAGING_CLASSROOMPATH_SHA"',
         ].join('\n'),
       ],
-      'Verify the current origin/main and OpenPath gitlink still match the persisted Release Bundle identity before any resume or selective skip.'
-    ),
-    step(
-      'resolve-origin-main',
-      ['bash', '-lc', 'git fetch origin main --quiet && git rev-parse origin/main'],
-      'Resolve the exact ClassroomPath origin/main SHA to promote.'
-    ),
-    step(
-      'wait-release-candidate',
-      [
-        'bash',
-        '-lc',
-        [
-          `bundle_state_dir=${quoteShellArg(releaseBundleStateDir)}`,
-          'mkdir -p "$bundle_state_dir"',
-          'target_sha="$(git rev-parse origin/main)"',
-          'UPSTREAM_OPENPATH_SHA="$(git -C upstream/openpath rev-parse HEAD)" node scripts/wait-for-release-candidate.mjs resolve-bundle \\',
-          '  --repo balejosg/ClassroomPath \\',
-          '  --sha "$target_sha" \\',
-          '  --output-file "$bundle_state_dir/release-candidate-images.env" \\',
-          '  --output-dir "$bundle_state_dir/release-bundle" \\',
-          '  --legacy-manifest-file "$bundle_state_dir/release-manifest.env" > "$bundle_state_dir/outputs.env"',
-          'release_id="$(awk -F= \'$1 == "release_id" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
-          'run_id="$(awk -F= \'$1 == "release_bundle_run_id" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
-          'openpath_sha="$(awk -F= \'$1 == "openpath_sha" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
-          'openpath_contract_sha256="$(awk -F= \'$1 == "openpath_contract_sha256" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
-          'test -n "$release_id"',
-          'test -n "$run_id"',
-          'test -n "$openpath_sha"',
-          'test -n "$openpath_contract_sha256"',
-          `printf 'STAGING_RELEASE_ID=%s\\nSTAGING_CLASSROOMPATH_SHA=%s\\nSTAGING_OPENPATH_SHA=%s\\nSTAGING_OPENPATH_CONTRACT_SHA256=%s\\nSTAGING_RELEASE_RUN_ID=%s\\n' "$release_id" "$target_sha" "$openpath_sha" "$openpath_contract_sha256" "$run_id" > ${quoteShellArg(releaseBundleStateFile)}`,
-        ].join('\n'),
-      ],
-      'Resolve and persist the exact Release Bundle identity for origin/main.'
+      'Revalidate RC run, ClassroomPath SHA, releaseId, OpenPath SHA, and contract bytes before resume or selective execution.'
     ),
     step(
       'deploy-staging',
@@ -192,43 +184,79 @@ export function buildPromotionPlan({
           'test -n "$STAGING_RELEASE_ID" && test -n "$STAGING_RELEASE_RUN_ID"',
           'test -n "$STAGING_CLASSROOMPATH_SHA" && test -n "$STAGING_OPENPATH_SHA"',
           'test -n "$STAGING_OPENPATH_CONTRACT_SHA256"',
-          'STAGING_GHCR_USERNAME="${STAGING_GHCR_USERNAME:-balejosg}" STAGING_GHCR_TOKEN="${STAGING_GHCR_TOKEN:-$(gh auth token)}" npm run deploy:staging',
+          'STAGING_GHCR_USERNAME="${STAGING_GHCR_USERNAME:-balejosg}" STAGING_GHCR_TOKEN="${STAGING_GHCR_TOKEN:-$(gh auth token)}" npm run deploy:staging -- --rc-run-id "$STAGING_RELEASE_RUN_ID"',
         ].join(' && '),
       ],
-      'Deploy the same exact Release Bundle identity to staging.'
+      'Deploy the same exact explicitly selected Release Bundle to staging through the shared executor adapter.'
+    ),
+    ...(highRiskWindows
+      ? [
+          step(
+            'ensure-windows-prepromotion-evidence',
+            ['node', 'scripts/prepromotion-windows-evidence.mjs', 'run-and-persist'],
+            'Run and persist required Windows prepromotion evidence.'
+          ),
+        ]
+      : []),
+    step(
+      'verify-staging-exact',
+      [
+        'bash',
+        '-lc',
+        [
+          `set -a && . ${quoteShellArg(releaseBundleStateFile)} && set +a`,
+          `npm run verify:staging-exact -- --staging-only --rc-run-id "$STAGING_RELEASE_RUN_ID" --candidate-sha "$STAGING_CLASSROOMPATH_SHA" --release-id "$STAGING_RELEASE_ID" --openpath-sha "$STAGING_OPENPATH_SHA" --contract-sha256 "$STAGING_OPENPATH_CONTRACT_SHA256" --current-output ${quoteShellArg(join(identityRoot, 'staging-current-images.env'))} --verification-output ${quoteShellArg(join(identityRoot, 'staging-verification.env'))}`,
+        ].join('\n'),
+      ],
+      'Verify staging runtime, persisted state, health, readiness, and exact RC identity.'
+    ),
+    step(
+      'production-readiness',
+      [
+        'bash',
+        '-lc',
+        [
+          `set -a && . ${quoteShellArg(releaseBundleStateFile)} && set +a`,
+          `npm run verify:production-readiness -- --rc-run-id "$STAGING_RELEASE_RUN_ID" --candidate-sha "$STAGING_CLASSROOMPATH_SHA" --release-id "$STAGING_RELEASE_ID" --openpath-sha "$STAGING_OPENPATH_SHA" --contract-sha256 "$STAGING_OPENPATH_CONTRACT_SHA256" --bundle-file ${quoteShellArg(join(releaseBundleDir, 'classroompath-release-bundle.json'))} --contract-file ${quoteShellArg(join(releaseBundleDir, 'openpath-promotion-contract.json'))}`,
+        ].join('\n'),
+      ],
+      'Run canonical read-only production readiness: recovery authority, config, host, and exact artifacts.'
     ),
   ];
 
-  if (highRiskWindows) {
-    steps.push(
-      step(
-        'ensure-windows-prepromotion-evidence',
-        ['node', 'scripts/prepromotion-windows-evidence.mjs', 'run-and-persist'],
-        'Run and persist required Windows prepromotion evidence.'
-      )
-    );
-  }
-
   steps.push(
     step(
-      'verify-promotion-ready',
-      ['npm', 'run', 'verify:promotion-ready'],
-      'Verify staging evidence is production-promotion ready.'
-    ),
-    step(
-      'verify-production-target-ready',
-      ['npm', 'run', 'verify:production-target-ready'],
-      'Verify the production SSH target, release-state, public URLs, platform, and no-host-node deploy contract before tagging.'
-    ),
-    step(
       'release-preflight',
-      ['bash', '-lc', `RELEASE_PREFLIGHT_NEXT_TAG=${quoteShellArg(tag)} npm run release:preflight`],
-      'Run the consolidated release preflight before creating the production tag.'
+      [
+        'bash',
+        '-lc',
+        [
+          'set -euo pipefail',
+          `set -a && . ${quoteShellArg(releaseBundleStateFile)} && set +a`,
+          'RELEASE_PREFLIGHT_NEXT_TAG=' +
+            quoteShellArg(tag) +
+            ' RELEASE_PREFLIGHT_RC_RUN_ID="$STAGING_RELEASE_RUN_ID" RELEASE_PREFLIGHT_CANDIDATE_SHA="$STAGING_CLASSROOMPATH_SHA" RELEASE_PREFLIGHT_RELEASE_ID="$STAGING_RELEASE_ID" RELEASE_PREFLIGHT_OPENPATH_SHA="$STAGING_OPENPATH_SHA" RELEASE_PREFLIGHT_CONTRACT_SHA256="$STAGING_OPENPATH_CONTRACT_SHA256" npm run release:preflight',
+        ].join('\n'),
+      ],
+      'Run the consolidated release preflight against the selected RC before approval.'
+    ),
+    step(
+      'approval',
+      null,
+      'The explicit --execute flag is the approval boundary; dry-run never crosses into tag creation.'
     ),
     step(
       'tag-production',
-      ['bash', 'scripts/tag-production-release.sh', tag],
-      `Create and push production tag ${tag}.`
+      [
+        'bash',
+        '-lc',
+        [
+          'set -euo pipefail',
+          `set -a && . ${quoteShellArg(releaseBundleStateFile)} && set +a`,
+          `bash scripts/tag-production-release.sh ${quoteShellArg(tag)} --rc-run-id "$STAGING_RELEASE_RUN_ID" --candidate-sha "$STAGING_CLASSROOMPATH_SHA" --release-id "$STAGING_RELEASE_ID" --openpath-sha "$STAGING_OPENPATH_SHA" --contract-sha256 "$STAGING_OPENPATH_CONTRACT_SHA256" --bundle-file ${quoteShellArg(join(releaseBundleDir, 'classroompath-release-bundle.json'))} --contract-file ${quoteShellArg(join(releaseBundleDir, 'openpath-promotion-contract.json'))} --staging-current ${quoteShellArg(join(identityRoot, 'staging-current-images.env'))} --staging-verification ${quoteShellArg(join(identityRoot, 'staging-verification.env'))}${localOnly ? ' --local-only' : ''}`,
+        ].join('\n'),
+      ],
+      `Create and push production tag ${tag} bound to RC run ${rcRunId}.`
     ),
     step(
       'wait-production-deploy',
@@ -264,7 +292,7 @@ export function buildPromotionPlan({
           'production',
           '--confirm-production',
           '--artifact-dir',
-          `.opencode/tmp/postproduction-windows-ajax/${tag}`,
+          `.opencode/tmp/postproduction-windows-ajax/rc-${rcRunId}`,
           '--skip-when-canary-token-absent',
         ],
         'Run the post-production Windows AJAX canary against production.'
@@ -287,9 +315,12 @@ export function buildPromotionPlan({
   steps.push(step('print-summary', null, 'Print promotion summary.'));
 
   return {
+    rcRunId,
     tag,
     highRiskWindows,
     postProductionWindowsCanary,
+    localOnly,
+    identityRoot,
     releaseBundleStateDir,
     releaseBundleStateFile,
     steps,
@@ -400,6 +431,7 @@ export function summarizeGitHubRunMonitor(summary) {
 /** @param {any} options */
 export function writeStepState({
   root = '.opencode/tmp/release-promote',
+  identityRoot,
   tag,
   releaseId,
   classroomPathSha,
@@ -411,7 +443,8 @@ export function writeStepState({
   status,
   seconds,
 } = {}) {
-  const stateDir = join(root, tag);
+  const stateRcRunId = normalizeRcRunId(rcRunId, 'rcRunId');
+  const stateDir = identityRoot ?? join(root, stateRcRunId ? `rc-${stateRcRunId}` : tag);
   const statePath = join(stateDir, 'state.json');
 
   let existing = {};
@@ -421,7 +454,7 @@ export function writeStepState({
     // First write for this tag — start fresh.
   }
 
-  if (existing.tag && existing.tag !== tag) {
+  if (existing.tag && tag && existing.tag !== tag) {
     throw new Error(`Promotion state tag mismatch: ${existing.tag} != ${tag}`);
   }
 
@@ -474,7 +507,7 @@ export function writeStepState({
   const boundRcRunId = normalizedRcRunId || existingRcRunId;
 
   const updated = {
-    tag,
+    ...(tag ? { tag } : {}),
     ...(boundReleaseId ? { releaseId: boundReleaseId } : {}),
     ...(boundClassroomPathSha ? { classroomPathSha: boundClassroomPathSha } : {}),
     ...(boundOpenpathSha ? { openpathSha: boundOpenpathSha } : {}),
@@ -578,8 +611,17 @@ export function readReleaseBundleLocatorIdentity(locatorPath) {
  * Returns null when no state file exists yet.
  */
 /** @param {any} options */
-export function readStepState({ root = '.opencode/tmp/release-promote', tag } = {}) {
-  const statePath = join(root, tag, 'state.json');
+export function readStepState({
+  root = '.opencode/tmp/release-promote',
+  tag,
+  rcRunId,
+  identityRoot,
+} = {}) {
+  const stateRcRunId = normalizeRcRunId(rcRunId, 'rcRunId');
+  const statePath = join(
+    identityRoot ?? join(root, stateRcRunId ? `rc-${stateRcRunId}` : tag),
+    'state.json'
+  );
   try {
     return JSON.parse(readFileSync(statePath, 'utf8'));
   } catch {

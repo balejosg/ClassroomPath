@@ -4,7 +4,7 @@
  * Orchestrates the full production promotion sequence: evidence validation, deploy, health check, and post-release canary.
  *
  * Invoked by: Developer CLI via `npm run release:promote`.
- * Usage: node scripts/release-promote.mjs [--auto-tag] [--dry-run]
+ * Usage: node scripts/release-promote.mjs --rc-run-id <id> [--auto-tag|--tag <tag>] [--dry-run]
  * Env: GITHUB_TOKEN, RELEASE_EVIDENCE_PATH.
  */
 
@@ -29,28 +29,30 @@ import { buildReleaseTranscript, writeReleaseTranscript } from './lib/release-tr
 const execFile = promisify(nodeExecFile);
 
 function usage() {
-  return `Usage: npm run release:promote -- (--tag <vX.Y.Z>|--auto-tag) [--execute|--dry-run] [--high-risk-windows|--no-high-risk-windows] [--post-production-windows-canary|--no-post-production-windows-canary] [--from-step <id>|--only <id>|--resume]
+  return `Usage: npm run release:promote -- --rc-run-id <id> (--tag <vX.Y.Z>|--auto-tag) [--execute|--dry-run] [--local-only] [--high-risk-windows|--no-high-risk-windows] [--post-production-windows-canary|--no-post-production-windows-canary] [--from-step <id>|--only <id>|--resume]
 
 Builds and runs the production promotion plan.
 
 Options:
+  --rc-run-id <id>                    Explicit successful release-candidate workflow run to promote.
   --tag <tag>                         Production tag to create, for example v1.2.301.
   --auto-tag                          Use the next patch tag after the highest remote vX.Y.Z tag.
   --dry-run                           Print the ordered plan without running commands. Default.
   --execute                           Run the ordered plan. This can deploy staging and create/push the production tag.
+  --local-only                        Create the tag locally without pushing it.
   --high-risk-windows                 Include Windows prepromotion evidence step. Default.
   --no-high-risk-windows              Omit Windows prepromotion evidence step.
   --post-production-windows-canary    Include the post-production Windows canary step. Default.
   --no-post-production-windows-canary Omit the post-production Windows canary step for emergency opt-out.
   --from-step <id>                    Skip all steps before <id> and run from <id> to the end.
                                       Rejected if any skipped promotion gate has not already passed
-                                      (i.e. is not recorded 'success' in the state file for this tag).
+                                      (i.e. is not recorded 'success' in the RC identity state file).
                                       The verify-promotion-identity gate always runs.
   --only <id>                         Run only this step. May be repeated to build a set of steps
                                       (e.g. --only verify-promotion-ready --only release-preflight).
                                       Subject to the same promotion-gate guard as --from-step; the
                                       verify-promotion-identity gate always runs.
-  --resume                            Read the persisted state file for this tag and skip every step
+  --resume                            Read the persisted state file for this RC identity and skip every step
                                       already recorded 'success'. Promotion-gate guard still applies;
                                       verify-promotion-identity always runs.
   --help                              Show this help.
@@ -59,10 +61,12 @@ Options:
 
 export function parseReleasePromoteArgs(argv) {
   const options = {
+    rcRunId: '',
     tag: '',
     autoTag: false,
     dryRun: true,
     execute: false,
+    localOnly: false,
     highRiskWindows: true,
     postProductionWindowsCanary: true,
     help: false,
@@ -74,6 +78,9 @@ export function parseReleasePromoteArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     switch (arg) {
+      case '--rc-run-id':
+        options.rcRunId = requireNextValue(argv, ++index, '--rc-run-id');
+        break;
       case '--tag':
         options.tag = requireNextValue(argv, ++index, '--tag');
         break;
@@ -87,6 +94,9 @@ export function parseReleasePromoteArgs(argv) {
       case '--execute':
         options.execute = true;
         options.dryRun = false;
+        break;
+      case '--local-only':
+        options.localOnly = true;
         break;
       case '--high-risk-windows':
         options.highRiskWindows = true;
@@ -138,6 +148,11 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       throw new Error('--auto-tag cannot be combined with --tag');
     }
 
+    const rcRunId = normalizePromotionRcRunId(options.rcRunId, '--rc-run-id');
+    if (!rcRunId) {
+      throw new Error('--rc-run-id is required');
+    }
+
     const tag = options.autoTag
       ? await resolveNextPatchTag({ execFile: dependencies.execFile ?? execFile })
       : options.tag;
@@ -146,18 +161,27 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
 
     const transcriptRoot = dependencies.transcriptRoot;
     const plan = buildPromotionPlan({
+      rcRunId,
       tag,
       highRiskWindows: options.highRiskWindows,
       postProductionWindowsCanary: options.postProductionWindowsCanary,
+      localOnly: options.localOnly,
       transcriptRoot,
     });
 
     const readStepStateFn = dependencies.readStepState ?? readStepState;
-    const persistedState = readStepStateFn({ root: transcriptRoot, tag });
+    const persistedState = readStepStateFn({
+      root: transcriptRoot,
+      tag,
+      rcRunId,
+      identityRoot: plan.identityRoot,
+    });
     const locatorIdentity = readReleaseBundleLocatorIdentity(plan.releaseBundleStateFile);
     assertPromotionResumeIdentity({
       state: persistedState,
       locator: locatorIdentity,
+      tag,
+      rcRunId,
     });
 
     // --- Step filtering (--from-step / --only / --resume) ---
@@ -166,6 +190,8 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       options,
       stateRoot: dependencies.transcriptRoot,
       tag,
+      rcRunId,
+      identityRoot: plan.identityRoot,
       readStepStateFn,
     });
 
@@ -194,12 +220,16 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       // Persist step outcome so --resume can skip it on the next run.
       (dependencies.writeStepState ?? writeStepState)({
         root: dependencies.transcriptRoot,
+        identityRoot: plan.identityRoot,
         tag,
+        // Do not bind a failed pre-resolution step to an RC identity that has
+        // not been resolved yet. The requested run selects the state directory
+        // but is not persisted as proof until the exact locator exists.
+        rcRunId: currentLocator?.rcRunId,
         releaseId: currentLocator?.releaseId,
         classroomPathSha: currentLocator?.classroomPathSha,
         openpathSha: currentLocator?.openpathSha,
         openpathContractSha256: currentLocator?.openpathContractSha256,
-        rcRunId: currentLocator?.rcRunId,
         startedAt,
         stepId: recorded.id,
         status: recorded.status,
@@ -238,7 +268,7 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
 
       if (
         result.status !== 'success' &&
-        planStep.id === 'verify-promotion-ready' &&
+        (planStep.id === 'verify-staging-exact' || planStep.id === 'production-readiness') &&
         shouldRefreshWindowsPrepromotionEvidence(result)
       ) {
         const evidenceStep = buildWindowsPrepromotionEvidenceStep();
@@ -255,6 +285,8 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
           writeTranscriptIfRequested({
             dependencies,
             tag,
+            identityRoot: plan.identityRoot,
+            rcRunId: plan.rcRunId,
             status: 'failed',
             startedAt,
             results,
@@ -269,7 +301,13 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       if (
         result.status !== 'success' &&
         planStep.id === 'wait-production-deploy' &&
-        (await enrichFailedProductionDeploy({ result, tag, dependencies, executeStep })) &&
+        (await enrichFailedProductionDeploy({
+          result,
+          tag,
+          identityRoot: plan.identityRoot,
+          dependencies,
+          executeStep,
+        })) &&
         shouldRerunProductionDeploy(result)
       ) {
         const runId = result.githubRun?.runId;
@@ -288,6 +326,8 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
         writeTranscriptIfRequested({
           dependencies,
           tag,
+          identityRoot: plan.identityRoot,
+          rcRunId: plan.rcRunId,
           status: 'failed',
           startedAt,
           results,
@@ -301,6 +341,8 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
     writeTranscriptIfRequested({
       dependencies,
       tag,
+      identityRoot: plan.identityRoot,
+      rcRunId: plan.rcRunId,
       status: 'success',
       startedAt,
       results,
@@ -318,8 +360,8 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
 // Skipping any of these without a 'success' record in the state file is fatal.
 const PROMOTION_GATE_IDS = new Set([
   'verify-clean-repos',
-  'verify-promotion-ready',
-  'verify-production-target-ready',
+  'verify-staging-exact',
+  'production-readiness',
   'release-preflight',
 ]);
 
@@ -335,9 +377,11 @@ const PROMOTION_GATE_IDS = new Set([
  * @param {object} params.options - parsed CLI options
  * @param {string|undefined} params.stateRoot - transcriptRoot for state files
  * @param {string} params.tag
+ * @param {string} params.rcRunId
+ * @param {string} params.identityRoot
  * @param {Function} params.readStepStateFn - injected readStepState (for tests)
  */
-function resolveSkipSet({ plan, options, stateRoot, tag, readStepStateFn }) {
+function resolveSkipSet({ plan, options, stateRoot, tag, rcRunId, identityRoot, readStepStateFn }) {
   const allIds = plan.steps.map((s) => s.id);
   const skipSet = new Set();
   const skipReasons = new Map();
@@ -384,7 +428,7 @@ function resolveSkipSet({ plan, options, stateRoot, tag, readStepStateFn }) {
       }
     }
   } else if (options.resume) {
-    const state = readStepStateFn({ root: stateRoot, tag });
+    const state = readStepStateFn({ root: stateRoot, tag, rcRunId, identityRoot });
     for (const id of allIds) {
       if ((state?.steps?.[id]?.status ?? '') === 'success') {
         skipSet.add(id);
@@ -405,7 +449,7 @@ function resolveSkipSet({ plan, options, stateRoot, tag, readStepStateFn }) {
   // the persisted state. Reading state unconditionally keeps the guard sound even if the
   // selection flags are somehow combined.
   if (skipSet.size > 0) {
-    const state = readStepStateFn({ root: stateRoot, tag });
+    const state = readStepStateFn({ root: stateRoot, tag, rcRunId, identityRoot });
     const blockedGates = [];
     for (const id of skipSet) {
       if (PROMOTION_GATE_IDS.has(id) && (state?.steps?.[id]?.status ?? '') !== 'success') {
@@ -424,7 +468,14 @@ function resolveSkipSet({ plan, options, stateRoot, tag, readStepStateFn }) {
   return { skipSet, skipReasons };
 }
 
-function assertPromotionResumeIdentity({ state, locator }) {
+export function assertPromotionResumeIdentity({ state, locator, tag, rcRunId } = {}) {
+  const requestedTag = String(tag ?? '').trim();
+  const requestedRcRunId = normalizePromotionRcRunId(rcRunId, 'rcRunId');
+  if (state?.tag && requestedTag && state.tag !== requestedTag) {
+    throw new Error(
+      `Promotion state is bound to a different proposed tag: ${state.tag} != ${requestedTag}`
+    );
+  }
   const stateReleaseId = normalizePromotionReleaseId(state?.releaseId, 'persisted releaseId');
   const stateClassroomPathSha = normalizePromotionSha40(
     state?.classroomPathSha,
@@ -445,6 +496,18 @@ function assertPromotionResumeIdentity({ state, locator }) {
   ];
   const hasStateIdentity = stateIdentity.some(Boolean);
 
+  if (stateRcRunId && requestedRcRunId && stateRcRunId !== requestedRcRunId) {
+    throw new Error(
+      `Promotion state is bound to a different Release Candidate run: ${stateRcRunId} != ${requestedRcRunId}`
+    );
+  }
+
+  if (locator && requestedRcRunId && locator.rcRunId !== requestedRcRunId) {
+    throw new Error(
+      `Release Bundle locator is bound to a different Release Candidate run: ${locator.rcRunId} != ${requestedRcRunId}`
+    );
+  }
+
   if (hasStateIdentity && stateIdentity.some((value) => !value)) {
     throw new Error(
       'Promotion state contains an incomplete Release Bundle identity; refusing resume or selective skip'
@@ -457,19 +520,19 @@ function assertPromotionResumeIdentity({ state, locator }) {
     );
   }
 
-  if (stateReleaseId && stateReleaseId !== locator.releaseId) {
+  if (stateReleaseId && locator && stateReleaseId !== locator.releaseId) {
     throw new Error(
       `Promotion state is bound to a different Release Bundle releaseId: ${stateReleaseId} != ${locator.releaseId}`
     );
   }
 
-  if (stateClassroomPathSha && stateClassroomPathSha !== locator.classroomPathSha) {
+  if (stateClassroomPathSha && locator && stateClassroomPathSha !== locator.classroomPathSha) {
     throw new Error(
       `Promotion state is bound to a different ClassroomPath SHA: ${stateClassroomPathSha} != ${locator.classroomPathSha}`
     );
   }
 
-  if (stateOpenpathSha && stateOpenpathSha !== locator.openpathSha) {
+  if (stateOpenpathSha && locator && stateOpenpathSha !== locator.openpathSha) {
     throw new Error(
       `Promotion state is bound to a different OpenPath SHA: ${stateOpenpathSha} != ${locator.openpathSha}`
     );
@@ -477,6 +540,7 @@ function assertPromotionResumeIdentity({ state, locator }) {
 
   if (
     stateOpenpathContractSha256 &&
+    locator &&
     stateOpenpathContractSha256 !== locator.openpathContractSha256
   ) {
     throw new Error(
@@ -484,7 +548,7 @@ function assertPromotionResumeIdentity({ state, locator }) {
     );
   }
 
-  if (stateRcRunId && stateRcRunId !== locator.rcRunId) {
+  if (stateRcRunId && locator && stateRcRunId !== locator.rcRunId) {
     throw new Error(
       `Promotion state is bound to a different Release Bundle rcRunId: ${stateRcRunId} != ${locator.rcRunId}`
     );
@@ -573,7 +637,13 @@ function shouldRerunProductionDeploy(result) {
   );
 }
 
-async function enrichFailedProductionDeploy({ result, tag, dependencies, executeStep }) {
+async function enrichFailedProductionDeploy({
+  result,
+  tag,
+  identityRoot,
+  dependencies,
+  executeStep,
+}) {
   if (!result.githubRun?.runId) {
     return false;
   }
@@ -583,8 +653,7 @@ async function enrichFailedProductionDeploy({ result, tag, dependencies, execute
 
   const runId = result.githubRun.runId;
   const outputDir = join(
-    dependencies.transcriptRoot ?? '.opencode/tmp/release-promote',
-    tag,
+    identityRoot ?? join(dependencies.transcriptRoot ?? '.opencode/tmp/release-promote', tag),
     'deploy-brief'
   );
   const briefStep = {
@@ -673,6 +742,8 @@ function parseJsonObjectFromText(text) {
 function writeTranscriptIfRequested({
   dependencies,
   tag,
+  identityRoot,
+  rcRunId,
   status,
   startedAt,
   results,
@@ -681,6 +752,7 @@ function writeTranscriptIfRequested({
 }) {
   const transcript = buildReleaseTranscript({
     tag,
+    rcRunId,
     status,
     startedAt,
     finishedAt: new Date().toISOString(),
@@ -691,6 +763,11 @@ function writeTranscriptIfRequested({
   writeReleaseTranscript({
     transcript,
     root: dependencies.transcriptRoot,
+    identityKey: identityRoot
+      ? identityRoot.slice(
+          (dependencies.transcriptRoot ?? '.opencode/tmp/release-promote').length + 1
+        )
+      : undefined,
   });
 }
 
@@ -723,6 +800,10 @@ export async function resolveNextPatchTag({ execFile: runExecFile = execFile } =
 
 function printPlan(plan, io, skipSet = new Set(), skipReasons = new Map()) {
   io.stdout(`Production promotion plan for ${plan.tag}\n`);
+  if (plan.rcRunId) {
+    io.stdout(`release_candidate_run_id: ${plan.rcRunId}\n`);
+    io.stdout(`state_identity_root: ${plan.identityRoot}\n`);
+  }
   io.stdout(`mode: dry-run\n`);
   io.stdout(`high_risk_windows: ${plan.highRiskWindows ? 'true' : 'false'}\n\n`);
 
@@ -737,8 +818,25 @@ function printPlan(plan, io, skipSet = new Set(), skipReasons = new Map()) {
 }
 
 function printSummary(plan, results, io) {
+  let locator = null;
+  try {
+    locator = readReleaseBundleLocatorIdentity(plan.releaseBundleStateFile);
+  } catch {
+    // The summary remains useful when an earlier step failed before resolving
+    // the exact bundle; the requested RC identity is still safe to display.
+  }
+  const readinessResult = results.find((result) => result.id === 'production-readiness');
+  const readinessOutput = String(readinessResult?.stdout ?? '');
+  const recoverySha = readinessOutput.match(/^recovery_sha:\s*(\S+)$/mu)?.[1] ?? '';
+
   io.stdout('\nProduction promotion summary\n');
-  io.stdout(`tag: ${plan.tag}\n`);
+  io.stdout(`rc_run_id: ${locator?.rcRunId ?? plan.rcRunId}\n`);
+  io.stdout(`classroompath_sha: ${locator?.classroomPathSha ?? 'unavailable'}\n`);
+  io.stdout(`release_id: ${locator?.releaseId ?? 'unavailable'}\n`);
+  io.stdout(`openpath_sha: ${locator?.openpathSha ?? 'unavailable'}\n`);
+  io.stdout(`contract_sha256: ${locator?.openpathContractSha256 ?? 'unavailable'}\n`);
+  io.stdout(`recovery_sha: ${recoverySha || 'unavailable'}\n`);
+  io.stdout(`tag_proposed: ${plan.tag}\n`);
   for (const result of results) {
     io.stdout(`${result.id}: ${result.status} (${result.seconds}s)\n`);
   }

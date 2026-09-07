@@ -13,6 +13,8 @@ PRODUCTION_HOST_CONTRACT_HELPER_MIN_CONTRACT_VERSION=1
 DEPLOYMENT_TRANSACTION_HELPER_MIN_CONTRACT_VERSION=1
 ROLLBACK_EXECUTOR_HELPER_MIN_CONTRACT_VERSION=1
 PRODUCTION_RECOVERY_ARTIFACT_HELPER_MIN_CONTRACT_VERSION=1
+DEPLOY_RUNTIME_EXECUTOR_HELPER_MIN_CONTRACT_VERSION=1
+DEPLOYMENT_LEDGER_HELPER_MIN_CONTRACT_VERSION=1
 
 remote_helper_path_supports_all() {
   local helper_path="${1:-}"
@@ -182,11 +184,29 @@ production_recovery_artifact_helper_supports_contract() {
     "$PRODUCTION_RECOVERY_ARTIFACT_HELPER_MIN_CONTRACT_VERSION"
 }
 
+deploy_runtime_executor_helper_supports_contract() {
+  local helper_path="${1:-}"
+  remote_helper_contract_version_at_least \
+    "$helper_path" \
+    DEPLOY_RUNTIME_EXECUTOR_CONTRACT_VERSION \
+    "$DEPLOY_RUNTIME_EXECUTOR_HELPER_MIN_CONTRACT_VERSION"
+}
+
+deployment_ledger_helper_supports_contract() {
+  local helper_path="${1:-}"
+  remote_helper_contract_version_at_least \
+    "$helper_path" \
+    DEPLOYMENT_LEDGER_CONTRACT_VERSION \
+    "$DEPLOYMENT_LEDGER_HELPER_MIN_CONTRACT_VERSION"
+}
+
 refresh_deployed_release_helpers() {
   RELEASE_MANIFEST_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-manifest.sh")"
   RELEASE_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-state.sh")"
   RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-runtime.sh")"
   RELEASE_EXECUTION_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-execution.sh")"
+  DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-runtime-executor.sh")"
+  DEPLOYMENT_LEDGER_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-ledger.sh")"
 
   if [ -n "${DEPLOYMENT_STATE_HELPER_PATH:-}" ]; then
     DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")"

@@ -60,31 +60,35 @@ update flow.
 
    Read-only; shows current release and submodule state.
 
-2. **Run the authoritative readiness gate (blocking):**
+2. **Inspect the exact RC-first plan (read-only):**
 
    ```sh
-   npm run verify:promotion-ready
+   npm run release:promote -- --rc-run-id <RC_RUN_ID> --auto-tag --dry-run
    ```
 
-   This gate is blocking. If it exits non-zero, promotion must not proceed. There is no bypass.
-   The gate checks that staging is promotion-eligible, submodule state is clean, and required
-   evidence is present. Exit codes: `0` promotion-ready; `10` blocked - the expected steady state
-   between promotions (the nightly workflow reports this as a green run with `promotion_ready=false`);
-   any other non-zero means the gate itself could not evaluate and must be investigated as a genuine
-   failure.
+   The explicit RC run is the authority for the pre-tag state. The plan resolves its exact
+   ClassroomPath/OpenPath/bundle/contract identity, verifies that same candidate in staging, and
+   runs the read-only production readiness checks for recovery, configuration, host, and artifacts.
+   The state directory is keyed by `rc-<RC_RUN_ID>`; resume fails closed if any identity changes.
 
-3. **Promote (auto-derives next patch tag, runs production preflight, pushes tag):**
+3. **Approve and execute the exact plan:**
+
+   ```sh
+   npm run release:promote -- --rc-run-id <RC_RUN_ID> --auto-tag --execute
+   ```
+
+   `--execute` is the approval boundary. It creates/pushes one annotated tag only after the exact
+   staging and readiness gates pass, then the existing production workflow consumes that tag.
+   `--local-only` keeps tag creation local for a reviewed dry integration.
+
+4. **Compatibility wrapper:**
 
    ```sh
    npm run promote:current-staging
    ```
 
-   Alternatively, run the fuller orchestrated sequence (dry-run by default; add `--execute` to
-   perform real operations):
-
-   ```sh
-   npm run release:promote -- --execute
-   ```
+   This deprecated wrapper resolves only the current staging RC run ID and delegates to the
+   canonical `release:promote` command; it owns no identity, readiness, tag, or deploy logic.
 
 **Evidence ladder reminder:** never claim production resolution from staging-only evidence. The
 highest completed rung must be `production evidence` or `target-platform symptom cleared` before

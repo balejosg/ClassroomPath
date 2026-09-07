@@ -11,7 +11,16 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { readStepState, writeStepState } from '../scripts/lib/release-orchestration.mjs';
-import { parseReleasePromoteArgs, runReleasePromoteCommand } from '../scripts/release-promote.mjs';
+import {
+  parseReleasePromoteArgs,
+  runReleasePromoteCommand as runReleasePromoteCommandImpl,
+} from '../scripts/release-promote.mjs';
+
+const RC_RUN_ID = '123';
+
+function runReleasePromoteCommand(argv, dependencies = {}) {
+  return runReleasePromoteCommandImpl(['--rc-run-id', RC_RUN_ID, ...argv], dependencies);
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -45,15 +54,15 @@ function stateWithSuccessGates(...ids: string[]) {
 
 // Full ordered step list for the default plan (highRiskWindows=true, postProductionWindowsCanary=true)
 const ALL_STEP_IDS = [
+  'resolve-release-candidate',
   'verify-clean-repos',
   'verify-promotion-identity',
-  'resolve-origin-main',
-  'wait-release-candidate',
   'deploy-staging',
   'ensure-windows-prepromotion-evidence',
-  'verify-promotion-ready',
-  'verify-production-target-ready',
+  'verify-staging-exact',
+  'production-readiness',
   'release-preflight',
+  'approval',
   'tag-production',
   'wait-production-deploy',
   'verify-production-health',
@@ -65,8 +74,8 @@ const ALL_STEP_IDS = [
 // Gates that must never be skipped without a prior success record.
 const GATE_IDS = [
   'verify-clean-repos',
-  'verify-promotion-ready',
-  'verify-production-target-ready',
+  'verify-staging-exact',
+  'production-readiness',
   'release-preflight',
 ];
 
@@ -94,11 +103,11 @@ describe('parseReleasePromoteArgs — resume flags', () => {
       '--tag',
       'v1.2.301',
       '--only',
-      'verify-promotion-ready',
+      'verify-staging-exact',
       '--only',
       'release-preflight',
     ]);
-    assert.deepEqual(opts.only, ['verify-promotion-ready', 'release-preflight']);
+    assert.deepEqual(opts.only, ['verify-staging-exact', 'release-preflight']);
   });
 
   it('parses --resume', () => {
@@ -142,7 +151,7 @@ describe('step filtering — --from-step', () => {
         '--execute',
         '--no-post-production-windows-canary',
         '--from-step',
-        'verify-promotion-ready',
+        'verify-staging-exact',
       ],
       makeSuccessDeps({
         readStepState: () => state,
@@ -154,18 +163,17 @@ describe('step filtering — --from-step', () => {
     );
 
     assert.equal(result.status, 0);
-    // Steps before verify-promotion-ready must not appear.
+    // Steps before verify-staging-exact must not appear.
     for (const id of [
+      'resolve-release-candidate',
       'verify-clean-repos',
-      'resolve-origin-main',
-      'wait-release-candidate',
       'deploy-staging',
       'ensure-windows-prepromotion-evidence',
     ]) {
       assert.equal(executedSteps.includes(id), false, `${id} should be skipped`);
     }
-    // verify-promotion-ready and onwards must run.
-    assert.ok(executedSteps.includes('verify-promotion-ready'), 'verify-promotion-ready must run');
+    // verify-staging-exact and onwards must run.
+    assert.ok(executedSteps.includes('verify-staging-exact'), 'verify-staging-exact must run');
     assert.ok(executedSteps.includes('tag-production'), 'tag-production must run');
     assert.ok(
       executedSteps.includes('verify-production-health'),
@@ -220,8 +228,7 @@ describe('step filtering — --resume', () => {
     // Simulate a prior run that passed everything up to and including deploy-staging.
     const state = stateWithSuccessGates(
       'verify-clean-repos',
-      'resolve-origin-main',
-      'wait-release-candidate',
+      'resolve-release-candidate',
       'deploy-staging'
     );
 
@@ -245,16 +252,11 @@ describe('step filtering — --resume', () => {
 
     assert.equal(result.status, 0);
     // Already-success steps must be skipped.
-    for (const id of [
-      'verify-clean-repos',
-      'resolve-origin-main',
-      'wait-release-candidate',
-      'deploy-staging',
-    ]) {
+    for (const id of ['verify-clean-repos', 'resolve-release-candidate', 'deploy-staging']) {
       assert.equal(executedSteps.includes(id), false, `${id} should be skipped`);
     }
     // Everything after must run.
-    assert.ok(executedSteps.includes('verify-promotion-ready'), 'verify-promotion-ready must run');
+    assert.ok(executedSteps.includes('verify-staging-exact'), 'verify-staging-exact must run');
     assert.ok(executedSteps.includes('tag-production'), 'tag-production must run');
   });
 });
@@ -279,8 +281,8 @@ describe('fail-closed promotion gate guard', () => {
     assert.equal(result.status, 2);
     assert.match(stderr, /Refusing to skip un-passed promotion gate/);
     assert.match(stderr, /verify-clean-repos/);
-    assert.match(stderr, /verify-promotion-ready/);
-    assert.match(stderr, /verify-production-target-ready/);
+    assert.match(stderr, /verify-staging-exact/);
+    assert.match(stderr, /production-readiness/);
     assert.match(stderr, /release-preflight/);
   });
 
@@ -418,7 +420,8 @@ describe('default behavior unchanged', () => {
     assert.equal(result.status, 0);
     // All executable steps (everything except print-summary which has no command) must appear.
     const expectedCommandSteps = ALL_STEP_IDS.filter(
-      (id) => id !== 'print-summary' && id !== 'run-post-production-windows-canary'
+      (id) =>
+        id !== 'print-summary' && id !== 'run-post-production-windows-canary' && id !== 'approval'
     );
     for (const id of expectedCommandSteps) {
       assert.ok(executedSteps.includes(id), `${id} must run in the default plan`);
@@ -436,7 +439,7 @@ describe('dry-run output with resume flags', () => {
     const state = stateWithSuccessGates(...GATE_IDS);
 
     await runReleasePromoteCommand(
-      ['--tag', 'v1.2.301', '--dry-run', '--from-step', 'verify-promotion-ready'],
+      ['--tag', 'v1.2.301', '--dry-run', '--from-step', 'verify-staging-exact'],
       makeSuccessDeps({
         readStepState: () => state,
         stdout: (value: string) => {
@@ -445,14 +448,14 @@ describe('dry-run output with resume flags', () => {
       })
     );
 
-    assert.match(stdout, /skipped: before --from-step verify-promotion-ready/);
-    // verify-promotion-ready itself should NOT be marked skipped.
-    assert.doesNotMatch(stdout, /verify-promotion-ready.*skipped/);
+    assert.match(stdout, /skipped: before --from-step verify-staging-exact/);
+    // verify-staging-exact itself should NOT be marked skipped.
+    assert.doesNotMatch(stdout, /verify-staging-exact.*skipped/);
   });
 
   it('labels skipped steps in dry-run output for --resume', async () => {
     let stdout = '';
-    const state = stateWithSuccessGates('verify-clean-repos', 'resolve-origin-main');
+    const state = stateWithSuccessGates('verify-clean-repos', 'resolve-release-candidate');
 
     await runReleasePromoteCommand(
       ['--tag', 'v1.2.301', '--dry-run', '--resume'],
@@ -512,7 +515,7 @@ describe('writeStepState / readStepState', () => {
       root,
       tag,
       startedAt,
-      stepId: 'resolve-origin-main',
+      stepId: 'resolve-release-candidate',
       status: 'success',
       seconds: 2,
     });
@@ -527,7 +530,7 @@ describe('writeStepState / readStepState', () => {
 
     const state = readStepState({ root, tag });
     assert.equal(state.steps['verify-clean-repos'].status, 'success');
-    assert.equal(state.steps['resolve-origin-main'].status, 'success');
+    assert.equal(state.steps['resolve-release-candidate'].status, 'success');
     assert.equal(state.steps['deploy-staging'].status, 'failed');
     // startedAt is preserved from the first write, not overwritten by later writes.
     assert.equal(state.startedAt, startedAt);
@@ -570,7 +573,7 @@ describe('writeStepState / readStepState', () => {
       tag,
       releaseId: firstReleaseId,
       startedAt: '2026-01-01T00:00:00.000Z',
-      stepId: 'wait-release-candidate',
+      stepId: 'resolve-release-candidate',
       status: 'success',
       seconds: 1,
     });
@@ -607,12 +610,12 @@ describe('writeStepState / readStepState', () => {
       tag,
       ...identity,
       startedAt: '2026-01-01T00:00:00.000Z',
-      stepId: 'wait-release-candidate',
+      stepId: 'resolve-release-candidate',
       status: 'success',
       seconds: 1,
     });
 
-    const state = readStepState({ root, tag });
+    const state = readStepState({ root, tag, rcRunId: RC_RUN_ID });
     assert.deepEqual(
       {
         releaseId: state.releaseId,
@@ -646,9 +649,9 @@ describe('writeStepState / readStepState', () => {
       status: 'success',
       seconds: 1,
     });
-    mkdirSync(join(root, tag, 'bundle'), { recursive: true });
+    mkdirSync(join(root, `rc-${RC_RUN_ID}`, 'bundle'), { recursive: true });
     writeFileSync(
-      join(root, tag, 'bundle', 'staging-release.env'),
+      join(root, `rc-${RC_RUN_ID}`, 'bundle', 'staging-release.env'),
       [
         `STAGING_RELEASE_ID=${bundleReleaseId}`,
         `STAGING_CLASSROOMPATH_SHA=${classroomPathSha}`,
@@ -664,8 +667,8 @@ describe('writeStepState / readStepState', () => {
       ['--tag', tag, '--execute', '--resume'],
       makeSuccessDeps({
         transcriptRoot: root,
-        readStepState: ({ root: stateRoot, tag: stateTag }) =>
-          readStepState({ root: stateRoot, tag: stateTag }),
+        readStepState: ({ root: stateRoot, tag: stateTag, identityRoot }) =>
+          readStepState({ root: stateRoot, tag: stateTag, identityRoot }),
         stderr: (value: string) => {
           stderr += value;
         },
@@ -701,13 +704,13 @@ describe('writeStepState / readStepState', () => {
         status: 'success',
         seconds: 1,
       });
-      mkdirSync(join(root, tag, 'bundle'), { recursive: true });
+      mkdirSync(join(root, `rc-${RC_RUN_ID}`, 'bundle'), { recursive: true });
       const locatorIdentity = {
         ...identity,
         [field]: field === 'openpathContractSha256' ? 'e'.repeat(64) : 'e'.repeat(40),
       };
       writeFileSync(
-        join(root, tag, 'bundle', 'staging-release.env'),
+        join(root, `rc-${RC_RUN_ID}`, 'bundle', 'staging-release.env'),
         [
           `STAGING_RELEASE_ID=${locatorIdentity.releaseId}`,
           `STAGING_CLASSROOMPATH_SHA=${locatorIdentity.classroomPathSha}`,
@@ -723,8 +726,8 @@ describe('writeStepState / readStepState', () => {
         ['--tag', tag, '--execute', '--resume'],
         makeSuccessDeps({
           transcriptRoot: root,
-          readStepState: ({ root: stateRoot, tag: stateTag }) =>
-            readStepState({ root: stateRoot, tag: stateTag }),
+          readStepState: ({ root: stateRoot, tag: stateTag, identityRoot }) =>
+            readStepState({ root: stateRoot, tag: stateTag, identityRoot }),
           stderr: (value: string) => {
             stderr += value;
           },
@@ -746,9 +749,9 @@ describe('writeStepState / readStepState', () => {
       openpathContractSha256: 'd'.repeat(64),
       rcRunId: '123',
     };
-    mkdirSync(join(root, tag), { recursive: true });
+    mkdirSync(join(root, `rc-${RC_RUN_ID}`), { recursive: true });
     writeFileSync(
-      join(root, tag, 'state.json'),
+      join(root, `rc-${RC_RUN_ID}`, 'state.json'),
       JSON.stringify({
         tag,
         ...identity,
@@ -757,15 +760,14 @@ describe('writeStepState / readStepState', () => {
         steps: {
           'verify-clean-repos': { status: 'success', seconds: 1 },
           'verify-promotion-identity': { status: 'success', seconds: 1 },
-          'resolve-origin-main': { status: 'success', seconds: 1 },
-          'wait-release-candidate': { status: 'success', seconds: 1 },
+          'resolve-release-candidate': { status: 'success', seconds: 1 },
           'deploy-staging': { status: 'success', seconds: 1 },
         },
       }) + '\n'
     );
-    mkdirSync(join(root, tag, 'bundle'), { recursive: true });
+    mkdirSync(join(root, `rc-${RC_RUN_ID}`, 'bundle'), { recursive: true });
     writeFileSync(
-      join(root, tag, 'bundle', 'staging-release.env'),
+      join(root, `rc-${RC_RUN_ID}`, 'bundle', 'staging-release.env'),
       [
         `STAGING_RELEASE_ID=${identity.releaseId}`,
         `STAGING_CLASSROOMPATH_SHA=${identity.classroomPathSha}`,
@@ -788,8 +790,8 @@ describe('writeStepState / readStepState', () => {
       ],
       makeSuccessDeps({
         transcriptRoot: root,
-        readStepState: ({ root: stateRoot, tag: stateTag }) =>
-          readStepState({ root: stateRoot, tag: stateTag }),
+        readStepState: ({ root: stateRoot, tag: stateTag, identityRoot }) =>
+          readStepState({ root: stateRoot, tag: stateTag, identityRoot }),
         runStep: async (step: { id: string }) => {
           executedSteps.push(step.id);
           if (step.id === 'verify-promotion-identity') {
@@ -836,7 +838,7 @@ describe('writeStepState / readStepState', () => {
       }
     );
 
-    const state = readStepState({ root, tag: 'v1.0.1' });
+    const state = readStepState({ root, tag: 'v1.0.1', rcRunId: RC_RUN_ID });
     assert.ok(state, 'state file should be written');
     assert.ok(Object.keys(state.steps).length > 0, 'at least one step should be recorded');
     assert.equal(state.steps['verify-clean-repos'].status, 'success');

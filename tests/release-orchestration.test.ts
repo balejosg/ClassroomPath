@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import {
-  buildPromotionPlan,
+  buildPromotionPlan as buildPromotionPlanImpl,
   buildWaitForTagDeployCommand,
   formatCommand,
   monitorGitHubRun,
@@ -16,8 +16,26 @@ import {
 import {
   parseReleasePromoteArgs,
   resolveNextPatchTag,
-  runReleasePromoteCommand,
+  runReleasePromoteCommand as runReleasePromoteCommandImpl,
 } from '../scripts/release-promote.mjs';
+
+const RC_RUN_ID = '34124312483';
+
+function buildPromotionPlan(options = {}) {
+  return buildPromotionPlanImpl({ rcRunId: RC_RUN_ID, ...options });
+}
+
+function runReleasePromoteCommand(argv, dependencies = {}) {
+  const scopedDependencies =
+    dependencies.transcriptRoot || dependencies.writeStepState
+      ? dependencies
+      : {
+          ...dependencies,
+          transcriptRoot: mkdtempSync(join(tmpdir(), 'release-promote-test-')),
+          writeStepState: () => {},
+        };
+  return runReleasePromoteCommandImpl(['--rc-run-id', RC_RUN_ID, ...argv], scopedDependencies);
+}
 
 describe('release promotion orchestration', () => {
   it('plans the required step order for high-risk Windows changes', () => {
@@ -26,15 +44,15 @@ describe('release promotion orchestration', () => {
     assert.deepEqual(
       plan.steps.map((step) => step.id),
       [
+        'resolve-release-candidate',
         'verify-clean-repos',
         'verify-promotion-identity',
-        'resolve-origin-main',
-        'wait-release-candidate',
         'deploy-staging',
         'ensure-windows-prepromotion-evidence',
-        'verify-promotion-ready',
-        'verify-production-target-ready',
+        'verify-staging-exact',
+        'production-readiness',
         'release-preflight',
+        'approval',
         'tag-production',
         'wait-production-deploy',
         'verify-production-health',
@@ -61,19 +79,15 @@ describe('release promotion orchestration', () => {
     );
 
     assert.match(commandsById['deploy-staging'], /npm run deploy:staging/);
+    assert.match(commandsById['deploy-staging'], /--rc-run-id/);
     assert.match(commandsById['ensure-windows-prepromotion-evidence'], /run-and-persist/);
-    assert.match(commandsById['verify-promotion-ready'], /npm run verify:promotion-ready/);
-    assert.match(
-      commandsById['verify-production-target-ready'],
-      /npm run verify:production-target-ready/
-    );
-    assert.match(
-      commandsById['release-preflight'],
-      /RELEASE_PREFLIGHT_NEXT_TAG=v1\.2\.301 npm run release:preflight/
-    );
+    assert.match(commandsById['verify-staging-exact'], /npm run verify:staging-exact/);
+    assert.match(commandsById['production-readiness'], /npm run verify:production-readiness/);
+    assert.match(commandsById['release-preflight'], /RELEASE_PREFLIGHT_NEXT_TAG=v1\.2\.301/);
+    assert.match(commandsById['release-preflight'], /RELEASE_PREFLIGHT_CANDIDATE_SHA/);
     assert.match(
       commandsById['tag-production'],
-      /bash scripts\/tag-production-release\.sh v1\.2\.301/
+      /bash scripts\/tag-production-release\.sh v1\.2\.301 --rc-run-id "\$STAGING_RELEASE_RUN_ID"/
     );
     assert.match(commandsById['wait-production-deploy'], /actions-health\.mjs wait/);
     assert.match(commandsById['wait-production-deploy'], /gh run list/);
@@ -102,13 +116,13 @@ describe('release promotion orchestration', () => {
       plan.steps.map((step) => [step.id, formatCommand(step.command)])
     );
 
-    assert.match(commandsById['wait-release-candidate'], /resolve-bundle/u);
-    assert.doesNotMatch(commandsById['wait-release-candidate'], /resolve-manifest/u);
-    assert.match(commandsById['wait-release-candidate'], /release_bundle_run_id/u);
-    assert.match(commandsById['wait-release-candidate'], /STAGING_CLASSROOMPATH_SHA/u);
-    assert.match(commandsById['wait-release-candidate'], /STAGING_OPENPATH_SHA/u);
-    assert.match(commandsById['wait-release-candidate'], /STAGING_OPENPATH_CONTRACT_SHA256/u);
-    assert.match(commandsById['wait-release-candidate'], /RELEASE_ID/u);
+    assert.match(commandsById['resolve-release-candidate'], /resolve-bundle/u);
+    assert.doesNotMatch(commandsById['resolve-release-candidate'], /resolve-manifest/u);
+    assert.match(commandsById['resolve-release-candidate'], /--rc-run-id 34124312483/u);
+    assert.match(commandsById['resolve-release-candidate'], /STAGING_CLASSROOMPATH_SHA/u);
+    assert.match(commandsById['resolve-release-candidate'], /STAGING_OPENPATH_SHA/u);
+    assert.match(commandsById['resolve-release-candidate'], /STAGING_OPENPATH_CONTRACT_SHA256/u);
+    assert.match(commandsById['resolve-release-candidate'], /STAGING_RELEASE_RUN_ID/u);
     assert.match(commandsById['deploy-staging'], /STAGING_RELEASE_ID/u);
     assert.match(commandsById['deploy-staging'], /STAGING_RELEASE_RUN_ID/u);
   });
@@ -119,14 +133,14 @@ describe('release promotion orchestration', () => {
     const command = formatCommand(identityStep?.command);
 
     assert.ok(identityStep, 'promotion plan must include an identity gate');
-    assert.match(command, /git fetch origin main/u);
-    assert.match(command, /git rev-parse origin\/main/u);
-    assert.match(command, /git rev-parse origin\/main:upstream\/openpath/u);
+    assert.doesNotMatch(command, /git fetch origin main/u);
+    assert.doesNotMatch(command, /origin\/main/u);
+    assert.match(command, /STAGING_RELEASE_RUN_ID/u);
+    assert.match(command, /release-bundle\.mjs verify/u);
     assert.match(command, /STAGING_CLASSROOMPATH_SHA/u);
     assert.match(command, /STAGING_OPENPATH_SHA/u);
     assert.match(command, /STAGING_OPENPATH_CONTRACT_SHA256/u);
     assert.match(command, /--openpath-sha "\$STAGING_OPENPATH_SHA"/u);
-    assert.match(command, /release-bundle\.mjs verify/u);
   });
 
   it('reads all five persisted Release Bundle identity fields', () => {
@@ -170,7 +184,7 @@ describe('release promotion orchestration', () => {
     assert.equal(plan.steps.at(-1)?.id, 'print-summary');
     assert.equal(
       commandsById['run-post-production-windows-canary'],
-      'npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --artifact-dir .opencode/tmp/postproduction-windows-ajax/v1.2.301 --skip-when-canary-token-absent'
+      'npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --artifact-dir .opencode/tmp/postproduction-windows-ajax/rc-34124312483 --skip-when-canary-token-absent'
     );
   });
 
@@ -236,10 +250,12 @@ describe('release promotion orchestration', () => {
         '--post-production-windows-canary',
       ]),
       {
+        rcRunId: '',
         tag: 'v1.2.301',
         autoTag: false,
         dryRun: true,
         execute: false,
+        localOnly: false,
         highRiskWindows: true,
         postProductionWindowsCanary: true,
         help: false,
@@ -257,10 +273,12 @@ describe('release promotion orchestration', () => {
         '--no-post-production-windows-canary',
       ]),
       {
+        rcRunId: '',
         tag: 'v1.2.301',
         autoTag: false,
         dryRun: true,
         execute: false,
+        localOnly: false,
         highRiskWindows: true,
         postProductionWindowsCanary: false,
         help: false,
@@ -271,10 +289,12 @@ describe('release promotion orchestration', () => {
     );
 
     assert.deepEqual(parseReleasePromoteArgs(['--tag', 'v1.2.301', '--execute']), {
+      rcRunId: '',
       tag: 'v1.2.301',
       autoTag: false,
       dryRun: false,
       execute: true,
+      localOnly: false,
       highRiskWindows: true,
       postProductionWindowsCanary: true,
       help: false,
@@ -284,10 +304,12 @@ describe('release promotion orchestration', () => {
     });
 
     assert.deepEqual(parseReleasePromoteArgs(['--auto-tag', '--dry-run']), {
+      rcRunId: '',
       tag: '',
       autoTag: true,
       dryRun: true,
       execute: false,
+      localOnly: false,
       highRiskWindows: true,
       postProductionWindowsCanary: true,
       help: false,
@@ -362,11 +384,15 @@ describe('release promotion orchestration', () => {
     assert.equal(result.status, 0);
     assert.equal(executed, false);
     assert.match(stdout, /Production promotion plan for v0\.0\.0/);
-    assert.match(stdout, /1\. verify-clean-repos/);
+    assert.match(stdout, /2\. verify-clean-repos/);
     assert.match(stdout, /ensure-windows-prepromotion-evidence/);
     assert.match(stdout, /npm run deploy:staging/);
-    assert.match(stdout, /npm run verify:production-target-ready/);
-    assert.match(stdout, /bash scripts\/tag-production-release\.sh v0\.0\.0/);
+    assert.match(stdout, /npm run verify:staging-exact/);
+    assert.match(stdout, /npm run verify:production-readiness/);
+    assert.match(
+      stdout,
+      /bash scripts\/tag-production-release\.sh v0\.0\.0 --rc-run-id "\$STAGING_RELEASE_RUN_ID"/
+    );
     assert.match(stdout, /run-post-production-windows-canary/);
     assert.match(stdout, /actions-health\.mjs report-stale/);
   });
@@ -388,14 +414,13 @@ describe('release promotion orchestration', () => {
 
     assert.equal(result.status, 0);
     assert.deepEqual(executedSteps, [
+      'resolve-release-candidate',
       'verify-clean-repos',
       'verify-promotion-identity',
-      'resolve-origin-main',
-      'wait-release-candidate',
       'deploy-staging',
       'ensure-windows-prepromotion-evidence',
-      'verify-promotion-ready',
-      'verify-production-target-ready',
+      'verify-staging-exact',
+      'production-readiness',
       'release-preflight',
       'tag-production',
       'wait-production-deploy',
@@ -404,7 +429,7 @@ describe('release promotion orchestration', () => {
     ]);
   });
 
-  it('refreshes stale Windows prepromotion evidence once and retries promotion readiness', async () => {
+  it('refreshes stale Windows prepromotion evidence once and retries staging verification', async () => {
     const executedSteps = [];
     let verifyAttempts = 0;
 
@@ -421,7 +446,7 @@ describe('release promotion orchestration', () => {
         stderr: () => {},
         runStep: async (step) => {
           executedSteps.push(step.id);
-          if (step.id === 'verify-promotion-ready') {
+          if (step.id === 'verify-staging-exact') {
             verifyAttempts += 1;
             return verifyAttempts === 1
               ? {
@@ -441,9 +466,9 @@ describe('release promotion orchestration', () => {
     assert.equal(verifyAttempts, 2);
     assert.deepEqual(
       executedSteps.filter(
-        (id) => id === 'verify-promotion-ready' || id === 'ensure-windows-prepromotion-evidence'
+        (id) => id === 'verify-staging-exact' || id === 'ensure-windows-prepromotion-evidence'
       ),
-      ['verify-promotion-ready', 'ensure-windows-prepromotion-evidence', 'verify-promotion-ready']
+      ['verify-staging-exact', 'ensure-windows-prepromotion-evidence', 'verify-staging-exact']
     );
   });
 
@@ -603,7 +628,7 @@ describe('release promotion orchestration', () => {
     );
 
     const transcriptJson = JSON.parse(
-      readFileSync(join(outputRoot, 'v0.0.0', 'release-promote-transcript.json'), 'utf8')
+      readFileSync(join(outputRoot, `rc-${RC_RUN_ID}`, 'release-promote-transcript.json'), 'utf8')
     );
     const deployWaitSteps = transcriptJson.steps.filter(
       (step) => step.id === 'wait-production-deploy'
@@ -612,7 +637,7 @@ describe('release promotion orchestration', () => {
     assert.equal(deployWaitSteps[1].runId, '24680');
   });
 
-  it('writes execute transcripts under the tag-specific release-promote directory', async () => {
+  it('writes execute transcripts under the RC-specific release-promote directory', async () => {
     const outputRoot = mkdtempSync(join(tmpdir(), 'release-promote-transcript-'));
 
     const result = await runReleasePromoteCommand(
@@ -649,14 +674,15 @@ describe('release promotion orchestration', () => {
 
     assert.equal(result.status, 0);
     const transcriptJson = JSON.parse(
-      readFileSync(join(outputRoot, 'v0.0.0', 'release-promote-transcript.json'), 'utf8')
+      readFileSync(join(outputRoot, `rc-${RC_RUN_ID}`, 'release-promote-transcript.json'), 'utf8')
     );
     const transcriptMarkdown = readFileSync(
-      join(outputRoot, 'v0.0.0', 'release-promote-transcript.md'),
+      join(outputRoot, `rc-${RC_RUN_ID}`, 'release-promote-transcript.md'),
       'utf8'
     );
 
     assert.equal(transcriptJson.tag, 'v0.0.0');
+    assert.equal(transcriptJson.rcRunId, RC_RUN_ID);
     assert.equal(transcriptJson.status, 'success');
     assert.equal(
       transcriptJson.steps.find((step) => step.id === 'wait-production-deploy').runId,
@@ -685,7 +711,7 @@ describe('release promotion orchestration', () => {
     assert.equal(result.status, 0);
     assert.doesNotMatch(
       stdout,
-      /npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --artifact-dir \.opencode\/tmp\/postproduction-windows-ajax\/v0\.0\.0/
+      /npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --artifact-dir \.opencode\/tmp\/postproduction-windows-ajax\/rc-34124312483/
     );
   });
 

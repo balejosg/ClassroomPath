@@ -11,6 +11,7 @@ const DEFAULT_TRANSCRIPT_ROOT = '.opencode/tmp/release-promote';
 
 export function buildReleaseTranscript({
   tag,
+  rcRunId = '',
   status,
   startedAt = null,
   finishedAt = null,
@@ -21,6 +22,7 @@ export function buildReleaseTranscript({
 } = {}) {
   return {
     tag,
+    ...(rcRunId ? { rcRunId } : {}),
     status,
     startedAt,
     finishedAt,
@@ -40,12 +42,16 @@ export function buildReleaseTranscript({
   };
 }
 
-export function writeReleaseTranscript({ transcript, root = DEFAULT_TRANSCRIPT_ROOT } = {}) {
+export function writeReleaseTranscript({
+  transcript,
+  root = DEFAULT_TRANSCRIPT_ROOT,
+  identityKey,
+} = {}) {
   if (!transcript?.tag) {
     throw new Error('release transcript requires tag');
   }
 
-  const outputDir = join(root, transcript.tag);
+  const outputDir = join(root, identityKey || transcript.tag);
   mkdirSync(outputDir, { recursive: true });
   writeFileSync(
     join(outputDir, 'release-promote-transcript.json'),
@@ -63,6 +69,7 @@ export function renderReleaseTranscriptMarkdown(transcript) {
     `# Release Promote Transcript: ${transcript.tag}`,
     '',
     `status: ${transcript.status}`,
+    ...(transcript.rcRunId ? [`release_candidate_run_id: ${transcript.rcRunId}`] : []),
     `health_step_result: ${transcript.healthStepResult ?? 'n/a'}`,
     '',
     '| step | status | seconds | run |',

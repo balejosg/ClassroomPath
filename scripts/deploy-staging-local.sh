@@ -35,10 +35,11 @@ usage() {
     cat <<'EOF'
 Usage:
   npm run deploy:staging
-  bash scripts/deploy-staging-local.sh [--yes]
+  bash scripts/deploy-staging-local.sh [--yes] [--rc-run-id <id>]
 
 Options:
   --yes   Non-interactive mode; assume "yes" for prompts
+  --rc-run-id <id>  Deploy this exact successful release-candidate run
 
 Env:
   DEPLOY_ASSUME_YES=1  Same as --yes
@@ -58,6 +59,14 @@ while [ "$#" -gt 0 ]; do
             DEPLOY_ASSUME_YES=1
             shift
             ;;
+        --rc-run-id)
+            if [ "$#" -lt 2 ] || [[ "$2" == --* ]]; then
+                log_error "--rc-run-id requires a value"
+                exit 2
+            fi
+            STAGING_EXPLICIT_RC_RUN_ID="$2"
+            shift 2
+            ;;
         -h|--help)
             usage
             exit 0
@@ -70,9 +79,16 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+if [ -n "${STAGING_EXPLICIT_RC_RUN_ID:-}" ] && [[ ! "$STAGING_EXPLICIT_RC_RUN_ID" =~ ^[0-9]+$ ]]; then
+    log_error "--rc-run-id must be a numeric GitHub workflow run id"
+    exit 2
+fi
+
 # Normalize env toggle
 DEPLOY_ASSUME_YES="${DEPLOY_ASSUME_YES:-0}"
+STAGING_EXPLICIT_RC_RUN_ID="${STAGING_EXPLICIT_RC_RUN_ID:-${STAGING_RELEASE_RUN_ID:-}}"
 export DEPLOY_ASSUME_YES
+export STAGING_EXPLICIT_RC_RUN_ID
 
 # Timing
 START_TIME=$(date +%s)
@@ -80,6 +96,8 @@ START_TIME=$(date +%s)
 # Load .env.local if exists
 ENV_FILE="$SCRIPT_DIR/../.env.local"
 load_env_file "$ENV_FILE" || true
+STAGING_EXPLICIT_RC_RUN_ID="${STAGING_EXPLICIT_RC_RUN_ID:-${STAGING_RELEASE_RUN_ID:-}}"
+export STAGING_EXPLICIT_RC_RUN_ID
 
 # Configuration with defaults
 STAGING_HOST="${STAGING_HOST:-}"

@@ -622,9 +622,12 @@ describe('Deployment runtime contracts', () => {
         productionRemote.includes(
           'deployment_state_helper_supports_contract "$DEPLOYMENT_STATE_HELPER_PATH"'
         ) &&
-        productionRemote.includes('write_release_runtime_state') &&
+        productionRemote.includes('DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH') &&
+        productionRemote.includes('DEPLOYMENT_LEDGER_HELPER_PATH') &&
+        productionRemote.includes('deploy_runtime_execute') &&
         productionRuntimeHelper.includes('"$CLASSROOMPATH_VERIFIER_IMAGE"') &&
-        productionRuntimeHelper.includes('"$RC_RUN_ID"')
+        productionRuntimeHelper.includes('"$RC_RUN_ID"') &&
+        productionRuntimeHelper.includes('write_release_runtime_state')
     );
     assert.ok(
       persistVerification.includes('REMOTE_HELPER_CONTRACTS_PATH') &&
@@ -687,10 +690,7 @@ describe('Deployment runtime contracts', () => {
       '  load_production_release_manifest \\',
       '  classify_production_migration_risk \\',
       '  production_recovery_artifact_prepare \\',
-      '  cleanup_production_disk_if_needed \\',
-      '  run_production_database_migrations \\',
-      '  start_production_runtime \\',
-      '  wait_for_production_runtime_readiness',
+      '  execute_production_runtime',
     ].join('\n');
 
     assert.ok(existsSync(deployHostPreflightHelperPath));
@@ -720,7 +720,10 @@ describe('Deployment runtime contracts', () => {
         stagingRemote.includes('cleanup_staging_disk_if_needed()') &&
         stagingRemote.includes('run_staging_database_migrations()') &&
         stagingRemote.includes('start_staging_runtime()') &&
-        stagingRemote.includes('wait_for_staging_runtime_readiness()')
+        stagingRemote.includes('wait_for_staging_runtime_readiness()') &&
+        stagingRemote.includes('execute_staging_runtime()') &&
+        stagingRemote.includes('staging_runtime_adapter_prepare') &&
+        stagingRemote.includes('deploy_runtime_execute')
     );
     const prepareStagingCheckout = stagingRemote.slice(
       stagingRemote.indexOf('prepare_staging_checkout()'),
@@ -758,6 +761,7 @@ describe('Deployment runtime contracts', () => {
           '  if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ]; then',
           '    deployment_state_capture_previous_release || exit 1',
           '  fi',
+          '  initialize_staging_runtime_transaction || exit 1',
           '  login_staging_registry',
           '  preflight_staging_release_candidate_images',
           '  classify_migration_risk',
@@ -788,8 +792,10 @@ describe('Deployment runtime contracts', () => {
         productionContextHelper.includes('load_production_release_manifest_impl()')
     );
     assert.ok(
-      productionRemote.includes('run_production_database_migrations()') &&
-        productionRuntimeHelper.includes('wait_for_production_runtime_readiness_impl()')
+      productionRemote.includes('execute_production_runtime()') &&
+        productionRemote.includes('production_runtime_adapter_migrate') &&
+        productionRemote.includes('run_production_database_migrations()') &&
+        productionRemote.includes('deploy_runtime_execute')
     );
     assert.ok(productionRemote.includes(productionPhaseSequence));
   });

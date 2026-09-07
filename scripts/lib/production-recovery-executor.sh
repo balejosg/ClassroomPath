@@ -345,6 +345,17 @@ else
   deployment_state_load_previous_release
 fi
 
+# The canonical deploy executor opens ROLLING_BACK before invoking this exact
+# recovery artifact. A separately rerun rollback workflow may encounter the
+# same durable phase, so treat an already completed rollback as idempotent and
+# do not attempt to transition ROLLING_BACK -> ROLLING_BACK again.
+if [ "$ROLLBACK_USES_V2" = "1" ] &&
+  [ "$RECOVERY_PREFLIGHT_ONLY" != "1" ] &&
+  [ "${DEPLOYMENT_PHASE:-}" = "${DEPLOYMENT_PHASE_ROLLED_BACK:-ROLLED_BACK}" ]; then
+  log_info "Production recovery transaction is already ROLLED_BACK"
+  exit 0
+fi
+
 if [ -n "${RECOVERY_ARTIFACT_SHA256:-}" ] &&
   [ -n "${PRODUCTION_RECOVERY_ARTIFACT_SHA256:-}" ] &&
   [ "$RECOVERY_ARTIFACT_SHA256" != "$PRODUCTION_RECOVERY_ARTIFACT_SHA256" ]; then
@@ -456,9 +467,11 @@ fi
 if [ "${ROLLBACK_USES_V2:-0}" = "1" ]; then
   DEPLOYMENT_EXPLICIT_RECOVERY=1
   export DEPLOYMENT_EXPLICIT_RECOVERY
-  if ! rollback_executor_begin; then
-    log_error "Unable to mark the rollback transaction as ROLLING_BACK"
-    exit 1
+  if [ "${DEPLOYMENT_PHASE:-}" != "${DEPLOYMENT_PHASE_ROLLING_BACK:-ROLLING_BACK}" ]; then
+    if ! rollback_executor_begin; then
+      log_error "Unable to mark the rollback transaction as ROLLING_BACK"
+      exit 1
+    fi
   fi
 fi
 

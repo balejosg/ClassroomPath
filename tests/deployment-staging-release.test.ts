@@ -1338,9 +1338,16 @@ warn_if_other_release_candidate_run_in_progress target-sha
     );
     assert.ok(!promotionReadyScript.includes('qemu-x86_64'));
     assert.ok(promotionReadyScript.includes('PROMOTION_EVIDENCE_DIR'));
-    assert.ok(tagProductionScript.includes('promotion-evidence-cli.mjs'));
     assert.ok(
-      tagProductionScript.includes('git tag -a "$TAG_NAME" "$main_sha" -F "$tag_message_file"')
+      tagProductionScript.includes('production-readiness.mjs') &&
+        tagProductionScript.includes('--candidate-sha') &&
+        tagProductionScript.includes('--contract-sha256') &&
+        !tagProductionScript.includes('verify-production-promotion-ready.sh')
+    );
+    assert.ok(
+      tagProductionScript.includes(
+        'git tag -a "$TAG_NAME" "$EXPECTED_CANDIDATE_SHA" -F "$tag_message_file"'
+      )
     );
     assert.ok(
       runbook.includes(
@@ -1421,19 +1428,18 @@ warn_if_other_release_candidate_run_in_progress target-sha
       'production target preflight should verify SSH, release-state, URLs, platform, and no-host-node deploy contract'
     );
     assert.ok(
-      tagProductionScript.indexOf('bash scripts/preflight-production-promotion-target.sh') >
-        tagProductionScript.indexOf('bash scripts/verify-production-promotion-ready.sh') &&
-        tagProductionScript.indexOf('bash scripts/preflight-production-promotion-target.sh') <
-          tagProductionScript.indexOf('git tag -a "$TAG_NAME"'),
-      'manual production tagging should run production target preflight before tag creation'
+      tagProductionScript.indexOf('node scripts/production-readiness.mjs') <
+        tagProductionScript.indexOf('git tag -a "$TAG_NAME"'),
+      'manual production tagging should run canonical production readiness before tag creation'
     );
     assert.ok(
-      promoteCurrentScript.indexOf('bash "$SCRIPT_DIR/preflight-production-promotion-target.sh"') >
-        promoteCurrentScript.indexOf('bash "$SCRIPT_DIR/verify-production-promotion-ready.sh"') &&
-        promoteCurrentScript.indexOf(
-          'bash "$SCRIPT_DIR/preflight-production-promotion-target.sh"'
-        ) < promoteCurrentScript.indexOf('git tag -a "$next_tag"'),
-      'latest-only production tagging should run production target preflight before tag creation'
+      promoteCurrentScript.includes('exec npm run release:promote') &&
+        promoteCurrentScript.includes('--rc-run-id "$rc_run_id"') &&
+        promoteCurrentScript.includes('--auto-tag --execute') &&
+        !promoteCurrentScript.includes('git tag -a') &&
+        !promoteCurrentScript.includes('verify-production-promotion-ready.sh') &&
+        !promoteCurrentScript.includes('preflight-production-promotion-target.sh'),
+      'latest-only promotion should delegate identity, readiness, and tagging to release:promote'
     );
     assert.ok(
       productionHostReadinessScript.includes(
@@ -1508,11 +1514,14 @@ warn_if_other_release_candidate_run_in_progress target-sha
     );
     assert.ok(
       tagScript.includes('release-status') &&
-        tagScript.includes('resolve_active_release_fence_id "$fence_json" "$main_sha"') &&
+        tagScript.includes(
+          'resolve_active_release_fence_id "$fence_json" "$EXPECTED_CANDIDATE_SHA"'
+        ) &&
         tagScript.includes('Release fence must be staged before production tagging') &&
         tagScript.includes('release-mark-tagged') &&
         tagScript.includes('--release-id "$release_fence_id"') &&
-        tagScript.includes('--tag "$TAG_NAME"'),
+        tagScript.includes('--tag "$TAG_NAME"') &&
+        !tagScript.includes('origin/main'),
       'production tagging should require a staged release fence and mark it tagged after tag creation'
     );
     assert.ok(
@@ -1541,14 +1550,13 @@ warn_if_other_release_candidate_run_in_progress target-sha
     }
   });
 
-  test('latest-only promotion helper tags only the live verified staging SHA', () => {
+  test('latest-only promotion helper resolves only the live verified staging RC', () => {
     const helper = readFileSync(
       resolve(projectRoot, 'scripts/promote-current-staging-candidate.sh'),
       'utf-8'
     );
     const packageJson = readFileSync(resolve(projectRoot, 'package.json'), 'utf-8');
     const workflow = readFileSync(promoteCurrentStagingWorkflowPath, 'utf-8');
-    const preflight = readFileSync(promoteCurrentStagingPreflightPath, 'utf-8');
 
     assert.ok(packageJson.includes('"promote:current-staging"'));
     assert.ok(existsSync(promoteCurrentStagingPreflightPath));
@@ -1563,60 +1571,38 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(workflow.includes('persist-credentials: false'));
     assert.ok(workflow.includes('STAGING_SSH_KEY_SECRET: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}'));
     assert.ok(workflow.includes('DEPLOY_SSH_KEY_SECRET: ${{ secrets.DEPLOY_SSH_KEY }}'));
-    assert.ok(workflow.includes('bash scripts/preflight-current-staging-promotion.sh'));
+    assert.ok(!workflow.includes('bash scripts/preflight-current-staging-promotion.sh'));
     assert.ok(
       workflow.includes('PROMOTION_TAG_PUSH_TOKEN: ${{ steps.promotion-app-token.outputs.token }}')
     );
     assert.ok(helper.includes('cat /srv/classroompath/release-state/current-images.env'));
     assert.ok(helper.includes('cat /srv/classroompath/release-state/staging-verification.env'));
-    assert.ok(helper.includes('target_sha="$(read_env_value "$current_state_file" APP_SHA)"'));
-    assert.ok(helper.includes('if [ "$target_sha" != "$verified_sha" ]; then'));
-    assert.ok(helper.includes('STAGING_VERIFICATION_STATE=${verification_state:-unset}'));
-    assert.ok(helper.includes('IMAGE_SOURCE=${current_image_source:-unset}'));
-    assert.ok(helper.includes('STAGING_VERIFIED_IMAGE_SOURCE=${verified_image_source:-unset}'));
-    assert.ok(helper.includes('RC_RUN_ID="$(read_env_value "$current_state_file" RC_RUN_ID)"'));
-    assert.ok(
-      helper.includes('release-identity.env') &&
-        helper.includes('--release-id "$RELEASE_ID"') &&
-        helper.includes('--rc-run-id "$RC_RUN_ID"') &&
-        helper.includes('--classroompath-sha "$CLASSROOMPATH_SHA"')
-    );
-    assert.ok(
-      helper.includes(
-        'TARGET_SHA="$target_sha" PROMOTION_EVIDENCE_DIR="$promotion_evidence_dir"'
-      ) && helper.includes('bash "$SCRIPT_DIR/verify-production-promotion-ready.sh"')
-    );
-    assert.ok(helper.includes('promotion-evidence-cli.mjs'));
-    assert.ok(helper.includes('git tag -a "$next_tag" "$target_sha" -F "$tag_message_file"'));
-    assert.ok(helper.includes('PROMOTION_TAG_PUSH_TOKEN'));
-    assert.ok(helper.includes('"refs/tags/$next_tag"'));
-    assert.ok(helper.includes('git push origin "$next_tag"'));
-    assert.ok(preflight.includes('cat /srv/classroompath/release-state/current-images.env'));
-    assert.ok(preflight.includes('cat /srv/classroompath/release-state/staging-verification.env'));
-    assert.ok(preflight.includes('"${PRODUCTION_SSH_CMD[@]}" "true"'));
-    assert.ok(preflight.includes('if [ "$target_sha" != "$verified_sha" ]; then'));
-    assert.ok(preflight.includes('STAGING_VERIFICATION_STATE=${verification_state:-unset}'));
-    assert.ok(preflight.includes('IMAGE_SOURCE=${current_image_source:-unset}'));
-    assert.ok(preflight.includes('STAGING_VERIFIED_IMAGE_SOURCE=${verified_image_source:-unset}'));
+    assert.ok(helper.includes('rc_run_id="$(read_env_value "$current_state_file" RC_RUN_ID)"'));
+    assert.ok(helper.includes('exec npm run release:promote'));
+    assert.ok(helper.includes('--rc-run-id "$rc_run_id"'));
+    assert.ok(helper.includes('--auto-tag --execute'));
+    assert.ok(helper.includes('--local-only'));
+    assert.ok(!helper.includes('promotion-evidence-cli.mjs'));
+    assert.ok(!helper.includes('git tag -a'));
+    assert.ok(!helper.includes('git push origin'));
+    assert.ok(!helper.includes('verify-production-promotion-ready.sh'));
+    assert.ok(!helper.includes('preflight-production-promotion-target.sh'));
+    assert.ok(!helper.includes('OPENPATH_SHA'));
+    assert.ok(!helper.includes('OPENPATH_CONTRACT_SHA256'));
+    assert.ok(!workflow.includes('bash scripts/preflight-current-staging-promotion.sh'));
+    assert.ok(!workflow.includes('npm run deploy'));
+    assert.ok(existsSync(promoteCurrentStagingPreflightPath));
   });
 
-  test('promotion helper only reads fields emitted by the exact tag identity file', () => {
+  test('promotion helper forwards only the verified staging RC to the canonical orchestrator', () => {
     const helper = readFileSync(
       resolve(projectRoot, 'scripts/promote-current-staging-candidate.sh'),
       'utf-8'
     );
-    const identityCheckStart = helper.indexOf('if [ "$CLASSROOMPATH_SHA" != "$target_sha" ]; then');
-    const productionPreflightStart = helper.indexOf(
-      'log_info "Verifying production target readiness before tagging $next_tag..."'
-    );
-    assert.ok(identityCheckStart >= 0);
-    assert.ok(productionPreflightStart > identityCheckStart);
-
-    const identityCheck = helper.slice(identityCheckStart, productionPreflightStart);
-    assert.match(identityCheck, /\[ "\$STAGING_RELEASE_ID" != "\$RELEASE_ID" \]/u);
-    assert.match(identityCheck, /\[ "\$STAGING_RC_RUN_ID" != "\$RC_RUN_ID" \]/u);
-    assert.doesNotMatch(identityCheck, /\$OPENPATH_SHA/u);
-    assert.doesNotMatch(identityCheck, /\$OPENPATH_CONTRACT_SHA256/u);
+    assert.match(helper, /\[ "\$rc_run_id" = "\$verified_rc_run_id" \]/u);
+    assert.match(helper, /promotion_args=\(--rc-run-id "\$rc_run_id" --auto-tag --execute\)/u);
+    assert.doesNotMatch(helper, /git tag -a/u);
+    assert.doesNotMatch(helper, /git push origin/u);
   });
 
   test('GitHub token helper falls back to gh auth token when env tokens are absent', () => {

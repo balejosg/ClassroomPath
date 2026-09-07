@@ -46,6 +46,9 @@ remote_deploy_init_base_helper_paths "$SCRIPT_DIR" "$APP_DIR"
 : "${REMOTE_HELPER_CONTRACTS_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/remote-helper-contracts.sh")}"
 : "${DEPLOY_CONTAINER_PLATFORM_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-container-platform.sh")}"
 : "${DEPLOYMENT_STATE_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")}"
+: "${DEPLOYMENT_TRANSACTION_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-transaction.sh")}"
+: "${DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-runtime-executor.sh")}"
+: "${DEPLOYMENT_LEDGER_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-ledger.sh")}"
 
 if [ ! -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
   printf 'Remote helper contract helper not found: %s\n' "$REMOTE_HELPER_CONTRACTS_PATH" >&2
@@ -344,12 +347,6 @@ deploy_with_release_candidates() {
   log_info "Pulling release candidate images for ${STAGING_RELEASE_SHA:-origin-main}..."
   docker compose pull gateway api windows-offline-installer-provision spa || return 1
 
-  log_info "Starting staging from release candidate images..."
-  docker compose down --remove-orphans 2>/dev/null || true
-  docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true
-  docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
-  compose_up_force_recreate_no_build || return 1
-
   IMAGE_SOURCE="release-candidate"
   RESOLVED_GATEWAY_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_GATEWAY_IMAGE")"
   RESOLVED_MIGRATIONS_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_MIGRATIONS_IMAGE")"
@@ -360,7 +357,7 @@ deploy_with_release_candidates() {
   RESOLVED_OPENPATH_LINUX_AGENT_APT_SUITE="${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
   RESOLVED_SPA_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_SPA_IMAGE")"
   RESOLVED_VERIFIER_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_VERIFIER_IMAGE")"
-  write_release_state
+  write_release_state || return 1
   return 0
 }
 
@@ -641,6 +638,63 @@ load_staging_rollback_helper() {
   source "$STAGING_ROLLBACK_HELPER_PATH"
 }
 
+load_staging_runtime_executor_helpers() {
+  DEPLOYMENT_TRANSACTION_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-transaction.sh")"
+  DEPLOYMENT_LEDGER_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-ledger.sh")"
+  DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-runtime-executor.sh")"
+
+  if ! deployment_transaction_helper_supports_contract "$DEPLOYMENT_TRANSACTION_HELPER_PATH"; then
+    log_error "Checked-out deployment-transaction helper does not meet the minimum contract"
+    return 1
+  fi
+  # shellcheck source=lib/deployment-transaction.sh
+  source "$DEPLOYMENT_TRANSACTION_HELPER_PATH"
+
+  if ! deployment_ledger_helper_supports_contract "$DEPLOYMENT_LEDGER_HELPER_PATH"; then
+    log_error "Checked-out deployment-ledger helper does not meet the minimum contract"
+    return 1
+  fi
+  # shellcheck source=lib/deployment-ledger.sh
+  source "$DEPLOYMENT_LEDGER_HELPER_PATH"
+
+  if ! deploy_runtime_executor_helper_supports_contract "$DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH"; then
+    log_error "Checked-out deploy-runtime-executor helper does not meet the minimum contract"
+    return 1
+  fi
+  # shellcheck source=lib/deploy-runtime-executor.sh
+  source "$DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH"
+
+  DEPLOYMENT_TRANSACTION_FILE="$STATE_DIR/deployment-phase.env"
+  DEPLOYMENT_TRANSACTION_HISTORY_FILE="$STATE_DIR/deployment-phase-history.env"
+  DEPLOYMENT_LEDGER_FILE="$STATE_DIR/deployment-ledger.jsonl"
+  DEPLOYMENT_ENVIRONMENT=staging
+  export DEPLOYMENT_TRANSACTION_FILE DEPLOYMENT_TRANSACTION_HISTORY_FILE
+  export DEPLOYMENT_LEDGER_FILE DEPLOYMENT_ENVIRONMENT
+}
+
+initialize_staging_runtime_transaction() {
+  if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" != "1" ]; then
+    return 0
+  fi
+
+  local previous_release_id=""
+  if deployment_state_v2_pointer_present current; then
+    previous_release_id="$(tr -d '\r\n' < "$DEPLOYMENT_STATE_CURRENT_POINTER_FILE")"
+  fi
+  CANDIDATE_SHA="$STAGING_RELEASE_SHA"
+  RC_RUN_ID="$STAGING_RELEASE_RUN_ID"
+  PREVIOUS_RELEASE_ID="$previous_release_id"
+  CURRENT_RELEASE_ID="$previous_release_id"
+  CANDIDATE_RELEASE_ID="$RELEASE_ID"
+  REQUESTED_RELEASE_ID="$RELEASE_ID"
+  export CANDIDATE_SHA RC_RUN_ID PREVIOUS_RELEASE_ID CURRENT_RELEASE_ID
+  export CANDIDATE_RELEASE_ID REQUESTED_RELEASE_ID
+  deployment_transaction_init \
+    "$DEPLOYMENT_TRANSACTION_FILE" \
+    "$previous_release_id" \
+    "$RELEASE_ID"
+}
+
 load_staging_deployment_state_helper() {
   DEPLOYMENT_STATE_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-state.sh")"
   if [ ! -f "$DEPLOYMENT_STATE_HELPER_PATH" ] ||
@@ -660,11 +714,18 @@ load_staging_deployment_state_helper() {
 prepare_staging_checkout() {
   cd "$APP_DIR"
 
-  log_info "Fetching latest from origin..."
-  git fetch origin main
-
-  log_info "Resetting to origin/main..."
-  git reset --hard origin/main
+  if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ] &&
+    [[ "${STAGING_RELEASE_SHA:-}" =~ ^[0-9a-f]{40}$ ]]; then
+    log_info "Fetching exact staging Release Candidate ${STAGING_RELEASE_SHA}..."
+    git fetch origin "$STAGING_RELEASE_SHA"
+    log_info "Resetting to the exact Release Candidate..."
+    git reset --hard "$STAGING_RELEASE_SHA"
+  else
+    log_info "Fetching latest from origin..."
+    git fetch origin main
+    log_info "Resetting to origin/main..."
+    git reset --hard origin/main
+  fi
 
   log_info "Updating submodules..."
   git submodule sync --recursive
@@ -680,6 +741,7 @@ prepare_staging_checkout() {
   fi
   load_staging_deployment_state_helper || exit 1
   load_staging_rollback_helper || exit 1
+  load_staging_runtime_executor_helpers || exit 1
   release_execution_init_context "$DEPLOY_CONTEXT_FILE"
   load_deploy_host_preflight_helper
   load_deploy_container_platform_helper
@@ -687,10 +749,18 @@ prepare_staging_checkout() {
   verify_deploy_container_platform
   log_info "Staging checkout is now at $(git rev-parse HEAD)"
 
+  if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ]; then
+    if [ "$(git rev-parse HEAD)" != "$STAGING_RELEASE_SHA" ]; then
+      log_error "Staging checkout is not at the exact Release Candidate SHA"
+      exit 1
+    fi
+  fi
+
   load_staging_release_manifest
   if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ]; then
     deployment_state_capture_previous_release || exit 1
   fi
+  initialize_staging_runtime_transaction || exit 1
   login_staging_registry
   preflight_staging_release_candidate_images
   classify_migration_risk
@@ -744,19 +814,82 @@ run_staging_database_migrations() {
 
   if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then
     log_info "Running database migrations from workspace sources..."
-    bash scripts/run-migrations-docker.sh --cp --openpath || exit 1
+    bash scripts/run-migrations-docker.sh --cp --openpath || return 1
   else
     if [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ]; then
       die "Release candidate migrations image ref is missing" 1
     fi
 
     log_info "Running database migrations from release candidate image..."
-    bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE" || exit 1
+    bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
   fi
 
   # shellcheck disable=SC2034 # consumed by release execution/state helpers
   DB_MIGRATED=1
   release_execution_mark_stage startup
+}
+
+staging_runtime_adapter_prepare() {
+  FAILURE_POINT="runtime-prepare"
+  FAILURE_CATEGORY="runtime-prepare"
+  FAILURE_MESSAGE="staging release candidate preparation failed"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  deploy_with_release_candidates
+}
+
+staging_runtime_adapter_migrate() {
+  run_staging_database_migrations
+}
+
+staging_runtime_adapter_switch() {
+  FAILURE_POINT="container-switch"
+  FAILURE_CATEGORY="container-switch"
+  FAILURE_MESSAGE="staging release candidate container switch failed"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  log_info "Starting staging from release candidate images..."
+  docker compose down --remove-orphans 2>/dev/null || true
+  docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true
+  docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
+  compose_up_force_recreate_no_build
+}
+
+staging_runtime_adapter_validate_live() {
+  FAILURE_POINT="runtime-projection-live"
+  FAILURE_CATEGORY="runtime-attestation"
+  FAILURE_MESSAGE="live staging runtime projection does not match the verified release"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  DEPLOY_RUNTIME_PROJECTION_FILE="${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/$RELEASE_ID/runtime.env"
+  DEPLOY_RUNTIME_PROJECTION_SERVICES="classroompath-gateway classroompath-api"
+  export DEPLOY_RUNTIME_PROJECTION_FILE DEPLOY_RUNTIME_PROJECTION_SERVICES
+  deploy_runtime_validate_live_projection
+}
+
+staging_runtime_adapter_fault_barrier() {
+  return 0
+}
+
+deploy_runtime_adapter_recover() {
+  restore_previous_release_state
+}
+
+execute_staging_runtime() {
+  if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ]; then
+    cd "$APP_DIR/docker"
+    DEPLOY_RUNTIME_HEALTH_URL="${STAGING_GATEWAY_HEALTH_URL:-http://localhost:3001/cp/health}"
+    DEPLOY_RUNTIME_READY_URL="${STAGING_READY_URL:-http://localhost:3001/cp/ready}"
+    export DEPLOY_RUNTIME_HEALTH_URL DEPLOY_RUNTIME_READY_URL
+    deploy_runtime_execute \
+      staging_runtime_adapter_prepare \
+      staging_runtime_adapter_migrate \
+      staging_runtime_adapter_switch \
+      staging_runtime_adapter_validate_live \
+      staging_runtime_adapter_fault_barrier
+    return $?
+  fi
+
+  run_staging_database_migrations || return 1
+  start_staging_runtime || return 1
+  wait_for_staging_runtime_readiness
 }
 
 start_staging_runtime() {
@@ -849,6 +982,4 @@ run_remote_deploy_phases \
   prepare_staging_checkout \
   run_staging_preflight_checks \
   cleanup_staging_disk_if_needed \
-  run_staging_database_migrations \
-  start_staging_runtime \
-  wait_for_staging_runtime_readiness
+  execute_staging_runtime

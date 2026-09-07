@@ -112,19 +112,24 @@ function artifactBelongsToRun(artifact, run) {
 export function selectExactReleaseBundleArtifact(artifacts, { classroomPathSha, run } = {}) {
   const artifactName = buildReleaseCandidateBundleArtifactName(classroomPathSha);
   const artifactList = Array.isArray(artifacts) ? artifacts : artifacts?.artifacts;
-  const selected = (Array.isArray(artifactList) ? artifactList : []).find(
+  const matches = (Array.isArray(artifactList) ? artifactList : []).filter(
     (artifact) =>
       artifact &&
       artifact.name === artifactName &&
       artifact.expired !== true &&
       artifactBelongsToRun(artifact, run)
   );
-  if (!selected) {
+  if (matches.length === 0) {
     throw new Error(
       'No unexpired Release Bundle v2 artifact exists for exact SHA ' + classroomPathSha
     );
   }
-  return selected;
+  if (matches.length > 1) {
+    throw new Error(
+      'Ambiguous Release Bundle v2 artifacts exist for exact SHA ' + classroomPathSha
+    );
+  }
+  return matches[0];
 }
 
 /**
@@ -298,8 +303,9 @@ export function resolveExactReleaseCandidateBundle({
   const targetSha = assertSha40(classroomPathSha, 'ClassroomPath SHA');
   const repo = String(repository ?? '').trim();
   if (!repo) throw new Error('GitHub repository is required to resolve a Release Bundle v2');
-  const availableRuns =
-    runs ?? listRuns({ repo, workflow: 'release-candidate-images.yml', sha: targetSha, cwd });
+  const availableRuns = run
+    ? [run]
+    : (runs ?? listRuns({ repo, workflow: 'release-candidate-images.yml', sha: targetSha, cwd }));
   const candidateRuns = run
     ? [run]
     : releaseId !== undefined

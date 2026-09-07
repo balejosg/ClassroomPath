@@ -81,12 +81,40 @@ function tryResolveNextTagFromRemote(runCommand, env) {
   }
 }
 
-function checkReleaseCandidate(status) {
+function checkReleaseCandidate(status, expectedRcRunId = '', expectedCandidateSha = '') {
   const releaseCandidate = status.releaseCandidate ?? {};
   const available =
     releaseCandidate.latestRun?.conclusion === 'success' &&
     releaseCandidate.manifestStatus === 'read' &&
     Boolean(releaseCandidate.manifest);
+  const actualRunId = String(
+    releaseCandidate.latestRun?.databaseId ?? releaseCandidate.latestRun?.runId ?? ''
+  ).trim();
+  if (available && expectedRcRunId) {
+    if (actualRunId !== expectedRcRunId) {
+      return failedCheck(
+        'release-candidate-identity-mismatch',
+        `release-candidate-identity-mismatch: expected run ${expectedRcRunId}, received ${actualRunId || 'missing'}`
+      );
+    }
+    const event = String(releaseCandidate.latestRun?.event ?? '')
+      .trim()
+      .toLowerCase();
+    if (event && event !== 'push') {
+      return failedCheck(
+        'release-candidate-identity-mismatch',
+        `release-candidate-identity-mismatch: expected a push RC run, received ${event}`
+      );
+    }
+    const actualHeadSha = String(releaseCandidate.latestRun?.headSha ?? '').trim();
+    if (expectedCandidateSha && actualHeadSha !== expectedCandidateSha) {
+      return failedCheck(
+        'release-candidate-identity-mismatch',
+        `release-candidate-identity-mismatch: expected run ${expectedRcRunId} at ${expectedCandidateSha}, received ${actualHeadSha || 'missing'}`
+      );
+    }
+    return okCheck('exact release candidate run and candidate SHA are available');
+  }
   if (available) {
     return okCheck('release candidate is available');
   }
@@ -96,6 +124,76 @@ function checkReleaseCandidate(status) {
     'release-candidate-missing',
     `release-candidate-missing: run-conclusion=${runConclusion}, manifest-status=${manifestStatus}`
   );
+}
+
+function checkExactPromotionIdentity(status, runCommand, env, identity) {
+  if (!identity.candidateSha) {
+    return okCheck('exact RC identity is not requested by this legacy preflight invocation');
+  }
+
+  const stagingCurrent = status.staging?.currentImages ?? status.stagingCurrentImages?.state ?? {};
+  const stagingVerification =
+    status.staging?.verification ?? status.stagingVerification?.state ?? {};
+  const expectedFields = [
+    ['APP_SHA', identity.candidateSha, stagingCurrent.APP_SHA],
+    ['RELEASE_ID', identity.releaseId, stagingCurrent.RELEASE_ID],
+    ['RC_RUN_ID', identity.rcRunId, stagingCurrent.RC_RUN_ID],
+    ['OPENPATH_SHA', identity.openpathSha, stagingCurrent.OPENPATH_SHA],
+    ['OPENPATH_CONTRACT_SHA256', identity.contractSha256, stagingCurrent.OPENPATH_CONTRACT_SHA256],
+    [
+      'STAGING_VERIFIED_APP_SHA',
+      identity.candidateSha,
+      stagingVerification.STAGING_VERIFIED_APP_SHA,
+    ],
+    [
+      'STAGING_VERIFIED_RELEASE_ID',
+      identity.releaseId,
+      stagingVerification.STAGING_VERIFIED_RELEASE_ID,
+    ],
+    [
+      'STAGING_VERIFIED_RC_RUN_ID',
+      identity.rcRunId,
+      stagingVerification.STAGING_VERIFIED_RC_RUN_ID,
+    ],
+    [
+      'STAGING_VERIFIED_OPENPATH_SHA',
+      identity.openpathSha,
+      stagingVerification.STAGING_VERIFIED_OPENPATH_SHA,
+    ],
+    [
+      'STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256',
+      identity.contractSha256,
+      stagingVerification.STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256,
+    ],
+  ];
+  const mismatches = expectedFields
+    .filter(([, expected]) => expected)
+    .filter(([, expected, actual]) => String(actual ?? '').trim() !== expected)
+    .map(
+      ([field, expected, actual]) =>
+        `${field}=${String(actual ?? 'missing')} (expected ${expected})`
+    );
+
+  let checkoutOpenpathSha = '';
+  try {
+    checkoutOpenpathSha = readGit(runCommand, ['rev-parse', 'HEAD:upstream/openpath'], env);
+  } catch (error) {
+    mismatches.push(
+      `HEAD:upstream/openpath=${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  if (identity.openpathSha && checkoutOpenpathSha !== identity.openpathSha) {
+    mismatches.push(
+      `checkout OpenPath SHA=${checkoutOpenpathSha || 'missing'} (expected ${identity.openpathSha})`
+    );
+  }
+
+  return mismatches.length === 0
+    ? okCheck('staging and checkout match the exact RC identity')
+    : failedCheck(
+        'promotion-identity-mismatch',
+        `exact RC identity mismatch: ${mismatches.join('; ')}`
+      );
 }
 
 function checkStagingPromotion(status) {
@@ -173,11 +271,31 @@ export async function runReleasePreflight({
   projectRootOverride = projectRoot,
 } = {}) {
   const mergedEnv = readEnvFileIfPresent(env, resolve(projectRootOverride, '.env.local'));
+  const exactIdentity = {
+    candidateSha: String(
+      env.RELEASE_PREFLIGHT_CANDIDATE_SHA ?? env.RELEASE_PREFLIGHT_CLASSROOMPATH_SHA ?? ''
+    ).trim(),
+    rcRunId: String(env.RELEASE_PREFLIGHT_RC_RUN_ID ?? '').trim(),
+    releaseId: String(env.RELEASE_PREFLIGHT_RELEASE_ID ?? '').trim(),
+    openpathSha: String(env.RELEASE_PREFLIGHT_OPENPATH_SHA ?? '').trim(),
+    contractSha256: String(env.RELEASE_PREFLIGHT_CONTRACT_SHA256 ?? '').trim(),
+  };
+  const statusArgv = exactIdentity.candidateSha
+    ? [
+        '--sha',
+        exactIdentity.candidateSha,
+        ...(exactIdentity.openpathSha ? ['--openpath-sha', exactIdentity.openpathSha] : []),
+        ...(exactIdentity.rcRunId ? ['--rc-run-id', exactIdentity.rcRunId] : []),
+      ]
+    : argv;
+  const statusEnv = exactIdentity.candidateSha
+    ? { ...mergedEnv, RELEASE_STATUS_SKIP_ORIGIN_MAIN: '1' }
+    : mergedEnv;
   const effectiveStatus =
     status ??
     (await buildReleaseStatus({
-      argv,
-      env,
+      argv: statusArgv,
+      env: statusEnv,
       runCommand,
     }));
   const tag =
@@ -187,18 +305,36 @@ export async function runReleasePreflight({
     inferNextTag(effectiveStatus);
   const gitStatus = readGit(runCommand, ['status', '--porcelain'], env);
   const head = readGit(runCommand, ['rev-parse', 'HEAD'], env);
-  const originMain = readGit(runCommand, ['rev-parse', 'origin/main'], env);
+  const originMain = exactIdentity.candidateSha
+    ? ''
+    : readGit(runCommand, ['rev-parse', 'origin/main'], env);
   const existingTag = tag ? readGit(runCommand, ['tag', '--list', tag], env) : '';
 
   const checks = {
     cleanCheckout: gitStatus
       ? failedCheck('checkout-not-clean', 'checkout has uncommitted changes')
       : okCheck('checkout is clean'),
-    headAtOriginMain:
-      head === originMain
+    headAtCandidate: exactIdentity.candidateSha
+      ? head === exactIdentity.candidateSha
+        ? okCheck('HEAD matches the exact selected RC SHA')
+        : failedCheck(
+            'classroompath-head-not-candidate',
+            `HEAD ${head} does not match selected RC ${exactIdentity.candidateSha}`
+          )
+      : originMain === head
         ? okCheck('HEAD matches origin/main')
         : failedCheck('classroompath-head-not-origin-main', 'HEAD does not match origin/main'),
-    releaseCandidate: checkReleaseCandidate(effectiveStatus),
+    exactPromotionIdentity: checkExactPromotionIdentity(
+      effectiveStatus,
+      runCommand,
+      env,
+      exactIdentity
+    ),
+    releaseCandidate: checkReleaseCandidate(
+      effectiveStatus,
+      exactIdentity.rcRunId,
+      exactIdentity.candidateSha
+    ),
     stagingPromotion: checkStagingPromotion(effectiveStatus),
     windowsPrepromotionEvidence: checkWindowsEvidence(effectiveStatus),
     nextTag:

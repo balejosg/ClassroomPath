@@ -11,9 +11,12 @@
  */
 
 const INTERNAL_REPLACEMENTS = new Map([
-  ['promote:production', 'bash scripts/tag-production-release.sh <tag>'],
-  ['promote:production:full', 'npm run release:promote -- --auto-tag --execute'],
-  ['release:production', 'bash scripts/tag-production-release.sh <tag>'],
+  ['promote:production', 'npm run release:promote -- --rc-run-id <RC_RUN_ID> --auto-tag --execute'],
+  [
+    'promote:production:full',
+    'npm run release:promote -- --rc-run-id <RC_RUN_ID> --auto-tag --execute',
+  ],
+  ['release:production', 'npm run release:promote -- --rc-run-id <RC_RUN_ID> --auto-tag --execute'],
 ]);
 
 const alias = process.argv[2] ?? '';
@@ -23,8 +26,8 @@ const lines = [
   `DEPRECATED: \`npm run ${alias || '(unknown alias)'}\` is retired and performs NO action.`,
   '',
   'Canonical production-promotion entry points:',
-  '  npm run release:promote           # inspect: prints the promotion plan (dry-run by default)',
-  '  npm run promote:current-staging   # execute: tags and pushes the current staging candidate',
+  '  npm run release:promote -- --rc-run-id <RC_RUN_ID> --auto-tag --dry-run',
+  '  npm run promote:current-staging   # compatibility wrapper; delegates the exact staging RC',
 ];
 
 if (internalReplacement) {

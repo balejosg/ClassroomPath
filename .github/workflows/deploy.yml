@@ -131,6 +131,8 @@ jobs:
               RELEASE_ID) echo "release_id=$value" >> "$GITHUB_OUTPUT" ;;
               RC_RUN_ID) echo "rc_run_id=$value" >> "$GITHUB_OUTPUT" ;;
               CLASSROOMPATH_SHA) echo "classroompath_sha=$value" >> "$GITHUB_OUTPUT" ;;
+              OPENPATH_SHA) echo "openpath_sha=$value" >> "$GITHUB_OUTPUT" ;;
+              OPENPATH_CONTRACT_SHA256) echo "openpath_contract_sha256=$value" >> "$GITHUB_OUTPUT" ;;
             esac
           done < release-identity.env
           classroompath_sha="$(sed -n 's/^CLASSROOMPATH_SHA=//p' release-identity.env | head -n 1)"
@@ -154,6 +156,8 @@ jobs:
           TARGET_SHA: ${{ github.sha }}
           RELEASE_ID: ${{ steps.tag-identity.outputs.release_id }}
           RC_RUN_ID: ${{ steps.tag-identity.outputs.rc_run_id }}
+          TAG_OPENPATH_SHA: ${{ steps.tag-identity.outputs.openpath_sha }}
+          TAG_OPENPATH_CONTRACT_SHA256: ${{ steps.tag-identity.outputs.openpath_contract_sha256 }}
         run: |
           set -euo pipefail
 
@@ -167,6 +171,11 @@ jobs:
             --output-file release-images.env \
             --legacy-manifest-file release-manifest.env \
             --output-dir release-bundle >> "$GITHUB_OUTPUT"
+
+          resolved_openpath_sha="$(sed -n 's/^OPENPATH_SHA=//p' release-images.env | head -n 1)"
+          resolved_contract_sha256="$(sed -n 's/^OPENPATH_CONTRACT_SHA256=//p' release-images.env | head -n 1)"
+          test -n "$TAG_OPENPATH_SHA" && test "$TAG_OPENPATH_SHA" = "$resolved_openpath_sha"
+          test -n "$TAG_OPENPATH_CONTRACT_SHA256" && test "$TAG_OPENPATH_CONTRACT_SHA256" = "$resolved_contract_sha256"
 
           printf 'TAG_NAME=%s\n' '${{ github.ref_name }}' >> release-images.env
           echo "manifest_base64=$(base64 < release-manifest.env | tr -d '\n')" >> "$GITHUB_OUTPUT"
@@ -505,6 +514,13 @@ jobs:
             exit 1
           fi
 
+      - name: Checkout candidate release helpers
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: candidate-source
+          fetch-depth: 1
+
       - name: Checkout recovery source
         uses: actions/checkout@v7
         with:
@@ -521,8 +537,6 @@ jobs:
         run: |
           set -euo pipefail
           recovery_source_sha="$(cd recovery-source && git rev-parse HEAD)"
-          recovery_package_script="recovery-source/scripts/package-production-recovery-bundle.sh"
-          test -f "$recovery_package_script"
           if [ "$recovery_source_sha" != "$PRODUCTION_RECOVERY_SHA" ]; then
             echo "::error::Recovery checkout does not resolve to PRODUCTION_RECOVERY_SHA"
             exit 1
@@ -533,16 +547,20 @@ jobs:
           fi
           recovery_bundle_path="$RUNNER_TEMP/production-recovery-bundle.tgz"
           recovery_evidence_path="$RUNNER_TEMP/production-recovery-authority.env"
-          bash recovery-source/scripts/production-recovery-authority.sh validate \
-            --recovery-sha "$PRODUCTION_RECOVERY_SHA" \
-            --candidate-sha "$CANDIDATE_SHA" \
-            --source-root recovery-source
-          bash recovery-source/scripts/production-recovery-authority.sh package \
-            --recovery-sha "$PRODUCTION_RECOVERY_SHA" \
-            --candidate-sha "$CANDIDATE_SHA" \
-            --source-root recovery-source \
-            --output "$recovery_bundle_path" \
-            --evidence "$recovery_evidence_path"
+          # The candidate's production-recovery-preflight helper is the single
+          # operation used by release:promote and deploy.yml. It invokes the
+          # exact recovery-source/scripts/production-recovery-authority.sh
+          # validate/package/preflight contract (including
+          # scripts/package-production-recovery-bundle.sh) and returns only
+          # after the artifact and evidence are verified.
+          # shellcheck disable=SC1091
+          source candidate-source/scripts/lib/production-recovery-preflight.sh
+          production_recovery_prepare_and_verify \
+            "$PRODUCTION_RECOVERY_SHA" \
+            "$CANDIDATE_SHA" \
+            recovery-source \
+            "$recovery_bundle_path" \
+            "$recovery_evidence_path"
           artifact_sha256="$(sha256sum "$recovery_bundle_path" | awk '{print $1}')"
           executor_sha256="$(tar -xOf "$recovery_bundle_path" production-recovery-executor.sh | sha256sum | awk '{print $1}')"
           source_sha="$(sed -n 's/^PRODUCTION_RECOVERY_SOURCE_SHA=//p' "$recovery_evidence_path" | head -n 1)"
@@ -551,15 +569,6 @@ jobs:
           test "$source_sha" = "$PRODUCTION_RECOVERY_SHA"
           test "$source_version" = 1
           test "$contract_version" = 1
-          PRODUCTION_RECOVERY_SHA="$PRODUCTION_RECOVERY_SHA" \
-          PRODUCTION_RECOVERY_SOURCE_SHA="$source_sha" \
-          PRODUCTION_RECOVERY_SOURCE_VERSION="$source_version" \
-          PRODUCTION_RECOVERY_CONTRACT_VERSION="$contract_version" \
-          CANDIDATE_SHA="$CANDIDATE_SHA" \
-            bash recovery-source/scripts/production-recovery-authority.sh preflight \
-              --recovery-sha "$PRODUCTION_RECOVERY_SHA" \
-              --artifact "$recovery_bundle_path" \
-              --evidence "$recovery_evidence_path"
           recovery_bundle_listing="$(tar -tzf "$recovery_bundle_path")"
           printf '%s\n' "$recovery_bundle_listing"
           if [ "$(printf '%s\n' "$recovery_bundle_listing" | grep -Fxc 'production-recovery-executor.sh')" -ne 1 ]; then

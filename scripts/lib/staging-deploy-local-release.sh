@@ -61,7 +61,7 @@ prepare_staging_local_release_context() {
 
     local requested_staging_deployment_mode="$effective_staging_deployment_mode"
     local requested_staging_release_id="${STAGING_RELEASE_ID:-}"
-    local requested_staging_release_run_id="${STAGING_RELEASE_RUN_ID:-}"
+    local requested_staging_release_run_id="${STAGING_EXPLICIT_RC_RUN_ID:-${STAGING_RELEASE_RUN_ID:-}}"
 
     STAGING_IMAGE_SOURCE="$STAGING_IMAGE_MODE"
     STAGING_DEPLOYMENT_MODE=""
@@ -88,9 +88,11 @@ prepare_staging_local_release_context() {
     STAGING_RELEASE_FENCE_ID=""
     VERIFICATION_STATE_FILE=""
 
-    if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && [ "$REMOTE_SHA" != "unknown" ]; then
+    if [ "$STAGING_IMAGE_MODE" = "release-candidate" ] && { [ "$REMOTE_SHA" != "unknown" ] || [ -n "$requested_staging_release_run_id" ]; }; then
         require_cmd gh
-        warn_if_other_release_candidate_run_in_progress "$REMOTE_SHA"
+        if [ -z "$requested_staging_release_run_id" ]; then
+            warn_if_other_release_candidate_run_in_progress "$REMOTE_SHA"
+        fi
         STAGING_RELEASE_REPOSITORY="${GITHUB_REPOSITORY:-balejosg/ClassroomPath}"
         STAGING_RELEASE_BUNDLE_DIR="$(mktemp -d)"
         STAGING_RELEASE_BUNDLE_RUNTIME_FILE="$(mktemp)"
@@ -98,15 +100,16 @@ prepare_staging_local_release_context() {
         STAGING_RELEASE_MANIFEST_FILE="$(mktemp)"
         bundle_resolve_args=(
             --repo "$STAGING_RELEASE_REPOSITORY"
-            --sha "$REMOTE_SHA"
             --timeout-seconds "$STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS"
             --interval-seconds "$STAGING_RELEASE_POLL_SECONDS"
             --output-file "$STAGING_RELEASE_BUNDLE_RUNTIME_FILE"
             --output-dir "$STAGING_RELEASE_BUNDLE_DIR"
             --legacy-manifest-file "$STAGING_RELEASE_MANIFEST_FILE"
         )
-        if [ -n "$STAGING_RELEASE_RUN_ID" ]; then
-            bundle_resolve_args+=(--run-id "$STAGING_RELEASE_RUN_ID")
+        if [ -n "$requested_staging_release_run_id" ]; then
+            bundle_resolve_args+=(--rc-run-id "$requested_staging_release_run_id")
+        else
+            bundle_resolve_args+=(--sha "$REMOTE_SHA")
         fi
         if [ -n "$STAGING_RELEASE_ID" ]; then
             bundle_resolve_args+=(--release-id "$STAGING_RELEASE_ID")
@@ -117,6 +120,7 @@ prepare_staging_local_release_context() {
         set -a
         . "$STAGING_RELEASE_BUNDLE_RUNTIME_FILE"
         set +a
+        STAGING_USE_RELEASE_CANDIDATE=1
         STAGING_RELEASE_ID="${RELEASE_ID:-}"
         STAGING_OPENPATH_SHA="${OPENPATH_SHA:-}"
         STAGING_OPENPATH_CONTRACT_SHA256="${OPENPATH_CONTRACT_SHA256:-}"
@@ -126,6 +130,17 @@ prepare_staging_local_release_context() {
         fi
         STAGING_RELEASE_SHA="${APP_SHA:-$REMOTE_SHA}"
         STAGING_RELEASE_RUN_ID="$(awk -F= '$1 == "release_bundle_run_id" {print $2; exit}' "$STAGING_RELEASE_BUNDLE_OUTPUT_FILE")"
+        if [ -n "$requested_staging_release_run_id" ] && [ "$STAGING_RELEASE_RUN_ID" != "$requested_staging_release_run_id" ]; then
+            log_error "Resolved Release Candidate run $STAGING_RELEASE_RUN_ID does not match requested run $requested_staging_release_run_id"
+            exit 1
+        fi
+        if [ -n "${STAGING_EXPLICIT_RC_RUN_ID:-}" ] && [ "$STAGING_RELEASE_SHA" != "$LOCAL_SHA" ]; then
+            log_error "Explicit Release Candidate SHA $STAGING_RELEASE_SHA does not match checked-out ClassroomPath SHA $LOCAL_SHA"
+            exit 1
+        fi
+        if [ -n "${STAGING_EXPLICIT_RC_RUN_ID:-}" ]; then
+            REMOTE_SHA="$STAGING_RELEASE_SHA"
+        fi
         STAGING_RELEASE_BUNDLE_FILE="$STAGING_RELEASE_BUNDLE_DIR/classroompath-release-bundle.json"
         STAGING_OPENPATH_CONTRACT_FILE="$STAGING_RELEASE_BUNDLE_DIR/openpath-promotion-contract.json"
         STAGING_RELEASE_BUNDLE_B64="$(base64 < "$STAGING_RELEASE_BUNDLE_FILE" | tr -d '\n')"

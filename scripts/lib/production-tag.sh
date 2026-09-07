@@ -8,6 +8,8 @@
 #   PRODUCTION_TAG_RELEASE_ID
 #   PRODUCTION_TAG_RC_RUN_ID
 #   PRODUCTION_TAG_CLASSROOMPATH_SHA
+#   PRODUCTION_TAG_OPENPATH_SHA
+#   PRODUCTION_TAG_CONTRACT_SHA256
 #
 # Output:
 #   PRODUCTION_TAG_EXISTING_STATE = absent|local-only|local-and-remote
@@ -21,6 +23,8 @@ production_tag_reconcile_existing() {
   local release_id="${PRODUCTION_TAG_RELEASE_ID:?}"
   local rc_run_id="${PRODUCTION_TAG_RC_RUN_ID:?}"
   local classroompath_sha="${PRODUCTION_TAG_CLASSROOMPATH_SHA:?}"
+  local openpath_sha="${PRODUCTION_TAG_OPENPATH_SHA:-}"
+  local contract_sha256="${PRODUCTION_TAG_CONTRACT_SHA256:-}"
   local tag_ref="refs/tags/$tag_name"
   local local_tag_oid=""
   local remote_tag_oid=""
@@ -62,11 +66,21 @@ production_tag_reconcile_existing() {
 
   message_file="$(mktemp)"
   git for-each-ref "$tag_ref" --format='%(contents)' > "$message_file"
+  local identity_args=(
+    --message-file "$message_file"
+    --tag "$tag_name"
+    --release-id "$release_id"
+    --rc-run-id "$rc_run_id"
+    --classroompath-sha "$classroompath_sha"
+  )
+  if [ -n "$openpath_sha" ] || [ -n "$contract_sha256" ]; then
+    identity_args+=(
+      --openpath-sha "$openpath_sha"
+      --contract-sha256 "$contract_sha256"
+    )
+  fi
   if ! node scripts/promotion-evidence-cli.mjs verify-tag-identity \
-    --message-file "$message_file" \
-    --release-id "$release_id" \
-    --rc-run-id "$rc_run_id" \
-    --classroompath-sha "$classroompath_sha"; then
+    "${identity_args[@]}"; then
     rm -f "$message_file"
     die "Production tag $tag_name has a conflicting Release Bundle identity" 1
   fi

@@ -66,12 +66,24 @@ function createCommandHarness(
     openpathCheckStatus?: string;
     openpathChangedFiles?: string[];
     includeOlderFailedE2eCheck?: boolean;
+    releaseCandidateRuns?: Array<Record<string, unknown>>;
   } = {}
 ) {
   const calls: Array<{ command: string; args: string[] }> = [];
   const originSha = options.originSha ?? ORIGIN_SHA;
   const openpathCheckStatus = options.openpathCheckStatus ?? 'success';
   const openpathChangedFiles = options.openpathChangedFiles ?? [];
+  const releaseCandidateRuns = options.releaseCandidateRuns ?? [
+    {
+      databaseId: 123456,
+      headSha: CLASSROOM_SHA,
+      event: 'push',
+      status: 'completed',
+      conclusion: 'success',
+      updatedAt: '2026-05-05T08:00:00Z',
+      url: 'https://github.com/balejosg/ClassroomPath/actions/runs/123456',
+    },
+  ];
 
   const runCommand = (command: string, args: string[]) => {
     calls.push({ command, args });
@@ -152,17 +164,7 @@ function createCommandHarness(
 
     if (command === 'gh' && args[0] === 'run' && args[1] === 'list') {
       if (args.includes('release-candidate-images.yml')) {
-        return JSON.stringify([
-          {
-            databaseId: 123456,
-            headSha: CLASSROOM_SHA,
-            event: 'workflow_dispatch',
-            status: 'completed',
-            conclusion: 'success',
-            updatedAt: '2026-05-05T08:00:00Z',
-            url: 'https://github.com/balejosg/ClassroomPath/actions/runs/123456',
-          },
-        ]);
+        return JSON.stringify(releaseCandidateRuns);
       }
 
       if (args.includes('deploy.yml')) {
@@ -219,15 +221,60 @@ function createCommandHarness(
 
 test('parses the read-only release status CLI options', () => {
   assert.deepEqual(
-    parseReleaseStatusArgs(['--sha', CLASSROOM_SHA, '--openpath-sha', OPENPATH_SHA]),
+    parseReleaseStatusArgs([
+      '--sha',
+      CLASSROOM_SHA,
+      '--openpath-sha',
+      OPENPATH_SHA,
+      '--rc-run-id',
+      '123456',
+    ]),
     {
       sha: CLASSROOM_SHA,
       openpathSha: OPENPATH_SHA,
+      rcRunId: '123456',
       json: false,
     }
   );
 
   assert.equal(parseReleaseStatusArgs(['--json']).json, true);
+});
+
+test('release status can inspect the exact RC run instead of selecting a newer run for the SHA', async () => {
+  const harness = createCommandHarness({
+    releaseCandidateRuns: [
+      {
+        databaseId: 999999,
+        headSha: CLASSROOM_SHA,
+        event: 'workflow_dispatch',
+        status: 'completed',
+        conclusion: 'success',
+        updatedAt: '2026-05-05T10:00:00Z',
+      },
+      {
+        databaseId: 123456,
+        headSha: CLASSROOM_SHA,
+        event: 'push',
+        status: 'completed',
+        conclusion: 'success',
+        updatedAt: '2026-05-05T08:00:00Z',
+      },
+    ],
+  });
+  const status = await buildReleaseStatus({
+    argv: ['--sha', CLASSROOM_SHA, '--rc-run-id', '123456'],
+    env: {
+      ...process.env,
+      RELEASE_STATUS_TEST_MODE: '1',
+      RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
+      RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      ...realOperationalTargetEnv(),
+    },
+    runCommand: harness.runCommand,
+  });
+
+  assert.equal(status.releaseCandidate.latestRun?.databaseId, 123456);
+  assert.equal(status.releaseCandidate.latestRun?.event, 'push');
 });
 
 test('builds a local promotion status summary from read-only command sources', async () => {

@@ -31,13 +31,14 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
 
 function usage() {
-  return `Usage: npm run release:status -- [--sha <classroompath-sha>] [--openpath-sha <sha>] [--json]
+  return `Usage: npm run release:status -- [--sha <classroompath-sha>] [--openpath-sha <sha>] [--rc-run-id <id>] [--json]
 
 Prints read-only local promotion status for the current ClassroomPath checkout.
 
 Options:
   --sha <sha>           ClassroomPath SHA to inspect. Defaults to local HEAD.
   --openpath-sha <sha>  OpenPath SHA to inspect. Defaults to the upstream/openpath submodule SHA.
+  --rc-run-id <id>      Exact release-candidate workflow run to inspect.
   --json                Emit machine-readable JSON.
   --help                Show this help.
 `;
@@ -56,6 +57,7 @@ export function parseReleaseStatusArgs(argv) {
   const parsed = {
     sha: '',
     openpathSha: '',
+    rcRunId: '',
     json: false,
   };
 
@@ -67,6 +69,9 @@ export function parseReleaseStatusArgs(argv) {
         break;
       case '--openpath-sha':
         parsed.openpathSha = readValue(argv, ++index, arg);
+        break;
+      case '--rc-run-id':
+        parsed.rcRunId = readValue(argv, ++index, arg);
         break;
       case '--json':
         parsed.json = true;
@@ -111,6 +116,7 @@ function normalizeReleaseRun(run) {
     runId: run.databaseId,
     databaseId: run.databaseId,
     headSha: run.headSha,
+    event: run.event ?? null,
     status: run.conclusion ?? run.status ?? 'unknown',
     workflowStatus: run.status,
     conclusion: run.conclusion,

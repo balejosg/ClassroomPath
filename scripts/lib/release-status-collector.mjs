@@ -43,13 +43,14 @@ const PRODUCTION_DEPLOY_WORKFLOW = 'deploy.yml';
 const DEFAULT_STAGING_DEPLOY_ROOT = '/srv/classroompath';
 
 function usage() {
-  return `Usage: npm run release:status -- [--sha <classroompath-sha>] [--openpath-sha <sha>] [--json]
+  return `Usage: npm run release:status -- [--sha <classroompath-sha>] [--openpath-sha <sha>] [--rc-run-id <id>] [--json]
 
 Prints read-only local promotion status for the current ClassroomPath checkout.
 
 Options:
   --sha <sha>           ClassroomPath SHA to inspect. Defaults to local HEAD.
   --openpath-sha <sha>  OpenPath SHA to inspect. Defaults to the upstream/openpath submodule SHA.
+  --rc-run-id <id>      Exact release-candidate workflow run to inspect.
   --json                Emit machine-readable JSON.
   --help                Show this help.
 `;
@@ -68,6 +69,7 @@ export function parseReleaseStatusArgs(argv) {
   const parsed = {
     sha: '',
     openpathSha: '',
+    rcRunId: '',
     json: false,
   };
 
@@ -79,6 +81,9 @@ export function parseReleaseStatusArgs(argv) {
         break;
       case '--openpath-sha':
         parsed.openpathSha = readValue(argv, ++index, arg);
+        break;
+      case '--rc-run-id':
+        parsed.rcRunId = readValue(argv, ++index, arg);
         break;
       case '--json':
         parsed.json = true;
@@ -189,6 +194,16 @@ function latestMatchingRun(runs, sha) {
   );
 }
 
+function exactRunById(runs, runId) {
+  const requestedRunId = String(runId ?? '').trim();
+  if (!requestedRunId) return null;
+  return (
+    (Array.isArray(runs) ? runs : []).find(
+      (run) => String(run?.databaseId ?? run?.runId ?? run?.id ?? '').trim() === requestedRunId
+    ) ?? null
+  );
+}
+
 function latestRun(runs) {
   return sortWorkflowRunsNewestFirst(runs)[0] ?? null;
 }
@@ -201,6 +216,7 @@ function normalizeRun(run) {
   return {
     databaseId: normalizeWorkflowRunId(run),
     headSha: normalizeWorkflowRunHeadSha(run),
+    event: run.event ?? null,
     status: run.status ?? 'unknown',
     conclusion: run.conclusion ?? null,
     updatedAt: normalizeWorkflowRunUpdatedAt(run),
@@ -599,9 +615,10 @@ export async function collectReleaseStatusEvidence({
     remoteUrl: runGit(runCommand, ['remote', 'get-url', 'origin'], mergedEnv),
   });
 
-  const originMain = tryRead('origin/main', () =>
-    runGit(runCommand, ['rev-parse', 'origin/main'], mergedEnv)
-  );
+  const originMain =
+    mergedEnv.RELEASE_STATUS_SKIP_ORIGIN_MAIN === '1'
+      ? { ok: false, value: null, error: 'not requested for exact RC inspection' }
+      : tryRead('origin/main', () => runGit(runCommand, ['rev-parse', 'origin/main'], mergedEnv));
 
   const rcRuns = tryRead('release candidate runs', () =>
     parseJsonOrEmpty(
@@ -624,7 +641,12 @@ export async function collectReleaseStatusEvidence({
       []
     )
   );
-  const rcRun = normalizeRun(rcRuns.ok ? latestMatchingRun(rcRuns.value, classroomSha) : null);
+  const selectedRcRun = rcRuns.ok
+    ? args.rcRunId
+      ? exactRunById(rcRuns.value, args.rcRunId)
+      : latestMatchingRun(rcRuns.value, classroomSha)
+    : null;
+  const rcRun = normalizeRun(selectedRcRun);
   const manifest = tryRead('release candidate manifest', () =>
     readReleaseCandidateManifest({
       runCommand,

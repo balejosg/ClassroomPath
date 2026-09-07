@@ -65,6 +65,8 @@
     "verify:public-surface": "node scripts/check-public-surface.mjs",
     "verify:scripts-types": "node scripts/check-scripts-typecheck.mjs",
     "verify:promotion-ready": "bash scripts/verify-production-promotion-ready.sh",
+    "verify:staging-exact": "bash scripts/preflight-current-staging-promotion.sh",
+    "verify:production-readiness": "node scripts/production-readiness.mjs",
     "verify:production-target-ready": "bash scripts/preflight-production-promotion-target.sh",
     "verify:production-promotion-dry": "node scripts/production-promotion-dry-validate.mjs",
     "verify:production-host": "bash scripts/verify-production-host-readiness.sh",

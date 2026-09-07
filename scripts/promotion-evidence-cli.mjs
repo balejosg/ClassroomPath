@@ -22,6 +22,8 @@ const VALUE_FLAGS = [
   '--release-id',
   '--rc-run-id',
   '--classroompath-sha',
+  '--openpath-sha',
+  '--contract-sha256',
   '--staging-current',
   '--staging-verification',
   '--output',
@@ -34,6 +36,8 @@ const VALUE_FLAGS = [
 
 const RELEASE_ID_PATTERN = /^[0-9a-f]{64}$/;
 const CLASSROOMPATH_SHA_PATTERN = /^[0-9a-f]{40}$/;
+const OPENPATH_SHA_PATTERN = /^[0-9a-f]{40}$/;
+const CONTRACT_SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 function extractUniqueMarker(messageText, markerName) {
   const values = [
@@ -48,7 +52,13 @@ function extractUniqueMarker(messageText, markerName) {
   return values[0];
 }
 
-export function buildProductionTagIdentity({ releaseId, rcRunId, classroomPathSha } = {}) {
+export function buildProductionTagIdentity({
+  releaseId,
+  rcRunId,
+  classroomPathSha,
+  openpathSha,
+  contractSha256,
+} = {}) {
   const normalizedReleaseId = String(releaseId ?? '').trim();
   const normalizedRcRunId = String(rcRunId ?? '').trim();
   const normalizedClassroomPathSha = String(classroomPathSha ?? '').trim();
@@ -61,11 +71,35 @@ export function buildProductionTagIdentity({ releaseId, rcRunId, classroomPathSh
   if (!CLASSROOMPATH_SHA_PATTERN.test(normalizedClassroomPathSha)) {
     throw new Error('classroomPathSha must be a 40-character lowercase SHA');
   }
+  const normalizedOpenpathSha = String(openpathSha ?? '').trim();
+  const normalizedContractSha256 = String(contractSha256 ?? '').trim();
+  if (Boolean(normalizedOpenpathSha) !== Boolean(normalizedContractSha256)) {
+    throw new Error('openpathSha and contractSha256 must be provided together');
+  }
+  if (normalizedOpenpathSha && !OPENPATH_SHA_PATTERN.test(normalizedOpenpathSha)) {
+    throw new Error('openpathSha must be a 40-character lowercase SHA');
+  }
+  if (normalizedContractSha256 && !CONTRACT_SHA256_PATTERN.test(normalizedContractSha256)) {
+    throw new Error('contractSha256 must be a 64-character lowercase SHA-256 hex string');
+  }
   return {
     releaseId: normalizedReleaseId,
     rcRunId: normalizedRcRunId,
     classroomPathSha: normalizedClassroomPathSha,
+    ...(normalizedOpenpathSha
+      ? { openpathSha: normalizedOpenpathSha, contractSha256: normalizedContractSha256 }
+      : {}),
   };
+}
+
+function extractOptionalUniqueMarker(messageText, markerName) {
+  const values = [
+    ...String(messageText ?? '').matchAll(new RegExp(`^${markerName}:\\s*(\\S+)\\s*$`, 'gmu')),
+  ].map((match) => match[1]);
+  if (values.length > 1) {
+    throw new Error(`Promotion tag identity contains duplicate ${markerName}`);
+  }
+  return values[0] ?? '';
 }
 
 export function extractProductionTagIdentity(messageText) {
@@ -73,15 +107,19 @@ export function extractProductionTagIdentity(messageText) {
     releaseId: extractUniqueMarker(messageText, 'ClassroomPath-Release-Id'),
     rcRunId: extractUniqueMarker(messageText, 'ClassroomPath-RC-Run-Id'),
     classroomPathSha: extractUniqueMarker(messageText, 'ClassroomPath-SHA'),
+    openpathSha: extractOptionalUniqueMarker(messageText, 'OpenPath-SHA'),
+    contractSha256: extractOptionalUniqueMarker(messageText, 'OpenPath-Contract-SHA256'),
   });
 }
 
 export function compareProductionTagIdentity(actual, expected) {
   const actualIdentity = buildProductionTagIdentity(actual);
   const expectedIdentity = buildProductionTagIdentity(expected);
-  const mismatches = ['releaseId', 'rcRunId', 'classroomPathSha'].filter(
-    (field) => actualIdentity[field] !== expectedIdentity[field]
-  );
+  const fields = ['releaseId', 'rcRunId', 'classroomPathSha'];
+  if (actualIdentity.openpathSha || expectedIdentity.openpathSha) fields.push('openpathSha');
+  if (actualIdentity.contractSha256 || expectedIdentity.contractSha256)
+    fields.push('contractSha256');
+  const mismatches = fields.filter((field) => actualIdentity[field] !== expectedIdentity[field]);
   return {
     matches: mismatches.length === 0,
     mismatches,
@@ -94,6 +132,12 @@ export function serializeProductionTagIdentity(identity) {
     `RELEASE_ID=${validated.releaseId}`,
     `RC_RUN_ID=${validated.rcRunId}`,
     `CLASSROOMPATH_SHA=${validated.classroomPathSha}`,
+    ...(validated.openpathSha
+      ? [
+          `OPENPATH_SHA=${validated.openpathSha}`,
+          `OPENPATH_CONTRACT_SHA256=${validated.contractSha256}`,
+        ]
+      : []),
     '',
   ].join('\n');
 }
@@ -154,9 +198,19 @@ function writeTagMessage(options) {
   const releaseId = options['release-id'] ?? '';
   const rcRunId = options['rc-run-id'] ?? '';
   const classroomPathSha = options['classroompath-sha'] ?? commit;
-  const hasIdentityOption = Boolean(releaseId || rcRunId || options['classroompath-sha']);
+  const openpathSha = options['openpath-sha'] ?? '';
+  const contractSha256 = options['contract-sha256'] ?? '';
+  const hasIdentityOption = Boolean(
+    releaseId || rcRunId || options['classroompath-sha'] || openpathSha || contractSha256
+  );
   const identity = hasIdentityOption
-    ? buildProductionTagIdentity({ releaseId, rcRunId, classroomPathSha })
+    ? buildProductionTagIdentity({
+        releaseId,
+        rcRunId,
+        classroomPathSha,
+        openpathSha,
+        contractSha256,
+      })
     : null;
 
   const message = [
@@ -168,6 +222,12 @@ function writeTagMessage(options) {
           `ClassroomPath-Release-Id: ${identity.releaseId}`,
           `ClassroomPath-RC-Run-Id: ${identity.rcRunId}`,
           `ClassroomPath-SHA: ${identity.classroomPathSha}`,
+          ...(identity.openpathSha
+            ? [
+                `OpenPath-SHA: ${identity.openpathSha}`,
+                `OpenPath-Contract-SHA256: ${identity.contractSha256}`,
+              ]
+            : []),
         ]
       : []),
     'Promotion evidence: staging release state was verified locally before tag creation.',
@@ -225,17 +285,29 @@ function writeTagIdentity(options) {
       releaseId: requireOption(options, 'release-id'),
       rcRunId: requireOption(options, 'rc-run-id'),
       classroomPathSha: requireOption(options, 'classroompath-sha'),
+      openpathSha: options['openpath-sha'],
+      contractSha256: options['contract-sha256'],
     })
   );
 }
 
 function verifyTagIdentity(options) {
   const messagePath = requireOption(options, 'message-file');
-  const actual = extractProductionTagIdentity(readFileSync(messagePath, 'utf-8'));
+  const messageText = readFileSync(messagePath, 'utf-8');
+  const expectedTag = String(options.tag ?? '').trim();
+  if (expectedTag) {
+    const expectedHeader = `ClassroomPath production release ${expectedTag}`;
+    if (messageText.split(/\r?\n/u, 1)[0] !== expectedHeader) {
+      throw new Error(`Production tag message is not bound to tag ${expectedTag}`);
+    }
+  }
+  const actual = extractProductionTagIdentity(messageText);
   const expected = buildProductionTagIdentity({
     releaseId: requireOption(options, 'release-id'),
     rcRunId: requireOption(options, 'rc-run-id'),
     classroomPathSha: requireOption(options, 'classroompath-sha'),
+    openpathSha: options['openpath-sha'],
+    contractSha256: options['contract-sha256'],
   });
   const comparison = compareProductionTagIdentity(actual, expected);
   if (!comparison.matches) {

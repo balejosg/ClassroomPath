@@ -14,6 +14,8 @@ remote_deploy_init_base_helper_paths() {
   RELEASE_RUNTIME_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-runtime.sh")"
   RELEASE_EXECUTION_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/release-execution.sh")"
   REMOTE_HELPER_CONTRACTS_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/remote-helper-contracts.sh")"
+  DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deploy-runtime-executor.sh")"
+  DEPLOYMENT_LEDGER_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deployment-ledger.sh")"
 }
 
 remote_deploy_init_production_helper_paths() {
@@ -27,6 +29,8 @@ remote_deploy_init_production_helper_paths() {
   DEPLOYMENT_TRANSACTION_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deployment-transaction.sh")"
   ROLLBACK_EXECUTOR_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/rollback-executor.sh")"
   ROLLBACK_READINESS_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/rollback-readiness.sh")"
+  DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deploy-runtime-executor.sh")"
+  DEPLOYMENT_LEDGER_HELPER_PATH="$(resolve_remote_helper_path "$script_dir" "$app_dir" "lib/deployment-ledger.sh")"
 }
 
 remote_deploy_reload_checked_out_helpers() {
@@ -56,6 +60,8 @@ remote_deploy_reload_checked_out_helpers() {
   DEPLOYMENT_TRANSACTION_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-transaction.sh")"
   ROLLBACK_EXECUTOR_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/rollback-executor.sh")"
   ROLLBACK_READINESS_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/rollback-readiness.sh")"
+  DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-runtime-executor.sh")"
+  DEPLOYMENT_LEDGER_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-ledger.sh")"
 
   refresh_deployed_release_helpers
 }

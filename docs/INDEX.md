@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: first-party ClassroomPath documentation
-> Last verified: 2026-08-29
+> Last verified: 2026-09-07
 > Source of truth: `docs/INDEX.md`
 
 This index is the entrypoint for the maintained ClassroomPath documentation set.
@@ -31,6 +31,7 @@ Rules:
 - OpenPath public SPA surface and wrapper bridge: [`docs/contracts/openpath-public-surface.md`](contracts/openpath-public-surface.md)
 - Test inventory (which test guards which contract): [`docs/test-inventory.md`](test-inventory.md)
 - Verification matrix: [`docs/verification-matrix.md`](verification-matrix.md)
+- RC-first release operations contract for #167: [`docs/superpowers/specs/2026-09-07-classroompath-167-release-operations-design.md`](superpowers/specs/2026-09-07-classroompath-167-release-operations-design.md)
 
 ## Evaluation
 

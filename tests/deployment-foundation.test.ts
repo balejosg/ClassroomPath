@@ -437,16 +437,20 @@ describe('Deployment foundation contracts', () => {
     assert.ok(existsSync(regressionPlanPath));
   });
 
-  test('production tagging runs the promotion gate before creating and pushing the tag', () => {
+  test('production tagging revalidates canonical readiness before creating and pushing the tag', () => {
     const runbook = readFileSync(deployProductionRunbookPath, 'utf-8');
     const tagScript = readFileSync(productionTagScriptPath, 'utf-8');
 
     assert.ok(existsSync(productionTagScriptPath));
-    assert.ok(tagScript.includes('bash scripts/verify-production-promotion-ready.sh'));
-    assert.ok(tagScript.includes('git tag -a "$TAG_NAME" "$main_sha" -F "$tag_message_file"'));
-    assert.ok(tagScript.includes('PROMOTION_EVIDENCE_DIR="$promotion_evidence_dir"'));
+    assert.ok(tagScript.includes('node scripts/production-readiness.mjs'));
+    assert.ok(tagScript.includes('--candidate-sha'));
+    assert.ok(tagScript.includes('--openpath-sha'));
+    assert.ok(
+      tagScript.includes('git tag -a "$TAG_NAME" "$EXPECTED_CANDIDATE_SHA" -F "$tag_message_file"')
+    );
     assert.ok(tagScript.includes('git push origin "$TAG_NAME"'));
-    assert.ok(tagScript.includes('HEAD must match origin/main'));
+    assert.ok(!tagScript.includes('verify-production-promotion-ready.sh'));
+    assert.ok(!tagScript.includes('origin/main'));
     assert.ok(
       runbook.includes(
         'The public repository intentionally does not document production deployment commands'

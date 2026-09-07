@@ -10,6 +10,7 @@ import {
   buildReleaseCandidateBundleArtifactName,
   buildReleaseCandidateBundleRuntimeProjection,
   selectExactReleaseCandidateRun,
+  selectExactReleaseBundleArtifact,
   writeReleaseCandidateBundleRuntimeEnv,
 } from '../scripts/lib/release-candidate-bundle.mjs';
 
@@ -174,6 +175,31 @@ describe('Release Candidate Bundle v2 locator', () => {
     assert.throws(
       () => selectExactReleaseCandidateRun(runs, targetSha, { runId: '12' }),
       /No successful release candidate run exists for exact SHA/u
+    );
+  });
+
+  test('fails closed when more than one exact unexpired bundle artifact matches the RC', () => {
+    const run = {
+      databaseId: 10,
+      headSha: targetSha,
+      event: 'push',
+      status: 'completed',
+      conclusion: 'success',
+    };
+    const artifact = {
+      id: 101,
+      name: buildReleaseCandidateBundleArtifactName(targetSha),
+      expired: false,
+      workflow_run: { id: 10 },
+    };
+
+    assert.throws(
+      () =>
+        selectExactReleaseBundleArtifact([artifact, { ...artifact, id: 102 }], {
+          classroomPathSha: targetSha,
+          run,
+        }),
+      /Ambiguous Release Bundle v2 artifacts/u
     );
   });
 

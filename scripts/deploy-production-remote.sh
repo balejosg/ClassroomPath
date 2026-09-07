@@ -60,6 +60,8 @@ fi
 : "${ROLLBACK_EXECUTOR_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/rollback-executor.sh")}"
 : "${ROLLBACK_READINESS_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/rollback-readiness.sh")}"
 : "${DEPLOY_CONTAINER_PLATFORM_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-container-platform.sh")}"
+: "${DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-runtime-executor.sh")}"
+: "${DEPLOYMENT_LEDGER_HELPER_PATH:=$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-ledger.sh")}"
 
 if [ ! -f "$REMOTE_HELPER_CONTRACTS_PATH" ]; then
   printf 'Remote helper contract helper not found: %s\n' "$REMOTE_HELPER_CONTRACTS_PATH" >&2
@@ -288,6 +290,10 @@ write_production_deploy_debug_context() {
     helper_contract_status_json "deploymentTransaction" "$DEPLOYMENT_TRANSACTION_HELPER_PATH"
     printf ','
     helper_contract_status_json "rollbackExecutor" "$ROLLBACK_EXECUTOR_HELPER_PATH"
+    printf ','
+    helper_contract_status_json "deployRuntimeExecutor" "$DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH"
+    printf ','
+    helper_contract_status_json "deploymentLedger" "$DEPLOYMENT_LEDGER_HELPER_PATH"
     printf '},\n'
     printf '  "commands":{'
     command_status_json bash
@@ -318,6 +324,18 @@ capture_production_deploy_failure() {
       "${FAILURE_CATEGORY:-remote-connectivity}" \
       "${FAILURE_MESSAGE:-production executor returned a non-zero status}" \
       "${DEPLOYMENT_STAGE:-${FAILURE_STAGE:-FAILED}}" || true
+  fi
+  if declare -f deployment_ledger_append_terminal_from_env >/dev/null 2>&1 &&
+    [ "${DEPLOYMENT_PHASE:-}" != "${DEPLOYMENT_PHASE_COMMITTED:-COMMITTED}" ] &&
+    [ "${DEPLOYMENT_PHASE:-}" != "${DEPLOYMENT_PHASE_ROLLED_BACK:-ROLLED_BACK}" ] &&
+    [ -n "${DEPLOYMENT_TRANSACTION_ID:-}" ] &&
+    [ -n "${CANDIDATE_SHA:-${TARGET_SHA:-}}" ]; then
+    DEPLOYMENT_RESULT=FAILED
+    DEPLOYMENT_CURRENT_SHA="${DEPLOYMENT_CURRENT_SHA:-${TARGET_SHA:-}}"
+    DEPLOYMENT_HEALTH_STATUS="${DEPLOYMENT_HEALTH_STATUS:-}"
+    DEPLOYMENT_READY=false
+    export DEPLOYMENT_RESULT DEPLOYMENT_CURRENT_SHA DEPLOYMENT_HEALTH_STATUS DEPLOYMENT_READY
+    deployment_ledger_append_terminal_from_env || true
   fi
   write_production_deploy_debug_context "$failed_status" || true
   return "$failed_status"
@@ -465,7 +483,28 @@ load_production_executor_helpers() {
   # shellcheck disable=SC1090
   source "$PRODUCTION_RECOVERY_ARTIFACT_HELPER_PATH"
 
-  deployment_transaction_init "$DEPLOYMENT_TRANSACTION_FILE" "" ""
+  DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deploy-runtime-executor.sh")"
+  DEPLOYMENT_LEDGER_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/deployment-ledger.sh")"
+  if ! deploy_runtime_executor_helper_supports_contract "$DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH"; then
+    log_error "Checked-out deploy-runtime-executor helper does not meet the minimum contract"
+    return 1
+  fi
+  # shellcheck disable=SC1090
+  source "$DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH"
+  if ! deployment_ledger_helper_supports_contract "$DEPLOYMENT_LEDGER_HELPER_PATH"; then
+    log_error "Checked-out deployment-ledger helper does not meet the minimum contract"
+    return 1
+  fi
+  # shellcheck disable=SC1090
+  source "$DEPLOYMENT_LEDGER_HELPER_PATH"
+
+  DEPLOYMENT_TRANSACTION_HISTORY_FILE="$STATE_DIR/deployment-phase-history.env"
+  DEPLOYMENT_LEDGER_FILE="$STATE_DIR/deployment-ledger.jsonl"
+  DEPLOYMENT_ENVIRONMENT=production
+  CANDIDATE_SHA="${CANDIDATE_SHA:-$TARGET_SHA}"
+  export DEPLOYMENT_TRANSACTION_HISTORY_FILE DEPLOYMENT_LEDGER_FILE DEPLOYMENT_ENVIRONMENT
+  export CANDIDATE_SHA
+  deployment_transaction_init "$DEPLOYMENT_TRANSACTION_FILE" "" "${DEPLOY_RELEASE_ID:-}"
 }
 
 load_production_deploy_payload() {
@@ -610,7 +649,6 @@ run_production_database_migrations() {
   FAILURE_CATEGORY="migration"
   FAILURE_MESSAGE="production migration or switch preparation failed"
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
-  deployment_transaction_transition "$DEPLOYMENT_PHASE_SWITCHING" "SWITCH" || return 1
   release_execution_mark_stage migrations
 
   cleanup_production_disk_if_needed
@@ -629,13 +667,32 @@ run_production_database_migrations() {
   release_execution_mark_stage startup
 }
 
+production_runtime_adapter_migrate() {
+  run_production_database_migrations
+}
+
+execute_production_runtime() {
+  plan_production_runtime_deploy
+  cd "$APP_DIR/docker"
+  DEPLOY_RUNTIME_HEALTH_URL="${PRODUCTION_GATEWAY_HEALTH_URL:-http://localhost:3001/cp/health}"
+  DEPLOY_RUNTIME_READY_URL="${PRODUCTION_READY_URL:-http://localhost:3001/cp/ready}"
+  export DEPLOY_RUNTIME_HEALTH_URL DEPLOY_RUNTIME_READY_URL
+  deploy_runtime_execute \
+    production_runtime_adapter_prepare \
+    production_runtime_adapter_migrate \
+    production_runtime_adapter_switch \
+    production_runtime_adapter_validate_live \
+    production_runtime_adapter_fault_barrier
+}
+
 plan_production_runtime_deploy() {
   plan_production_runtime_deploy_impl "$@"
 }
 
 apply_production_runtime_deploy() {
-  # Helper contract: write_release_runtime_state "$STATE_DIR/current-images.env"
-  apply_production_runtime_deploy_impl "$@"
+  # Compatibility entrypoint: the canonical executor owns the prepare/switch
+  # boundary and calls the adapter directly.
+  production_runtime_adapter_prepare "$@"
 }
 
 start_production_runtime() {
@@ -655,7 +712,4 @@ run_remote_deploy_phases \
   load_production_release_manifest \
   classify_production_migration_risk \
   production_recovery_artifact_prepare \
-  cleanup_production_disk_if_needed \
-  run_production_database_migrations \
-  start_production_runtime \
-  wait_for_production_runtime_readiness
+  execute_production_runtime

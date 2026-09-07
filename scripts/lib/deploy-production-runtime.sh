@@ -169,49 +169,13 @@ ensure_production_release_candidate_runtime_env() {
 }
 
 validate_production_runtime_projection_live() {
-  local projection_file="${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/${RELEASE_ID:-}/runtime.env"
-  local service=""
-  local field=""
-  local expected=""
-  local actual=""
-  local live_env=""
-
-  [ -f "$projection_file" ] && [ ! -L "$projection_file" ] || {
-    log_error "Candidate Release Bundle runtime projection is missing before live validation"
-    return 1
-  }
-  release_state_require_snapshot_fields "$projection_file" current-runtime || return 1
-
-  for service in classroompath-gateway classroompath-api; do
-    if ! live_env="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$service")"; then
-      log_error "Unable to inspect live runtime environment for $service"
-      return 1
-    fi
-    while IFS= read -r field; do
-      [ -n "$field" ] || continue
-      expected="$(release_state_snapshot_value "$projection_file" "$field")" || return 1
-      actual="$(printf '%s\n' "$live_env" | awk -F= -v expected_field="$field" '
-        $1 == expected_field {
-          print substr($0, index($0, "=") + 1)
-          found = 1
-          exit
-        }
-        END {
-          if (!found) exit 1
-        }
-      ')" || {
-        log_error "$service is missing the candidate runtime projection field $field"
-        return 1
-      }
-      if [ "$actual" != "$expected" ]; then
-        log_error "$service live runtime projection differs for $field"
-        return 1
-      fi
-    done < <(release_state_list_fields current-runtime)
-  done
+  DEPLOY_RUNTIME_PROJECTION_FILE="${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/${RELEASE_ID:-}/runtime.env"
+  DEPLOY_RUNTIME_PROJECTION_SERVICES="classroompath-gateway classroompath-api"
+  export DEPLOY_RUNTIME_PROJECTION_FILE DEPLOY_RUNTIME_PROJECTION_SERVICES
+  deploy_runtime_validate_live_projection
 }
 
-apply_production_runtime_deploy_impl() {
+production_runtime_adapter_prepare() {
   cd "$APP_DIR/docker"
   export COMPOSE_PROJECT_NAME=classroompath-production
   configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/amd64}" || return 1
@@ -281,130 +245,116 @@ apply_production_runtime_deploy_impl() {
   bash "$APP_DIR/scripts/sync-billing-env.sh" "$APP_DIR/config/.env"
   bash "$APP_DIR/scripts/validate-runtime-config-docker.sh" --app-dir "$APP_DIR" --env-file "$APP_DIR/config/.env"
 
-  FAILURE_POINT="container-stop"
+}
+
+production_runtime_adapter_switch() {
+  FAILURE_POINT="container-switch"
   FAILURE_CATEGORY="container-switch"
-  FAILURE_MESSAGE="stopping the previous production containers failed"
+  FAILURE_MESSAGE="production candidate container switch failed"
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
   log_info "Stopping existing containers..."
   docker compose down --remove-orphans
   docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
   docker rm -f classroompath-production-api-1 classroompath-production-gateway-1 classroompath-production-spa-1 2>/dev/null || true
-
-  FAILURE_POINT="container-start"
-  FAILURE_CATEGORY="container-switch"
-  FAILURE_MESSAGE="starting the candidate production containers failed"
-  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
   log_info "Starting containers from immutable images..."
   docker compose up -d --force-recreate --no-build
+}
 
-  if declare -f deployment_transaction_transition >/dev/null 2>&1; then
-    deployment_transaction_transition "$DEPLOYMENT_PHASE_ACTIVATED_UNVERIFIED" "SWITCH" || return 1
+production_runtime_adapter_validate_live() {
+  FAILURE_POINT="runtime-projection-live"
+  FAILURE_CATEGORY="runtime-attestation"
+  FAILURE_MESSAGE="live production runtime projection does not match the verified release"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  validate_production_runtime_projection_live
+}
+
+production_runtime_adapter_fault_barrier() {
+  production_runtime_wait_for_k_fault_injection
+}
+
+production_runtime_ensure_shared_executor() {
+  if declare -f deploy_runtime_wait_for_health_and_readiness >/dev/null 2>&1; then
+    return 0
   fi
-  production_runtime_wait_for_k_fault_injection || return 1
 
-  if [ "${PRODUCTION_DEPLOY_PLAN:-}" != "release-candidate" ]; then
-    die "Unknown production deploy plan: ${PRODUCTION_DEPLOY_PLAN:-unset}" 1
+  local runtime_script_dir=""
+  local executor_path="${DEPLOY_RUNTIME_EXECUTOR_HELPER_PATH:-}"
+  runtime_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" || return 1
+  if [ -z "$executor_path" ]; then
+    executor_path="$runtime_script_dir/deploy-runtime-executor.sh"
+  fi
+  [ -f "$executor_path" ] && [ ! -L "$executor_path" ] || {
+    production_runtime_fault_barrier_error 'Shared runtime executor helper is unavailable'
+    return 1
+  }
+  # This is a load seam for direct helper consumers and test harnesses; the
+  # production deploy path normally sources the executor during bootstrap.
+  # Readiness semantics still have one implementation in this helper.
+  source "$executor_path"
+  declare -f deploy_runtime_wait_for_health_and_readiness >/dev/null 2>&1 || {
+    production_runtime_fault_barrier_error 'Shared runtime executor helper is incomplete'
+    return 1
+  }
+}
+
+deploy_runtime_adapter_recover() {
+  local recovery_artifact_path="${RECOVERY_ARTIFACT_PATH:-}"
+  local recovery_artifact_sha256="${RECOVERY_ARTIFACT_SHA256:-}"
+  local recovery_executor_sha256="${RECOVERY_EXECUTOR_SHA256:-}"
+  local recovery_executor_path=""
+  local expected_artifact_path=""
+  local actual_artifact_sha256=""
+  local actual_executor_sha256=""
+
+  # The common executor owns the recovery boundary and terminal result. The
+  # recovery adapter may only execute the exact, preflighted R bytes persisted
+  # by production_recovery_artifact_prepare; it cannot select a source path.
+  if [ -z "$recovery_artifact_path" ] ||
+    [ -z "$recovery_artifact_sha256" ] ||
+    [[ ! "$recovery_artifact_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+    [[ ! "$recovery_executor_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    log_error "Exact production recovery artifact identity is unavailable"
+    return 1
+  fi
+  expected_artifact_path="${CLASSROOMPATH_DEPLOY_ROOT%/}/recovery/releases/$recovery_artifact_sha256/production-recovery-bundle.tgz"
+  if [ "$recovery_artifact_path" != "$expected_artifact_path" ] ||
+    [ ! -f "$recovery_artifact_path" ] || [ -L "$recovery_artifact_path" ]; then
+    log_error "Persisted production recovery artifact path is not exact"
+    return 1
+  fi
+  recovery_executor_path="${recovery_artifact_path%/*}/production-recovery-executor.sh"
+  if [ ! -f "$recovery_executor_path" ] || [ -L "$recovery_executor_path" ]; then
+    log_error "Persisted production recovery executor is unavailable"
+    return 1
+  fi
+  actual_artifact_sha256="$(sha256sum "$recovery_artifact_path" | awk '{print $1; exit}')"
+  actual_executor_sha256="$(sha256sum "$recovery_executor_path" | awk '{print $1; exit}')"
+  if [ "$actual_artifact_sha256" != "$recovery_artifact_sha256" ] ||
+    [ "$actual_executor_sha256" != "$recovery_executor_sha256" ]; then
+    log_error "Persisted production recovery bytes do not match their exact identity"
+    return 1
   fi
 
+  PRODUCTION_RECOVERY_SHA="${PRODUCTION_RECOVERY_SHA:-${RECOVERY_SOURCE_SHA:-}}" \
+  PRODUCTION_RECOVERY_SOURCE_SHA="${PRODUCTION_RECOVERY_SOURCE_SHA:-${RECOVERY_SOURCE_SHA:-}}" \
+  PRODUCTION_RECOVERY_SOURCE_VERSION="${PRODUCTION_RECOVERY_SOURCE_VERSION:-${RECOVERY_SOURCE_VERSION:-}}" \
+  PRODUCTION_RECOVERY_CONTRACT_VERSION="${PRODUCTION_RECOVERY_CONTRACT_VERSION:-${RECOVERY_CONTRACT_VERSION:-}}" \
+  PRODUCTION_RECOVERY_ARTIFACT_SHA256="$recovery_artifact_sha256" \
+  PRODUCTION_RECOVERY_EXECUTOR_SHA256="$recovery_executor_sha256" \
+  PRODUCTION_RECOVERY_PREFLIGHT_ONLY=0 \
+    bash "$recovery_executor_path"
 }
 
 start_production_runtime_impl() {
   plan_production_runtime_deploy_impl
-  apply_production_runtime_deploy_impl
-}
-
-production_readiness_failure_point() {
-  local response="${1:-}"
-  local compact_response=""
-
-  compact_response="$(printf '%s' "$response" | tr -d '[:space:]')"
-  case "$compact_response" in
-    '{"ready":false}'|'{"ready":false,'*'}')
-      printf '%s\n' 'ready-false'
-      ;;
-    *)
-      printf '%s\n' 'malformed-ready'
-      ;;
-  esac
+  production_runtime_adapter_prepare
+  production_runtime_adapter_switch
 }
 
 wait_for_production_runtime_readiness_impl() {
-  FAILURE_POINT="health"
-  FAILURE_CATEGORY="health"
-  FAILURE_MESSAGE="candidate gateway health check failed"
-  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
-  log_info "Waiting for services to be healthy..."
-  timeout 60 bash -c 'until docker compose ps | grep -q "healthy"; do sleep 2; done' || {
-    log_warn "Timeout waiting for container health checks"
-    docker compose ps
-  }
-
-  for i in 1 2 3 4 5; do
-    if curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
-      log_success "Gateway health check passed"
-      break
-    fi
-    log_warn "Health check attempt $i failed, retrying..."
-    sleep 5
-  done
-
-  if ! curl -sf http://localhost:3001/cp/health > /dev/null 2>&1; then
-    log_error "Gateway deployment failed. Check logs:"
-    docker logs classroompath-gateway --tail 30
-    return 1
-  fi
-
-  release_execution_mark_stage readiness
-  FAILURE_POINT="ready-false"
-  FAILURE_CATEGORY="readiness"
-  FAILURE_MESSAGE="candidate readiness did not satisfy semantic ready=true"
-  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
-  log_info "Checking full application readiness..."
-
-  local ready_check=""
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-    ready_check=$(curl -sf http://localhost:3001/cp/ready 2>/dev/null || echo '{"ready":false}')
-    if rollback_readiness_json_is_ready "$ready_check"; then
-      log_success "Application readiness OK"
-      FAILURE_POINT="runtime-projection-live"
-      FAILURE_CATEGORY="runtime-attestation"
-      FAILURE_MESSAGE="live candidate runtime projection does not match the verified release"
-      export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
-      validate_production_runtime_projection_live || return 1
-      if declare -f deployment_transaction_transition >/dev/null 2>&1; then
-        deployment_transaction_transition "$DEPLOYMENT_PHASE_VERIFIED" "VERIFY" || return 1
-      fi
-      deployment_state_activate_v2_release "$RELEASE_ID"
-      deployment_state_publish_pending_release
-      if declare -f deployment_transaction_transition >/dev/null 2>&1; then
-        deployment_transaction_transition "$DEPLOYMENT_PHASE_COMMITTED" "COMMIT" || return 1
-      fi
-      release_execution_mark_stage completed
-      log_success "Deployment successful"
-      docker logs classroompath-gateway --tail 5 || true
-      return 0
-    fi
-
-    FAILURE_POINT="$(production_readiness_failure_point "$ready_check")"
-    if [ "$FAILURE_POINT" = "malformed-ready" ]; then
-      FAILURE_CATEGORY="readiness-contract"
-      FAILURE_MESSAGE="candidate readiness response was not valid JSON with ready=true"
-    else
-      FAILURE_CATEGORY="readiness"
-      FAILURE_MESSAGE="candidate readiness did not satisfy semantic ready=true"
-    fi
-    export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
-
-    if [ "$i" -lt 12 ]; then
-      log_warn "Application not ready (attempt $i/12), waiting 5s..."
-      sleep 5
-    else
-      log_error "APPLICATION READINESS FAILED after 12 attempts"
-      log_error "Readiness response: $ready_check"
-      log_error "Code rollback can be attempted automatically; DB migrated=$DB_MIGRATED backup=${PRODUCTION_BACKUP_REFERENCE:-none}"
-      log_error "Debug: docker logs classroompath-gateway --tail 50"
-      log_error "Debug: docker logs classroompath-api --tail 50"
-      return 1
-    fi
-  done
+  production_runtime_ensure_shared_executor || return 1
+  DEPLOY_RUNTIME_HEALTH_URL="${PRODUCTION_GATEWAY_HEALTH_URL:-http://localhost:3001/cp/health}"
+  DEPLOY_RUNTIME_READY_URL="${PRODUCTION_READY_URL:-http://localhost:3001/cp/ready}"
+  export DEPLOY_RUNTIME_HEALTH_URL DEPLOY_RUNTIME_READY_URL
+  deploy_runtime_wait_for_health_and_readiness
 }

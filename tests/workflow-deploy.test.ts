@@ -295,37 +295,19 @@ describe('Deploy workflow contracts', () => {
     );
   });
 
-  test('promote-current-staging-candidate.sh verifies promotion readiness before tagging', () => {
+  test('promote-current-staging-candidate.sh delegates current staging identity to release:promote', () => {
     const promoteScript = readText('scripts/promote-current-staging-candidate.sh');
 
-    const verifyIndex = promoteScript.indexOf('verify-production-promotion-ready.sh');
-    const tagIndex = promoteScript.indexOf('git tag -a');
-
-    assert.ok(
-      verifyIndex !== -1,
-      'promote-current-staging-candidate.sh must invoke verify-production-promotion-ready.sh'
-    );
-    assert.ok(
-      tagIndex !== -1,
-      'promote-current-staging-candidate.sh must contain a git tag -a command'
-    );
-    assert.ok(
-      verifyIndex < tagIndex,
-      'promote-current-staging-candidate.sh must invoke verify-production-promotion-ready.sh BEFORE git tag -a'
-    );
-
-    // --local-only must only guard the push, never skip the verification.
-    // The push-skip guard is 'if [ "$PUSH_MODE" = "--local-only" ]' which appears after git tag -a.
-    const pushSkipGuard = 'if [ "$PUSH_MODE" = "--local-only" ]';
-    const pushSkipIndex = promoteScript.indexOf(pushSkipGuard);
-    assert.ok(
-      pushSkipIndex !== -1,
-      'promote-current-staging-candidate.sh must have a --local-only push-skip guard'
-    );
-    assert.ok(
-      pushSkipIndex > tagIndex,
-      '--local-only push-skip guard must appear after git tag -a, not before verification'
-    );
+    assert.ok(promoteScript.includes('current-images.env'));
+    assert.ok(promoteScript.includes('staging-verification.env'));
+    assert.ok(promoteScript.includes('RC_RUN_ID'));
+    assert.ok(promoteScript.includes('exec npm run release:promote'));
+    assert.ok(promoteScript.includes('--rc-run-id "$rc_run_id"'));
+    assert.ok(promoteScript.includes('--auto-tag --execute'));
+    assert.ok(promoteScript.includes('--local-only'));
+    assert.doesNotMatch(promoteScript, /git tag -a/u);
+    assert.doesNotMatch(promoteScript, /verify-production-promotion-ready/u);
+    assert.doesNotMatch(promoteScript, /preflight-production-promotion-target/u);
   });
 
   test('verify-production-promotion-ready.sh separates blocked (exit 10) from genuine errors', () => {
@@ -390,7 +372,7 @@ describe('Deploy workflow contracts', () => {
     assert.ok(workflowText.includes('PROMOTION_TAG_PUSH_TOKEN'));
     assert.ok(workflowText.includes('STAGING_SSH_KEY'));
     assert.ok(workflowText.includes('DEPLOY_SSH_KEY'));
-    assert.ok(workflowText.includes('scripts/preflight-current-staging-promotion.sh'));
+    assert.ok(!workflowText.includes('scripts/preflight-current-staging-promotion.sh'));
     assert.ok(!workflowText.includes('docker build'));
     assert.ok(!workflowText.includes('npm run deploy'));
     assert.ok(!workflowText.includes('deploy-production-remote.sh'));
@@ -401,7 +383,7 @@ describe('Deploy workflow contracts', () => {
     assertGitHubCliAvailableBeforeInstallAndResolve(
       '.github/workflows/promote-current-staging-candidate.yml',
       'tag-current-staging-candidate',
-      'Promote current staging candidate'
+      'Resolve and delegate current staging candidate'
     );
   });
 
