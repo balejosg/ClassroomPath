@@ -20,8 +20,10 @@ import {
   GITHUB_CLI_MAX_BUFFER_BYTES,
   buildDownloadArtifactZipArgs,
   buildListGitHubArtifactsArgs,
+  buildViewGitHubWorkflowRunArgs,
   buildViewGitHubRunJobsArgs,
 } from '../scripts/lib/github-actions-artifacts.mjs';
+import { parseReleaseCandidateCliArgs } from '../scripts/wait-for-release-candidate.mjs';
 
 describe('wait-for-release-candidate helpers', () => {
   test('uses databaseId from gh run list payloads when id is absent', () => {
@@ -87,6 +89,36 @@ describe('wait-for-release-candidate helpers', () => {
       '--json',
       'jobs',
     ]);
+  });
+
+  test('builds the GitHub CLI command for explicit release-candidate lookup', () => {
+    assert.deepEqual(
+      buildViewGitHubWorkflowRunArgs({ repo: 'balejosg/ClassroomPath', runId: 987 }),
+      [
+        'run',
+        'view',
+        '987',
+        '--repo',
+        'balejosg/ClassroomPath',
+        '--json',
+        'databaseId,headSha,status,conclusion,event,workflowName,name,createdAt,updatedAt',
+      ]
+    );
+  });
+
+  test('parses an explicit RC run without requiring a separately selected SHA', () => {
+    const parsed = parseReleaseCandidateCliArgs([
+      'resolve-bundle',
+      '--rc-run-id',
+      '987',
+      '--repo',
+      'balejosg/ClassroomPath',
+    ]);
+
+    assert.equal(parsed.command, 'resolve-bundle');
+    assert.equal(parsed.options.rcRunId, '987');
+    assert.equal(parsed.options.sha, undefined);
+    assert.equal(parsed.options.repo, 'balejosg/ClassroomPath');
   });
 
   test('formats release candidate failures with normalized run ids and timestamps', () => {

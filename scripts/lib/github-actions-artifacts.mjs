@@ -56,6 +56,18 @@ export function buildViewGitHubRunJobsArgs({ repo, runId }) {
   return ['run', 'view', String(runId), '--repo', repo, '--json', 'jobs'];
 }
 
+export function buildViewGitHubWorkflowRunArgs({ repo, runId }) {
+  return [
+    'run',
+    'view',
+    String(runId),
+    '--repo',
+    repo,
+    '--json',
+    'databaseId,headSha,status,conclusion,event,workflowName,name,createdAt,updatedAt',
+  ];
+}
+
 export function buildViewGitHubRunFailedLogArgs({ repo, runId }) {
   return ['run', 'view', String(runId), '--repo', repo, '--log-failed'];
 }
@@ -95,6 +107,12 @@ export function viewGitHubRunJobs({ repo, runId, cwd }) {
   const output = runGitHubCli(buildViewGitHubRunJobsArgs({ repo, runId }), { cwd }).trim();
 
   return JSON.parse(output || '{"jobs":[]}');
+}
+
+export function viewGitHubWorkflowRun({ repo, runId, cwd }) {
+  const output = runGitHubCli(buildViewGitHubWorkflowRunArgs({ repo, runId }), { cwd }).trim();
+
+  return JSON.parse(output || '{}');
 }
 
 export function viewGitHubRunFailedLog({ repo, runId, cwd }) {

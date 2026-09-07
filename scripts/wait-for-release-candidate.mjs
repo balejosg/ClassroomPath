@@ -17,8 +17,12 @@ import {
 } from './lib/release-candidate.mjs';
 import {
   buildReleaseCandidateBundleProjectionOutputs,
+  writeReleaseCandidateBundleLegacyManifest,
+  writeReleaseCandidateBundleRuntimeEnv,
+  writeResolvedReleaseCandidateBundleArtifacts,
   waitForExactReleaseCandidateBundle,
 } from './lib/release-candidate-bundle.mjs';
+import { resolveExplicitReleaseCandidateBundle } from './lib/release-candidate-resolution.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
@@ -35,9 +39,12 @@ function printUsage() {
   console.error(
     '  node scripts/wait-for-release-candidate.mjs resolve-bundle --sha <sha> [--run-id <id>] [--release-id <id>] [--repo <owner/repo>] [--timeout-seconds <seconds>] [--interval-seconds <seconds>] [--output-file <path>] [--output-dir <path>]'
   );
+  console.error(
+    '  node scripts/wait-for-release-candidate.mjs resolve-bundle --rc-run-id <id> [--release-id <id>] [--repo <owner/repo>] [--output-file <path>] [--output-dir <path>]'
+  );
 }
 
-function parseCliArgs(argv) {
+export function parseReleaseCandidateCliArgs(argv) {
   const parsed = parseCommandLine(argv, {
     valueFlags: [
       '--interval-seconds',
@@ -47,6 +54,7 @@ function parseCliArgs(argv) {
       '--legacy-manifest-file',
       '--release-id',
       '--repo',
+      '--rc-run-id',
       '--run-id',
       '--sha',
       '--timeout-seconds',
@@ -67,6 +75,7 @@ function parseCliArgs(argv) {
       legacyManifestFile: parsed.options['legacy-manifest-file'],
       releaseId: parsed.options['release-id'],
       repo: parsed.options.repo,
+      rcRunId: parsed.options['rc-run-id'],
       runId: parsed.options['run-id'],
       sha: parsed.options.sha,
       timeoutSeconds: parsed.options['timeout-seconds']
@@ -77,7 +86,7 @@ function parseCliArgs(argv) {
 }
 
 export function runReleaseCandidateCli(argv = process.argv.slice(2)) {
-  const { command, options } = parseCliArgs(argv);
+  const { command, options } = parseReleaseCandidateCliArgs(argv);
 
   if (command === 'resolve-manifest' && options.sha) {
     const result = waitForReleaseCandidateManifest({
@@ -145,6 +154,35 @@ export function runReleaseCandidateCli(argv = process.argv.slice(2)) {
       openpath_contract_path: result.contractPath ?? '',
     };
     writeOutputs(output);
+    return;
+  }
+
+  if (command === 'resolve-bundle' && options.rcRunId) {
+    const result = resolveExplicitReleaseCandidateBundle({
+      repository: options.repo ?? process.env.GITHUB_REPOSITORY,
+      rcRunId: options.rcRunId,
+      releaseId: options.releaseId,
+      cwd: projectRoot,
+    });
+    if (options.outputFile) {
+      writeReleaseCandidateBundleRuntimeEnv(options.outputFile, result.runtime);
+    }
+    if (options.legacyManifestFile) {
+      writeReleaseCandidateBundleLegacyManifest(options.legacyManifestFile, result);
+    }
+    if (options.outputDir) {
+      Object.assign(
+        result,
+        writeResolvedReleaseCandidateBundleArtifacts(options.outputDir, result)
+      );
+    }
+    writeOutputs({
+      ...buildReleaseCandidateBundleProjectionOutputs(result),
+      release_bundle_run_id: result.runId,
+      release_bundle_artifact: result.artifactName,
+      release_bundle_path: result.bundlePath ?? '',
+      openpath_contract_path: result.contractPath ?? '',
+    });
     return;
   }
 
