@@ -98,7 +98,8 @@ release_execution_mark_stage() {
   FAILURE_STAGE="$stage"
   DEPLOY_FAILURE_STAGE="$stage"
 
-  if declare -f deployment_transaction_mark_stage >/dev/null 2>&1; then
+  if [ -n "${DEPLOYMENT_TRANSACTION_FILE:-}" ] &&
+    declare -f deployment_transaction_mark_stage >/dev/null 2>&1; then
     case "$stage" in
       preflight) deployment_transaction_mark_stage PREFLIGHT ;;
       migrations|startup) deployment_transaction_mark_stage SWITCH ;;

@@ -77,6 +77,36 @@ test('release execution marks deploy stages through a backward-compatible contex
   }
 });
 
+test('staging execution does not require a transaction file when transaction helpers are loaded', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'release-execution-staging-'));
+  const contextPath = join(tempDir, 'deploy-context.env');
+
+  try {
+    requireSuccessfulShell(`
+      set -euo pipefail
+      source "$PROJECT_ROOT/scripts/lib/common.sh"
+      source "$PROJECT_ROOT/scripts/lib/release-state.sh"
+      source "$PROJECT_ROOT/scripts/lib/release-execution.sh"
+      source "$PROJECT_ROOT/scripts/lib/deployment-transaction.sh"
+      unset DEPLOYMENT_TRANSACTION_FILE DEPLOYMENT_TRANSACTION_HISTORY_FILE
+      release_execution_init_context "${contextPath}"
+      TARGET_SHA=target123
+      APP_SHA=target123
+      IMAGE_SOURCE=release-candidate
+      PREVIOUS_APP_SHA=prev123
+      release_execution_mark_stage preflight
+    `);
+
+    const snapshot = parseReleaseStateText(readFileSync(contextPath, 'utf-8'));
+    assert.equal(snapshot.TARGET_SHA, 'target123');
+    assert.equal(snapshot.APP_SHA, 'target123');
+    assert.equal(snapshot.FAILURE_STAGE, 'preflight');
+    assert.equal(snapshot.DEPLOY_FAILURE_STAGE, 'preflight');
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('release execution classifies migration risk through the shared Node classifier', () => {
   const repoDir = mkdtempSync(join(tmpdir(), 'release-execution-risk-'));
 
