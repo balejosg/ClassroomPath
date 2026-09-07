@@ -1142,13 +1142,11 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(
       deployRuntimeHelper.includes('write_release_runtime_state') &&
         deployRuntimeHelper.includes('OPENPATH_FIREFOX_ASSETS_IMAGE') &&
-        deployRuntimeHelper.includes('"${OPENPATH_LINUX_AGENT_VERSION:-}"') &&
+        deployRuntimeHelper.includes('apply_release_runtime_projection_to_env_file') &&
         deployRuntimeHelper.includes(
-          'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"'
+          '"${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/$RELEASE_ID/runtime.env"'
         ) &&
-        deployRuntimeHelper.includes(
-          'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"'
-        )
+        deployRuntimeHelper.includes('validate_production_runtime_projection_live')
     );
     assert.ok(
       deployContextHelper.includes('DEPLOY_RELEASE_BUNDLE_B64') &&

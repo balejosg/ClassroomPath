@@ -168,23 +168,55 @@ ensure_production_release_candidate_runtime_env() {
   return 0
 }
 
+validate_production_runtime_projection_live() {
+  local projection_file="${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/${RELEASE_ID:-}/runtime.env"
+  local service=""
+  local field=""
+  local expected=""
+  local actual=""
+  local live_env=""
+
+  [ -f "$projection_file" ] && [ ! -L "$projection_file" ] || {
+    log_error "Candidate Release Bundle runtime projection is missing before live validation"
+    return 1
+  }
+  release_state_require_snapshot_fields "$projection_file" current-runtime || return 1
+
+  for service in classroompath-gateway classroompath-api; do
+    if ! live_env="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$service")"; then
+      log_error "Unable to inspect live runtime environment for $service"
+      return 1
+    fi
+    while IFS= read -r field; do
+      [ -n "$field" ] || continue
+      expected="$(release_state_snapshot_value "$projection_file" "$field")" || return 1
+      actual="$(printf '%s\n' "$live_env" | awk -F= -v expected_field="$field" '
+        $1 == expected_field {
+          print substr($0, index($0, "=") + 1)
+          found = 1
+          exit
+        }
+        END {
+          if (!found) exit 1
+        }
+      ')" || {
+        log_error "$service is missing the candidate runtime projection field $field"
+        return 1
+      }
+      if [ "$actual" != "$expected" ]; then
+        log_error "$service live runtime projection differs for $field"
+        return 1
+      fi
+    done < <(release_state_list_fields current-runtime)
+  done
+}
+
 apply_production_runtime_deploy_impl() {
   cd "$APP_DIR/docker"
   export COMPOSE_PROJECT_NAME=classroompath-production
   configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/amd64}" || return 1
   verify_deploy_container_platform || return 1
   ensure_production_release_candidate_runtime_env || return 1
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256 "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
-  export CP_REQUIRE_PUSH_NOTIFICATIONS=1
-  bash "$APP_DIR/scripts/sync-billing-env.sh" "$APP_DIR/config/.env"
-  bash "$APP_DIR/scripts/validate-runtime-config-docker.sh" --app-dir "$APP_DIR" --env-file "$APP_DIR/config/.env"
 
   if declare -f cleanup_production_disk_if_needed >/dev/null 2>&1; then
     cleanup_production_disk_if_needed
@@ -236,6 +268,18 @@ apply_production_runtime_deploy_impl() {
     "$OPENPATH_CONTRACT_FILE" \
     "$RELEASE_ID" \
     "$RC_RUN_ID"
+
+  FAILURE_POINT="runtime-projection"
+  FAILURE_CATEGORY="state-write"
+  FAILURE_MESSAGE="candidate runtime projection materialization failed"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  apply_release_runtime_projection_to_env_file \
+    "${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/$RELEASE_ID/runtime.env" \
+    "$APP_DIR/config/.env"
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
+  export CP_REQUIRE_PUSH_NOTIFICATIONS=1
+  bash "$APP_DIR/scripts/sync-billing-env.sh" "$APP_DIR/config/.env"
+  bash "$APP_DIR/scripts/validate-runtime-config-docker.sh" --app-dir "$APP_DIR" --env-file "$APP_DIR/config/.env"
 
   FAILURE_POINT="container-stop"
   FAILURE_CATEGORY="container-switch"
@@ -322,6 +366,11 @@ wait_for_production_runtime_readiness_impl() {
     ready_check=$(curl -sf http://localhost:3001/cp/ready 2>/dev/null || echo '{"ready":false}')
     if rollback_readiness_json_is_ready "$ready_check"; then
       log_success "Application readiness OK"
+      FAILURE_POINT="runtime-projection-live"
+      FAILURE_CATEGORY="runtime-attestation"
+      FAILURE_MESSAGE="live candidate runtime projection does not match the verified release"
+      export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+      validate_production_runtime_projection_live || return 1
       if declare -f deployment_transaction_transition >/dev/null 2>&1; then
         deployment_transaction_transition "$DEPLOYMENT_PHASE_VERIFIED" "VERIFY" || return 1
       fi
