@@ -830,7 +830,11 @@ test('real rollback entrypoint restores the previous release with candidate help
   mkdirSync(join(deployRoot, 'release-state/releases', previousId), { recursive: true });
   mkdirSync(streamedDir, { recursive: true });
   mkdirSync(binDir, { recursive: true });
-  writeFileSync(join(appDir, 'config/.env'), 'SENTINEL=before-rollback\n', 'utf8');
+  writeFileSync(
+    join(appDir, 'config/.env'),
+    `${createPreviousRuntime(currentId)}SENTINEL=before-rollback\n`,
+    'utf8'
+  );
   writeFileSync(join(appDir, 'docker/docker-compose.yml'), 'services: {}\n', 'utf8');
   writeFileSync(join(deployRoot, 'release-state/previous'), `${previousId}\n`, 'utf8');
   writeFileSync(join(deployRoot, 'release-state/current'), `${currentId}\n`, 'utf8');
@@ -952,6 +956,13 @@ exit 97
     assert.equal(currentPointer, previousId);
     assert.match(output, /Rollback health and readiness checks passed/u);
     assert.ok(!existsSync(candidateHelperTraceFile), 'candidate helper code must not be sourced');
+    const restoredRuntime = readFileSync(join(appDir, 'config/.env'), 'utf8');
+    for (const line of createPreviousRuntime(previousId).trim().split('\n')) {
+      assert.ok(
+        restoredRuntime.split('\n').includes(line),
+        `missing restored runtime field: ${line}`
+      );
+    }
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

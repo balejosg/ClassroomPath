@@ -12,6 +12,31 @@ load_release_manifest_runtime() {
   export_release_manifest_runtime_env "$manifest_path"
 }
 
+apply_release_runtime_projection_to_env_file() {
+  local runtime_file="$1"
+  local env_file="$2"
+  local field=""
+  local value=""
+
+  [ -f "$runtime_file" ] && [ ! -L "$runtime_file" ] || {
+    log_error "Release runtime projection must be a regular non-symlink file"
+    return 1
+  }
+  release_state_require_snapshot_fields "$runtime_file" current-runtime || return 1
+
+  while IFS= read -r field; do
+    [ -n "$field" ] || continue
+    value="$(release_state_snapshot_value "$runtime_file" "$field")" || return 1
+    case "$value" in
+      ''|*[!A-Za-z0-9_@%+=:,./-]*)
+        log_error "Release runtime projection contains an unsafe value for $field"
+        return 1
+        ;;
+    esac
+    upsert_env_file_var "$env_file" "$field" "$value" || return 1
+  done < <(release_state_list_fields current-runtime)
+}
+
 require_windows_offline_installer_runtime_pin() {
   local name=""
 

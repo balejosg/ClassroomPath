@@ -406,6 +406,15 @@ OPENPATH_SHA="$ROLLBACK_OPENPATH_SHA"
 OPENPATH_CONTRACT_SHA256="$ROLLBACK_OPENPATH_CONTRACT_SHA256"
 CLASSROOMPATH_VERIFIER_IMAGE="$ROLLBACK_RELEASE_VERIFIER_IMAGE"
 
+if [ "${ROLLBACK_USES_V2:-0}" = "1" ]; then
+  if ! apply_release_runtime_projection_to_env_file \
+    "$DEPLOYMENT_STATE_RELEASES_DIR/$ROLLBACK_RELEASE_ID/runtime.env" \
+    "$APP_DIR/config/.env"; then
+    log_error "Unable to restore the previous Release Bundle runtime projection"
+    exit 1
+  fi
+fi
+
 if [ -n "${MIGRATION_RISK_LEVEL:-}" ] || [ -n "${DB_MIGRATED:-}" ] || [ -n "${PRODUCTION_BACKUP_REFERENCE:-}" ]; then
   log_warn "Rollback context: migration risk=${MIGRATION_RISK_LEVEL:-unknown}, db_migrated=${DB_MIGRATED:-unknown}, backup=${PRODUCTION_BACKUP_REFERENCE:-none}"
 fi
