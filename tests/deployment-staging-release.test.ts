@@ -813,7 +813,10 @@ bash "$2"
       releaseHelperContent.includes('STAGING_RELEASE_RUN_ID') &&
         releaseHelperContent.includes('STAGING_RELEASE_REPOSITORY')
     );
-    assert.ok(releaseHelperContent.includes('git rev-parse HEAD:upstream/openpath'));
+    assert.ok(
+      releaseHelperContent.includes('git rev-parse "${STAGING_RELEASE_SHA}:upstream/openpath"'),
+      'explicit RC staging must derive OpenPath identity from the selected candidate tree'
+    );
     assert.ok(
       localContent.includes(
         'STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS="${STAGING_RELEASE_CANDIDATE_TIMEOUT_SECONDS:-${STAGING_RELEASE_WAIT_TIMEOUT_SECONDS:-3600}}"'

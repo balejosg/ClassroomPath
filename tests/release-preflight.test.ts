@@ -72,6 +72,9 @@ function createHarness(overrides: Partial<Record<string, string>> = {}) {
 
     if (line === 'git status --porcelain') return overrides.gitStatus ?? '';
     if (line === 'git rev-parse HEAD') return overrides.head ?? CLASSROOM_SHA;
+    if (command === 'git' && args[0] === 'rev-parse' && args[1]?.endsWith(':upstream/openpath')) {
+      return overrides.candidateOpenpath ?? OPENPATH_SHA;
+    }
     if (line === 'git rev-parse origin/main') return overrides.originMain ?? CLASSROOM_SHA;
     if (line === 'git tag --list v1.2.3') return overrides.existingTag ?? '';
     if (line === 'git tag --list v1.2.302') return overrides.existingTag ?? '';
@@ -287,6 +290,85 @@ test('release preflight blocks dirty checkout, stale HEAD, missing evidence, and
   assert.ok(result.blockers.includes('classroompath-head-not-origin-main'));
   assert.ok(result.blockers.includes('windows-prepromotion-evidence-missing'));
   assert.ok(result.blockers.includes('next-tag-already-exists'));
+});
+
+test('explicit RC preflight accepts a newer clean operator HEAD and keeps the RC identity exact', async () => {
+  const candidateA = 'a'.repeat(40);
+  const operatorHeadB = 'b'.repeat(40);
+  const releaseId = 'c'.repeat(64);
+  const harness = createHarness({ head: operatorHeadB, candidateOpenpath: OPENPATH_SHA });
+  const status = {
+    ...healthyStatus,
+    classroompath: {
+      ...healthyStatus.classroompath,
+      headSha: operatorHeadB,
+      originMainSha: operatorHeadB,
+    },
+    releaseCandidate: {
+      ...healthyStatus.releaseCandidate,
+      latestRun: {
+        ...healthyStatus.releaseCandidate.latestRun,
+        databaseId: 123456,
+        headSha: candidateA,
+        event: 'push',
+      },
+      manifest: {
+        ...healthyStatus.releaseCandidate.manifest,
+        app_sha: candidateA,
+      },
+    },
+    staging: {
+      ...healthyStatus.staging,
+      currentImages: {
+        ...healthyStatus.staging.currentImages,
+        APP_SHA: candidateA,
+        RELEASE_ID: releaseId,
+        RC_RUN_ID: '123456',
+        OPENPATH_SHA,
+        OPENPATH_CONTRACT_SHA256: 'd'.repeat(64),
+      },
+      verification: {
+        ...healthyStatus.staging.verification,
+        STAGING_VERIFIED_APP_SHA: candidateA,
+        STAGING_VERIFIED_RELEASE_ID: releaseId,
+        STAGING_VERIFIED_RC_RUN_ID: '123456',
+        STAGING_VERIFIED_OPENPATH_SHA: OPENPATH_SHA,
+        STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256: 'd'.repeat(64),
+      },
+    },
+  };
+
+  const result = await runReleasePreflight({
+    status,
+    nextTag: 'v1.2.3',
+    env: {
+      STAGING_HOST: 'staging.internal',
+      DEPLOY_HOST: 'prod.internal',
+      PROXMOX_HOST: 'proxmox.internal',
+      RELEASE_PREFLIGHT_CANDIDATE_SHA: candidateA,
+      RELEASE_PREFLIGHT_RC_RUN_ID: '123456',
+      RELEASE_PREFLIGHT_RELEASE_ID: releaseId,
+      RELEASE_PREFLIGHT_OPENPATH_SHA: OPENPATH_SHA,
+      RELEASE_PREFLIGHT_CONTRACT_SHA256: 'd'.repeat(64),
+    },
+    runCommand: harness.runCommand,
+    projectRootOverride: NO_ENV_LOCAL_PROJECT_ROOT,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.checks.cleanCheckout.ok, true);
+  assert.equal(result.checks.headAtCandidate.ok, true);
+  assert.equal(result.checks.exactPromotionIdentity.ok, true);
+  assert.equal(result.checks.releaseCandidate.ok, true);
+  assert.equal(
+    harness.calls.some((call) => call.args.includes('HEAD:upstream/openpath')),
+    false,
+    'exact RC preflight must not read the newer checkout gitlink as candidate identity'
+  );
+  assert.ok(
+    harness.calls.some((call) => call.args.includes(`${candidateA}:upstream/openpath`)),
+    'exact RC preflight must verify the OpenPath gitlink from candidate A'
+  );
 });
 
 test('package.json exposes release:preflight script', () => {

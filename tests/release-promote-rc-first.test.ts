@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -76,6 +76,92 @@ describe('release:promote RC-first contract', () => {
     assert.match(commandsById['production-readiness'], /verify:production-readiness/u);
     assert.match(commandsById['production-readiness'], /--rc-run-id/u);
     assert.match(commandsById['tag-production'], /--rc-run-id "\$STAGING_RELEASE_RUN_ID"/u);
+  });
+
+  it('stops the executable plan at the local tag when --local-only is selected', () => {
+    const plan = buildPromotionPlan({
+      rcRunId,
+      tag: 'v1.2.380',
+      localOnly: true,
+    });
+
+    assert.equal(plan.steps.at(-1)?.id, 'tag-production');
+    assert.deepEqual(
+      plan.steps
+        .slice(plan.steps.findIndex((step) => step.id === 'tag-production'))
+        .map((step) => step.id),
+      ['tag-production']
+    );
+    for (const forbiddenStep of [
+      'wait-production-deploy',
+      'verify-production-health',
+      'run-post-production-windows-canary',
+      'report-residual-actions-runs',
+      'print-summary',
+    ]) {
+      assert.equal(
+        plan.steps.some((step) => step.id === forbiddenStep),
+        false,
+        `${forbiddenStep} must not follow a local-only tag`
+      );
+    }
+    assert.match(formatCommand(plan.steps.at(-1)?.command), /--local-only/u);
+  });
+
+  it('keeps an explicit RC authoritative when the operator checkout is a newer HEAD', () => {
+    const candidateA = 'a'.repeat(40);
+    const operatorHeadB = 'b'.repeat(40);
+    assert.notEqual(candidateA, operatorHeadB);
+
+    const plan = buildPromotionPlan({
+      rcRunId,
+      tag: 'v1.2.380',
+      localOnly: true,
+    });
+    const commandsById = Object.fromEntries(
+      plan.steps.map((step) => [step.id, formatCommand(step.command)])
+    );
+
+    assert.match(commandsById['resolve-release-candidate'], /git cat-file -e/iu);
+    assert.match(
+      commandsById['resolve-release-candidate'],
+      /git rev-parse "\$classroom_path_sha:upstream\/openpath"/u
+    );
+    assert.doesNotMatch(
+      commandsById['resolve-release-candidate'],
+      /test "\$classroom_path_sha" = "\$\(git rev-parse HEAD\)"/u
+    );
+    assert.doesNotMatch(
+      commandsById['verify-clean-repos'],
+      /test "\$\(git rev-parse HEAD\)" = "\$STAGING_CLASSROOMPATH_SHA"/u
+    );
+    assert.match(
+      commandsById['verify-promotion-identity'],
+      /git rev-parse "\$STAGING_CLASSROOMPATH_SHA:upstream\/openpath"/u
+    );
+    assert.match(
+      commandsById['verify-staging-exact'],
+      /--candidate-sha "\$STAGING_CLASSROOMPATH_SHA"/u
+    );
+    assert.match(commandsById['tag-production'], /--candidate-sha "\$STAGING_CLASSROOMPATH_SHA"/u);
+  });
+
+  it('does not mark a local-only tag as remotely published', () => {
+    const tagScript = readFileSync(
+      new URL('../scripts/tag-production-release.sh', import.meta.url),
+      'utf8'
+    );
+    const localOnlyGuard = tagScript.indexOf('if [ "$PUSH_MODE" = "--local-only" ]');
+    const markTagged = tagScript.indexOf('release-mark-tagged');
+    const push = tagScript.indexOf('git push');
+
+    assert.ok(localOnlyGuard >= 0, 'tag script must have a local-only exit');
+    assert.ok(markTagged >= 0, 'normal remote publication must retain release fence marking');
+    assert.ok(push >= 0, 'normal remote publication must retain the push operation');
+    assert.ok(localOnlyGuard < markTagged, 'local-only must exit before release-mark-tagged');
+    assert.ok(localOnlyGuard < push, 'local-only must exit before any push operation');
+    assert.match(tagScript, /git tag -a "\$TAG_NAME" "\$EXPECTED_CANDIDATE_SHA"/u);
+    assert.match(tagScript, /production_tag_reconcile_existing/u);
   });
 
   it('rejects resume when any immutable RC identity changes', () => {

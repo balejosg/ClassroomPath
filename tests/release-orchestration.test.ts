@@ -215,13 +215,14 @@ describe('release promotion orchestration', () => {
     assert.equal(plan.steps.at(-1)?.id, 'print-summary');
   });
 
-  it('verify-clean-repos binds the checked-out OpenPath commit to the gitlink without advancing it', () => {
+  it('verify-clean-repos binds the selected RC OpenPath commit to its gitlink without advancing it', () => {
     const plan = buildPromotionPlan({ tag: 'v1.2.3' });
     const verifyStep = plan.steps.find((step) => step.id === 'verify-clean-repos');
     const command = formatCommand(verifyStep?.command);
 
-    assert.match(command, /git rev-parse HEAD:upstream\/openpath/);
-    assert.match(command, /git -C upstream\/openpath rev-parse HEAD/);
+    assert.match(command, /git cat-file -e "\$STAGING_CLASSROOMPATH_SHA\^\{commit\}"/);
+    assert.match(command, /git rev-parse "\$STAGING_CLASSROOMPATH_SHA:upstream\/openpath"/);
+    assert.match(command, /git -C upstream\/openpath diff --quiet/);
     assert.doesNotMatch(command, /ensure-openpath-submodule-on-main\.sh/);
     assert.doesNotMatch(command, /upstream\/openpath.*origin\/main/);
   });

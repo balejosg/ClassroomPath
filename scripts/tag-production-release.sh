@@ -159,8 +159,11 @@ if ! git diff --quiet --ignore-submodules=dirty || ! git diff --cached --quiet -
 fi
 
 current_sha="$(git rev-parse HEAD)"
+if ! git cat-file -e "${EXPECTED_CANDIDATE_SHA}^{commit}"; then
+  die "Exact candidate commit $EXPECTED_CANDIDATE_SHA is not available in the operator repository" 1
+fi
 if [ "$current_sha" != "$EXPECTED_CANDIDATE_SHA" ]; then
-  die "HEAD $current_sha does not match the exact candidate SHA $EXPECTED_CANDIDATE_SHA" 1
+  log_info "Operator HEAD $current_sha differs from selected RC $EXPECTED_CANDIDATE_SHA; tagging the explicit RC commit"
 fi
 
 release_fence_id="$EXPECTED_RELEASE_ID"
@@ -311,17 +314,20 @@ case "$PRODUCTION_TAG_EXISTING_STATE" in
     ;;
 esac
 
-if [ -f "$WORKSPACE_GUARD" ]; then
-  python3 "$WORKSPACE_GUARD" release-mark-tagged --release-id "$release_fence_id" --tag "$TAG_NAME"
-fi
-
 if [ "$PUSH_MODE" = "--local-only" ]; then
   log_info "Skipping push because --local-only was requested"
   exit 0
 fi
 
+mark_release_fence_tagged() {
+  if [ -f "$WORKSPACE_GUARD" ]; then
+    python3 "$WORKSPACE_GUARD" release-mark-tagged --release-id "$release_fence_id" --tag "$TAG_NAME"
+  fi
+}
+
 if [ "$PRODUCTION_TAG_EXISTING_STATE" = "local-and-remote" ]; then
   log_info "Production tag $TAG_NAME is already present on origin; skipping push"
+  mark_release_fence_tagged
   exit 0
 fi
 
@@ -336,4 +342,5 @@ if [ -n "${PROMOTION_TAG_PUSH_TOKEN:-}" ]; then
 else
   git push origin "$TAG_NAME"
 fi
+mark_release_fence_tagged
 log_success "Pushed production tag $TAG_NAME to origin"

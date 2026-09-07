@@ -174,22 +174,26 @@ function checkExactPromotionIdentity(status, runCommand, env, identity) {
         `${field}=${String(actual ?? 'missing')} (expected ${expected})`
     );
 
-  let checkoutOpenpathSha = '';
+  let candidateOpenpathSha = '';
   try {
-    checkoutOpenpathSha = readGit(runCommand, ['rev-parse', 'HEAD:upstream/openpath'], env);
+    candidateOpenpathSha = readGit(
+      runCommand,
+      ['rev-parse', `${identity.candidateSha}:upstream/openpath`],
+      env
+    );
   } catch (error) {
     mismatches.push(
-      `HEAD:upstream/openpath=${error instanceof Error ? error.message : String(error)}`
+      `${identity.candidateSha}:upstream/openpath=${error instanceof Error ? error.message : String(error)}`
     );
   }
-  if (identity.openpathSha && checkoutOpenpathSha !== identity.openpathSha) {
+  if (identity.openpathSha && candidateOpenpathSha !== identity.openpathSha) {
     mismatches.push(
-      `checkout OpenPath SHA=${checkoutOpenpathSha || 'missing'} (expected ${identity.openpathSha})`
+      `candidate OpenPath SHA=${candidateOpenpathSha || 'missing'} (expected ${identity.openpathSha})`
     );
   }
 
   return mismatches.length === 0
-    ? okCheck('staging and checkout match the exact RC identity')
+    ? okCheck('staging and the selected RC commit tree match the exact RC identity')
     : failedCheck(
         'promotion-identity-mismatch',
         `exact RC identity mismatch: ${mismatches.join('; ')}`
@@ -315,12 +319,9 @@ export async function runReleasePreflight({
       ? failedCheck('checkout-not-clean', 'checkout has uncommitted changes')
       : okCheck('checkout is clean'),
     headAtCandidate: exactIdentity.candidateSha
-      ? head === exactIdentity.candidateSha
-        ? okCheck('HEAD matches the exact selected RC SHA')
-        : failedCheck(
-            'classroompath-head-not-candidate',
-            `HEAD ${head} does not match selected RC ${exactIdentity.candidateSha}`
-          )
+      ? okCheck(
+          `operator HEAD ${head} is decoupled from the selected RC ${exactIdentity.candidateSha}; explicit RC identity remains authoritative`
+        )
       : originMain === head
         ? okCheck('HEAD matches origin/main')
         : failedCheck('classroompath-head-not-origin-main', 'HEAD does not match origin/main'),

@@ -119,7 +119,8 @@ function buildRcFirstPromotionPlan({
           'release_id="$(awk -F= \'$1 == "release_id" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
           'openpath_sha="$(awk -F= \'$1 == "openpath_sha" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
           'openpath_contract_sha256="$(awk -F= \'$1 == "openpath_contract_sha256" {print $2; exit}\' "$bundle_state_dir/outputs.env")"',
-          'test "$classroom_path_sha" = "$(git rev-parse HEAD)"',
+          'git cat-file -e "$classroom_path_sha^{commit}"',
+          'test "$(git rev-parse "$classroom_path_sha:upstream/openpath")" = "$openpath_sha"',
           'test -n "$release_id" && test -n "$openpath_sha" && test -n "$openpath_contract_sha256"',
           `printf 'STAGING_RELEASE_ID=%s\\nSTAGING_CLASSROOMPATH_SHA=%s\\nSTAGING_OPENPATH_SHA=%s\\nSTAGING_OPENPATH_CONTRACT_SHA256=%s\\nSTAGING_RELEASE_RUN_ID=%s\\n' "$release_id" "$classroom_path_sha" "$openpath_sha" "$openpath_contract_sha256" ${quoteShellArg(rcRunId)} > "$bundle_state_dir/staging-release.env"`,
         ].join('\n'),
@@ -141,12 +142,11 @@ function buildRcFirstPromotionPlan({
           'git diff --cached --quiet --ignore-submodules=dirty',
           'git -C upstream/openpath diff --quiet',
           'git -C upstream/openpath diff --cached --quiet',
-          'test "$(git rev-parse HEAD)" = "$STAGING_CLASSROOMPATH_SHA"',
-          'test "$(git -C upstream/openpath rev-parse HEAD)" = "$STAGING_OPENPATH_SHA"',
-          'test "$(git -C upstream/openpath rev-parse HEAD)" = "$(git rev-parse HEAD:upstream/openpath)"',
+          'git cat-file -e "$STAGING_CLASSROOMPATH_SHA^{commit}"',
+          'test "$(git rev-parse "$STAGING_CLASSROOMPATH_SHA:upstream/openpath")" = "$STAGING_OPENPATH_SHA"',
         ].join('\n'),
       ],
-      'Verify the checkout is clean and is exactly the selected ClassroomPath/OpenPath identity.'
+      'Verify the operator checkout is clean and the selected RC commit/tree contains the exact identity.'
     ),
     step(
       'verify-promotion-identity',
@@ -161,7 +161,8 @@ function buildRcFirstPromotionPlan({
           'test -s "$locator_file" && test -s "$bundle_file" && test -s "$contract_file"',
           'set -a && . "$locator_file" && set +a',
           `test "$STAGING_RELEASE_RUN_ID" = ${quoteShellArg(rcRunId)}`,
-          'test "$(git rev-parse HEAD)" = "$STAGING_CLASSROOMPATH_SHA"',
+          'git cat-file -e "$STAGING_CLASSROOMPATH_SHA^{commit}"',
+          'test "$(git rev-parse "$STAGING_CLASSROOMPATH_SHA:upstream/openpath")" = "$STAGING_OPENPATH_SHA"',
           'test "$(sha256sum "$contract_file" | awk \'{print $1}\')" = "$STAGING_OPENPATH_CONTRACT_SHA256"',
           'node scripts/release-bundle.mjs verify \\',
           '  --bundle-file "$bundle_file" \\',
@@ -256,63 +257,74 @@ function buildRcFirstPromotionPlan({
           `bash scripts/tag-production-release.sh ${quoteShellArg(tag)} --rc-run-id "$STAGING_RELEASE_RUN_ID" --candidate-sha "$STAGING_CLASSROOMPATH_SHA" --release-id "$STAGING_RELEASE_ID" --openpath-sha "$STAGING_OPENPATH_SHA" --contract-sha256 "$STAGING_OPENPATH_CONTRACT_SHA256" --bundle-file ${quoteShellArg(join(releaseBundleDir, 'classroompath-release-bundle.json'))} --contract-file ${quoteShellArg(join(releaseBundleDir, 'openpath-promotion-contract.json'))} --staging-current ${quoteShellArg(join(identityRoot, 'staging-current-images.env'))} --staging-verification ${quoteShellArg(join(identityRoot, 'staging-verification.env'))}${localOnly ? ' --local-only' : ''}`,
         ].join('\n'),
       ],
-      `Create and push production tag ${tag} bound to RC run ${rcRunId}.`
-    ),
-    step(
-      'wait-production-deploy',
-      buildWaitForTagDeployCommand(tag),
-      'Wait for the tag-triggered production deploy workflow to finish.'
-    ),
-    step(
-      'verify-production-health',
-      [
-        'bash',
-        '-lc',
-        [
-          'production_health_url="$(node scripts/deploy-targets.mjs get production gatewayHealthUrl)"',
-          'production_ready_url="$(node scripts/deploy-targets.mjs get production readyUrl)"',
-          'curl -fsS "$production_health_url"',
-          'curl -fsS "$production_ready_url"',
-        ].join(' && '),
-      ],
-      'Verify production gateway health and readiness.'
+      localOnly
+        ? `Create or reconcile local production tag ${tag} bound to RC run ${rcRunId}; do not publish it.`
+        : `Create and push production tag ${tag} bound to RC run ${rcRunId}.`
     )
   );
 
-  if (postProductionWindowsCanary) {
+  if (!localOnly) {
     steps.push(
       step(
-        'run-post-production-windows-canary',
+        'wait-production-deploy',
+        buildWaitForTagDeployCommand(tag),
+        'Wait for the tag-triggered production deploy workflow to finish.'
+      ),
+      step(
+        'verify-production-health',
         [
-          'npm',
-          'run',
-          'diagnostics:windows-ajax:direct',
-          '--',
-          '--environment',
-          'production',
-          '--confirm-production',
-          '--artifact-dir',
-          `.opencode/tmp/postproduction-windows-ajax/rc-${rcRunId}`,
-          '--skip-when-canary-token-absent',
+          'bash',
+          '-lc',
+          [
+            'production_health_url="$(node scripts/deploy-targets.mjs get production gatewayHealthUrl)"',
+            'production_ready_url="$(node scripts/deploy-targets.mjs get production readyUrl)"',
+            'curl -fsS "$production_health_url"',
+            'curl -fsS "$production_ready_url"',
+          ].join(' && '),
         ],
-        'Run the post-production Windows AJAX canary against production.'
+        'Verify production gateway health and readiness.'
       )
     );
+
+    if (postProductionWindowsCanary) {
+      steps.push(
+        step(
+          'run-post-production-windows-canary',
+          [
+            'npm',
+            'run',
+            'diagnostics:windows-ajax:direct',
+            '--',
+            '--environment',
+            'production',
+            '--confirm-production',
+            '--artifact-dir',
+            `.opencode/tmp/postproduction-windows-ajax/rc-${rcRunId}`,
+            '--skip-when-canary-token-absent',
+          ],
+          'Run the post-production Windows AJAX canary against production.'
+        )
+      );
+    }
+
+    steps.push(
+      step(
+        'report-residual-actions-runs',
+        [
+          'bash',
+          '-lc',
+          [
+            'set -euo pipefail',
+            `set -a && . ${quoteShellArg(releaseBundleStateFile)} && set +a`,
+            `node scripts/actions-health.mjs report-stale --repo ${DEFAULT_REPO} --sha "$STAGING_CLASSROOMPATH_SHA" --tag ${tag}`,
+          ].join('\n'),
+        ],
+        'Report residual stale/corrupt non-gate GitHub Actions runs for the selected RC without blocking promotion.'
+      )
+    );
+
+    steps.push(step('print-summary', null, 'Print promotion summary.'));
   }
-
-  steps.push(
-    step(
-      'report-residual-actions-runs',
-      [
-        'bash',
-        '-lc',
-        `sha="$(git rev-parse HEAD)" && node scripts/actions-health.mjs report-stale --repo ${DEFAULT_REPO} --sha "$sha" --tag ${tag}`,
-      ],
-      'Report residual stale/corrupt non-gate GitHub Actions runs without blocking promotion.'
-    )
-  );
-
-  steps.push(step('print-summary', null, 'Print promotion summary.'));
 
   return {
     rcRunId,

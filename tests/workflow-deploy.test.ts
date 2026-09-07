@@ -310,6 +310,21 @@ describe('Deploy workflow contracts', () => {
     assert.doesNotMatch(promoteScript, /preflight-production-promotion-target/u);
   });
 
+  test('current staging wrapper preserves RC A when its workflow checkout is newer main B', () => {
+    const promoteScript = readText('scripts/promote-current-staging-candidate.sh');
+    const workflowText = readText('.github/workflows/promote-current-staging-candidate.yml');
+
+    assert.match(workflowText, /ref:\s*main/u);
+    assert.match(promoteScript, /cat \/srv\/classroompath\/release-state\/current-images\.env/u);
+    assert.match(
+      promoteScript,
+      /cat \/srv\/classroompath\/release-state\/staging-verification\.env/u
+    );
+    assert.match(promoteScript, /--rc-run-id "\$rc_run_id"/u);
+    assert.doesNotMatch(promoteScript, /git rev-parse HEAD|origin\/main|latest/u);
+    assert.doesNotMatch(workflowText, /--rc-run-id.*github\.sha/u);
+  });
+
   test('verify-production-promotion-ready.sh separates blocked (exit 10) from genuine errors', () => {
     const verifyScript = readText('scripts/verify-production-promotion-ready.sh');
 

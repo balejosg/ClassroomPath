@@ -78,7 +78,10 @@ test('staging release-candidate runtime does not re-read the legacy manifest', (
     staging,
     /load_release_manifest_runtime\s+"\$STAGING_RELEASE_MANIFEST_FILE"/u
   );
-  assert.match(localRelease, /--run-id\s+"\$STAGING_RELEASE_RUN_ID"/u);
+  assert.match(
+    localRelease,
+    /bundle_resolve_args\+=\(--rc-run-id\s+"\$requested_staging_release_run_id"\)/u
+  );
   assert.match(localRelease, /--release-id\s+"\$STAGING_RELEASE_ID"/u);
 });
 
@@ -88,6 +91,10 @@ test('promotion verification and production tags bind the exact Release Bundle i
     'utf8'
   );
   const tag = readFileSync(resolve(projectRoot, 'scripts/tag-production-release.sh'), 'utf8');
+  const tagIdentity = readFileSync(
+    resolve(projectRoot, 'scripts/promotion-evidence-cli.mjs'),
+    'utf8'
+  );
   const latestPromotion = readFileSync(
     resolve(projectRoot, 'scripts/promote-current-staging-candidate.sh'),
     'utf8'
@@ -97,11 +104,11 @@ test('promotion verification and production tags bind the exact Release Bundle i
   assert.match(verification, /verify-openpath-promotion-contract\.mjs/u);
   assert.doesNotMatch(verification, /resolve-openpath-linux-agent-version\.mjs/u);
   assert.match(verification, /EXPECTED_RELEASE_ID/u);
-  assert.match(tag, /ClassroomPath-Release-Id/u);
-  assert.match(tag, /ClassroomPath-RC-Run-Id/u);
+  assert.match(tagIdentity, /ClassroomPath-Release-Id/u);
+  assert.match(tagIdentity, /ClassroomPath-RC-Run-Id/u);
   assert.match(tag, /--release-id/u);
   assert.match(tag, /--rc-run-id/u);
-  assert.match(latestPromotion, /STAGING_RELEASE_ID/u);
+  assert.match(latestPromotion, /RC_RUN_ID/u);
   assert.doesNotMatch(latestPromotion, /wait-for-release-candidate\.mjs resolve-manifest/u);
 });
 

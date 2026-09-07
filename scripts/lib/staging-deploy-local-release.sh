@@ -124,21 +124,27 @@ prepare_staging_local_release_context() {
         STAGING_RELEASE_ID="${RELEASE_ID:-}"
         STAGING_OPENPATH_SHA="${OPENPATH_SHA:-}"
         STAGING_OPENPATH_CONTRACT_SHA256="${OPENPATH_CONTRACT_SHA256:-}"
-        if [ -z "$STAGING_OPENPATH_SHA" ] || [ "$STAGING_OPENPATH_SHA" != "$UPSTREAM_OPENPATH_SHA" ]; then
+        STAGING_RELEASE_SHA="${APP_SHA:-$REMOTE_SHA}"
+        if [ -n "$requested_staging_release_run_id" ]; then
+            if ! git cat-file -e "${STAGING_RELEASE_SHA}^{commit}"; then
+                log_error "Explicit Release Candidate commit $STAGING_RELEASE_SHA is not available in the operator repository"
+                exit 1
+            fi
+            candidate_openpath_sha="$(git rev-parse "${STAGING_RELEASE_SHA}:upstream/openpath" 2>/dev/null || echo "")"
+            if [ -z "$STAGING_OPENPATH_SHA" ] || [ "$STAGING_OPENPATH_SHA" != "$candidate_openpath_sha" ]; then
+                log_error "Release Bundle v2 OpenPath SHA does not match the selected Release Candidate gitlink"
+                exit 1
+            fi
+        elif [ -z "$STAGING_OPENPATH_SHA" ] || [ "$STAGING_OPENPATH_SHA" != "$UPSTREAM_OPENPATH_SHA" ]; then
             log_error "Release Bundle v2 OpenPath SHA does not match the checked-out gitlink"
             exit 1
         fi
-        STAGING_RELEASE_SHA="${APP_SHA:-$REMOTE_SHA}"
         STAGING_RELEASE_RUN_ID="$(awk -F= '$1 == "release_bundle_run_id" {print $2; exit}' "$STAGING_RELEASE_BUNDLE_OUTPUT_FILE")"
         if [ -n "$requested_staging_release_run_id" ] && [ "$STAGING_RELEASE_RUN_ID" != "$requested_staging_release_run_id" ]; then
             log_error "Resolved Release Candidate run $STAGING_RELEASE_RUN_ID does not match requested run $requested_staging_release_run_id"
             exit 1
         fi
-        if [ -n "${STAGING_EXPLICIT_RC_RUN_ID:-}" ] && [ "$STAGING_RELEASE_SHA" != "$LOCAL_SHA" ]; then
-            log_error "Explicit Release Candidate SHA $STAGING_RELEASE_SHA does not match checked-out ClassroomPath SHA $LOCAL_SHA"
-            exit 1
-        fi
-        if [ -n "${STAGING_EXPLICIT_RC_RUN_ID:-}" ]; then
+        if [ -n "$requested_staging_release_run_id" ]; then
             REMOTE_SHA="$STAGING_RELEASE_SHA"
         fi
         STAGING_RELEASE_BUNDLE_FILE="$STAGING_RELEASE_BUNDLE_DIR/classroompath-release-bundle.json"
