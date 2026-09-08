@@ -349,7 +349,7 @@ login_production_registry() {
     return 0
   fi
 
-  echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+  echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin || return 1
   PRODUCTION_REGISTRY_LOGGED_IN=1
 }
 

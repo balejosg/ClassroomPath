@@ -311,9 +311,9 @@ deployment_state_activate_previous_release() {
       return 1
     fi
     if declare -f write_current_release_state >/dev/null 2>&1; then
-      write_current_release_state "$DEPLOYMENT_STATE_CURRENT_FILE"
+      write_current_release_state "$DEPLOYMENT_STATE_CURRENT_FILE" || return 1
     elif [ -f "$DEPLOYMENT_STATE_PREVIOUS_FILE" ]; then
-      cp "$DEPLOYMENT_STATE_PREVIOUS_FILE" "$DEPLOYMENT_STATE_CURRENT_FILE"
+      cp "$DEPLOYMENT_STATE_PREVIOUS_FILE" "$DEPLOYMENT_STATE_CURRENT_FILE" || return 1
     fi
     return 0
   fi

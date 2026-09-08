@@ -43,6 +43,7 @@ export const PRODUCTION_HOST_REQUIRED_COMMANDS = Object.freeze([
   'touch',
   'tar',
   'sha256sum',
+  'stat',
   'uname',
   'mkfifo',
 ]);
@@ -53,9 +54,10 @@ function booleanValue(value) {
   return value === true;
 }
 
-function finiteNumber(value, fallback) {
+function diskPercentage(value) {
+  if (!/^[0-9]{1,3}$/.test(String(value ?? ''))) return NaN;
   const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
+  return number <= 100 ? number : NaN;
 }
 
 export function validateProductionHostContract(input = {}) {
@@ -63,8 +65,10 @@ export function validateProductionHostContract(input = {}) {
   const runtimeCommands = input.runtimeCommands ?? {};
   const docker = input.docker ?? {};
   const deployRoot = input.deployRoot ?? {};
-  const diskUsagePercent = finiteNumber(input.diskUsagePercent, 0);
-  const diskThresholdPercent = finiteNumber(input.diskThresholdPercent, 80);
+  const diskUsagePercent = diskPercentage(input.diskUsagePercent);
+  const diskThresholdPercent = diskPercentage(
+    input.diskThresholdPercent === undefined ? 80 : input.diskThresholdPercent
+  );
   const errors = [];
 
   for (const command of PRODUCTION_HOST_REQUIRED_COMMANDS) {
@@ -76,7 +80,12 @@ export function validateProductionHostContract(input = {}) {
   if (!booleanValue(docker.composeAvailable)) errors.push('docker-compose-unavailable');
   if (!booleanValue(deployRoot.exists)) errors.push('deploy-root-missing');
   if (!booleanValue(deployRoot.writable)) errors.push('deploy-root-not-writable');
-  if (diskUsagePercent > diskThresholdPercent) errors.push('disk-threshold-exceeded');
+  if (
+    !Number.isFinite(diskUsagePercent) ||
+    !Number.isFinite(diskThresholdPercent) ||
+    diskUsagePercent > diskThresholdPercent
+  )
+    errors.push('disk-threshold-exceeded');
   if (!booleanValue(input.networkReachable)) errors.push('required-network-unreachable');
 
   return {

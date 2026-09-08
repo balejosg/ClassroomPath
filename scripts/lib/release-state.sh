@@ -107,7 +107,7 @@ release_state_list_fields() {
   local snapshot_type="$1"
 
   if release_state_cli_available; then
-    node "$(release_state_cli_path)" list-fields --snapshot-type "$snapshot_type"
+    node "$(release_state_cli_path)" list-fields --snapshot-type "$snapshot_type" || return 1
     return 0
   fi
 
@@ -271,6 +271,10 @@ write_release_state_snapshot() {
   local field=""
   local value=""
   local -a cli_cmd=()
+  local fields=""
+
+  fields="$(release_state_list_fields "$snapshot_type")" || return 1
+  [ -n "$fields" ] || return 1
 
   if release_state_cli_available; then
     cli_cmd=(env)
@@ -279,7 +283,7 @@ write_release_state_snapshot() {
       [ -z "$field" ] && continue
       value="${!field:-}"
       cli_cmd+=("$field=$value")
-    done < <(release_state_list_fields "$snapshot_type")
+    done <<< "$fields"
 
     cli_cmd+=(
       node
@@ -291,18 +295,18 @@ write_release_state_snapshot() {
       "$state_path"
     )
 
-    "${cli_cmd[@]}"
+    "${cli_cmd[@]}" || return 1
     return 0
   fi
 
-  mkdir -p "$(dirname "$state_path")"
-  : > "$state_path"
+  mkdir -p "$(dirname "$state_path")" || return 1
+  : > "$state_path" || return 1
 
   while IFS= read -r field; do
     [ -z "$field" ] && continue
     value="${!field:-}"
-    printf '%s=%q\n' "$field" "$value" >> "$state_path"
-  done < <(release_state_list_fields "$snapshot_type")
+    printf '%s=%q\n' "$field" "$value" >> "$state_path" || return 1
+  done <<< "$fields"
 }
 
 write_current_release_state() {

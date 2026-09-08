@@ -200,3 +200,123 @@ printf 'DB_MIGRATED=%s\n' "$DB_MIGRATED" >> "$FIXTURE/phase.env"
     }
   });
 }
+
+test('real registry login failure cannot authorize preparation', () => {
+  const source = readFileSync(join(projectRoot, 'scripts/deploy-production-remote.sh'), 'utf8');
+  const login = source.slice(
+    source.indexOf('login_production_registry() {'),
+    source.indexOf('\ncleanup_production_disk_if_needed()')
+  );
+  const result = spawnSync(
+    'bash',
+    [
+      '-c',
+      `
+    set -euo pipefail
+    ${login}
+    GHCR_TOKEN=fixture
+    GHCR_USERNAME=fixture
+    docker() { return 1; }
+    if login_production_registry; then echo accepted; else echo rejected; fi
+    printf 'logged=%s\\n' "\${PRODUCTION_REGISTRY_LOGGED_IN:-0}"
+  `,
+    ],
+    { encoding: 'utf8' }
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, 'rejected\nlogged=0\n');
+});
+
+test('real release snapshot helper propagates CLI failure under a conditional caller', () => {
+  const result = spawnSync(
+    'bash',
+    [
+      '-c',
+      `
+    set -euo pipefail
+    source scripts/lib/release-state.sh
+    release_state_cli_available() { return 0; }
+    release_state_cli_path() { printf fixture; }
+    release_state_list_fields() { printf APP_SHA; }
+    env() { return 37; }
+    if write_release_state_snapshot current-runtime /dev/null; then echo accepted; else echo rejected; fi
+  `,
+    ],
+    { cwd: projectRoot, encoding: 'utf8' }
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, 'rejected\n');
+});
+
+for (const cli of [true, false]) {
+  test(`snapshot field discovery failure propagates (CLI ${cli})`, () => {
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        `
+      source scripts/lib/release-state.sh
+      release_state_cli_available() { ${cli ? 'return 0' : 'return 1'}; }
+      release_state_cli_path() { printf fixture; }
+      release_state_list_fields() { return 37; }
+      env() { return 0; }
+      if write_release_state_snapshot current-runtime /dev/null; then echo accepted; else echo rejected; fi
+    `,
+      ],
+      { cwd: projectRoot, encoding: 'utf8' }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'rejected\n');
+  });
+}
+
+for (const writer of ['helper', 'copy']) {
+  test(`rollback activation propagates snapshot ${writer} failure`, () => {
+    const root = mkdtempSync(join(tmpdir(), 'cp-rollback-snapshot-'));
+    writeFileSync(join(root, 'previous'), 'previous');
+    try {
+      const result = spawnSync(
+        'bash',
+        [
+          '-c',
+          `
+        source scripts/lib/deployment-state.sh
+        DEPLOYMENT_STATE_CURRENT_FILE="$1/current"
+        DEPLOYMENT_STATE_PREVIOUS_FILE="$1/previous"
+        deployment_state_v2_pointer_present() { return 0; }
+        deployment_state_activate_v2_previous_release() { return 0; }
+        ${writer === 'helper' ? 'write_current_release_state() { return 1; }' : 'unset -f write_current_release_state; cp() { return 1; }'}
+        if deployment_state_activate_previous_release; then echo accepted; else echo rejected; fi
+      `,
+          'rollback-snapshot',
+          root,
+        ],
+        { cwd: projectRoot, encoding: 'utf8' }
+      );
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout, 'rejected\n');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test('real field-list CLI failure rejects partial output before snapshot writing', () => {
+  const result = spawnSync(
+    'bash',
+    [
+      '-c',
+      `
+    source scripts/lib/release-state.sh
+    release_state_cli_available() { return 0; }
+    release_state_cli_path() { printf fixture; }
+    node() { printf APP_SHA; return 37; }
+    env() { echo writer-called; return 0; }
+    if write_release_state_snapshot current-runtime /dev/null; then echo accepted; else echo rejected; fi
+  `,
+    ],
+    { cwd: projectRoot, encoding: 'utf8' }
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, 'rejected\n');
+});

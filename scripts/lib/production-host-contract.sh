@@ -103,6 +103,7 @@ production_host_contract_write_report() {
   local status="$2"
   local errors_csv="${3:-}"
   local state_root="${4:-${CLASSROOMPATH_DEPLOY_ROOT:-}/release-state}"
+  local deploy_root="${5:-${CLASSROOMPATH_DEPLOY_ROOT:-}}"
   local tmp_file=""
   local node_status="absent"
   local npm_status="absent"
@@ -112,7 +113,7 @@ production_host_contract_write_report() {
   tmp_file="$(mktemp "${report_path}.tmp.XXXXXX")" || return 1
   if production_host_contract_command_available node; then node_status="present"; fi
   if production_host_contract_command_available npm; then npm_status="present"; fi
-  disk_usage="$(production_host_contract_disk_usage_percent "${CLASSROOMPATH_DEPLOY_ROOT:-/}" || true)"
+  disk_usage="$(production_host_contract_disk_usage_percent "${deploy_root:-/}" || true)"
 
   {
     printf '{\n'
@@ -123,19 +124,47 @@ production_host_contract_write_report() {
     printf '  "npmRequired":false,\n'
     printf '  "nodeObserved":"%s",\n' "$node_status"
     printf '  "npmObserved":"%s",\n' "$npm_status"
-    printf '  "deployRoot":"%s",\n' "$(production_host_contract_json_escape "${CLASSROOMPATH_DEPLOY_ROOT:-}")"
+    printf '  "deployRoot":"%s",\n' "$(production_host_contract_json_escape "$deploy_root")"
     printf '  "stateRoot":"%s",\n' "$(production_host_contract_json_escape "$state_root")"
     printf '  "diskUsagePercent":"%s",\n' "$(production_host_contract_json_escape "$disk_usage")"
     printf '  "errors":[%s]\n' "$errors_csv"
     printf '}\n'
-  } > "$tmp_file"
-  install -m 600 "$tmp_file" "$report_path"
+  } > "$tmp_file" || {
+    rm -f "$tmp_file"
+    return 1
+  }
+  if ! install -m 600 "$tmp_file" "$report_path"; then
+    rm -f "$tmp_file"
+    return 1
+  fi
   rm -f "$tmp_file"
+}
+
+# Exercise the same create/write/rename primitives used by durable state.
+# Probe only temporary files; never replace release metadata or follow a state
+# root symlink. A not-yet-created state root is checked through its parent.
+production_host_contract_probe_directory() {
+  local directory="$1"
+  local probe=""
+  local mode=""
+  [ -d "$directory" ] && [ -r "$directory" ] && [ -w "$directory" ] && [ -x "$directory" ] || return 1
+  probe="$(mktemp "$directory/.host-contract.XXXXXX")" || return 1
+  # Recovery requires this exact GNU-style stat interface and private files.
+  if ! mode="$(stat -c '%a' -- "$probe")" || [ "$mode" != 600 ] ||
+    ! printf 'preflight\n' > "$probe" || ! mv -f "$probe" "$probe.renamed"; then
+    rm -f "$probe" "$probe.renamed"
+    return 1
+  fi
+  rm -f "$probe.renamed" || return 1
+}
+
+production_host_contract_disk_percentage_valid() {
+  [[ "$1" =~ ^[0-9]{1,3}$ ]] && [ "$((10#$1))" -le 100 ]
 }
 
 production_host_contract_validate() {
   local deploy_root="${1:-${CLASSROOMPATH_DEPLOY_ROOT:-}}"
-  local disk_threshold="${2:-$PRODUCTION_HOST_DISK_THRESHOLD_PERCENT}"
+  local disk_threshold="${2-$PRODUCTION_HOST_DISK_THRESHOLD_PERCENT}"
   local report_path="${3:-${PRODUCTION_HOST_CONTRACT_REPORT_FILE:-}}"
   local command_name=""
   local errors=()
@@ -157,17 +186,19 @@ production_host_contract_validate() {
 
   if [ -z "$deploy_root" ] || [ ! -d "$deploy_root" ]; then
     errors+=("deploy-root-missing")
-  elif [ ! -r "$deploy_root" ] || [ ! -w "$deploy_root" ]; then
+  elif ! production_host_contract_probe_directory "$deploy_root"; then
     errors+=("deploy-root-not-writable")
   fi
 
   state_root="${deploy_root%/}/release-state"
-  if [ -d "$state_root" ] && { [ ! -r "$state_root" ] || [ ! -w "$state_root" ]; }; then
+  if [ -L "$state_root" ] || { [ -e "$state_root" ] && ! production_host_contract_probe_directory "$state_root"; }; then
     errors+=("release-state-root-not-usable")
   fi
 
   disk_usage="$(production_host_contract_disk_usage_percent "${deploy_root:-/}" || true)"
-  if ! [[ "$disk_usage" =~ ^[0-9]+$ ]] || [ "$disk_usage" -gt "$disk_threshold" ]; then
+  if ! production_host_contract_disk_percentage_valid "$disk_usage" ||
+    ! production_host_contract_disk_percentage_valid "$disk_threshold" ||
+    [ "$((10#$disk_usage))" -gt "$((10#$disk_threshold))" ]; then
     errors+=("disk-threshold-exceeded")
   fi
 
@@ -185,7 +216,7 @@ production_host_contract_validate() {
     done
   fi
 
-  production_host_contract_write_report "$report_path" "$ok" "$error_json" "$state_root" || return 1
+  production_host_contract_write_report "$report_path" "$ok" "$error_json" "$state_root" "$deploy_root" || return 1
   if [ "$ok" != true ]; then
     production_host_contract_log_error "Production host contract failed: ${errors[*]}"
     return 1
