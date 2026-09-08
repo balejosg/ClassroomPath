@@ -361,6 +361,7 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
 const PROMOTION_GATE_IDS = new Set([
   'verify-clean-repos',
   'verify-staging-exact',
+  'verify-candidate-tooling',
   'production-readiness',
   'release-preflight',
 ]);

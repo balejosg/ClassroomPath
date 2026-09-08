@@ -137,7 +137,7 @@ function buildRcFirstPromotionPlan({
           `locator_file=${quoteShellArg(releaseBundleStateFile)}`,
           'test -s "$locator_file"',
           'set -a && . "$locator_file" && set +a',
-          'bash scripts/require-main-branch.sh git ClassroomPath',
+          'bash scripts/require-canonical-operator-tooling.sh',
           'git diff --quiet --ignore-submodules=dirty',
           'git diff --cached --quiet --ignore-submodules=dirty',
           'git -C upstream/openpath diff --quiet',
@@ -160,6 +160,7 @@ function buildRcFirstPromotionPlan({
           `contract_file=${quoteShellArg(join(releaseBundleDir, 'openpath-promotion-contract.json'))}`,
           'test -s "$locator_file" && test -s "$bundle_file" && test -s "$contract_file"',
           'set -a && . "$locator_file" && set +a',
+          'bash scripts/require-canonical-operator-tooling.sh',
           `test "$STAGING_RELEASE_RUN_ID" = ${quoteShellArg(rcRunId)}`,
           'git cat-file -e "$STAGING_CLASSROOMPATH_SHA^{commit}"',
           'test "$(git rev-parse "$STAGING_CLASSROOMPATH_SHA:upstream/openpath")" = "$STAGING_OPENPATH_SHA"',
@@ -210,6 +211,18 @@ function buildRcFirstPromotionPlan({
         ].join('\n'),
       ],
       'Verify staging runtime, persisted state, health, readiness, and exact RC identity.'
+    ),
+    step(
+      'verify-candidate-tooling',
+      [
+        'bash',
+        '-lc',
+        [
+          `set -a && . ${quoteShellArg(releaseBundleStateFile)} && set +a`,
+          `node scripts/verify-candidate-tooling.mjs --candidate-sha "$STAGING_CLASSROOMPATH_SHA" --rc-run-id "$STAGING_RELEASE_RUN_ID" --tag ${quoteShellArg(tag)} --release-id "$STAGING_RELEASE_ID" --openpath-sha "$STAGING_OPENPATH_SHA" --contract-sha256 "$STAGING_OPENPATH_CONTRACT_SHA256" --bundle-file ${quoteShellArg(join(releaseBundleDir, 'classroompath-release-bundle.json'))} --contract-file ${quoteShellArg(join(releaseBundleDir, 'openpath-promotion-contract.json'))} --staging-current ${quoteShellArg(join(identityRoot, 'staging-current-images.env'))} --staging-verification ${quoteShellArg(join(identityRoot, 'staging-verification.env'))}`,
+        ].join('\n'),
+      ],
+      'Run candidate-owned Release Bundle, tag-evidence, and readiness-contract compatibility checks from the exact RC commit.'
     ),
     step(
       'production-readiness',

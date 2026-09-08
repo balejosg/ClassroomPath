@@ -50,6 +50,7 @@ describe('release promotion orchestration', () => {
         'deploy-staging',
         'ensure-windows-prepromotion-evidence',
         'verify-staging-exact',
+        'verify-candidate-tooling',
         'production-readiness',
         'release-preflight',
         'approval',
@@ -133,8 +134,7 @@ describe('release promotion orchestration', () => {
     const command = formatCommand(identityStep?.command);
 
     assert.ok(identityStep, 'promotion plan must include an identity gate');
-    assert.doesNotMatch(command, /git fetch origin main/u);
-    assert.doesNotMatch(command, /origin\/main/u);
+    assert.match(command, /scripts\/require-canonical-operator-tooling\.sh/u);
     assert.match(command, /STAGING_RELEASE_RUN_ID/u);
     assert.match(command, /release-bundle\.mjs verify/u);
     assert.match(command, /STAGING_CLASSROOMPATH_SHA/u);
@@ -225,6 +225,41 @@ describe('release promotion orchestration', () => {
     assert.match(command, /git -C upstream\/openpath diff --quiet/);
     assert.doesNotMatch(command, /ensure-openpath-submodule-on-main\.sh/);
     assert.doesNotMatch(command, /upstream\/openpath.*origin\/main/);
+  });
+
+  it('requires canonical operator tooling while keeping the selected RC candidate independent', () => {
+    const plan = buildPromotionPlan({ tag: 'v1.2.3' });
+    const verifyStep = plan.steps.find((step) => step.id === 'verify-clean-repos');
+    const command = formatCommand(verifyStep?.command);
+
+    assert.match(command, /scripts\/require-canonical-operator-tooling\.sh/u);
+    const canonicalTooling = readFileSync(
+      new URL('../scripts/require-canonical-operator-tooling.sh', import.meta.url),
+      'utf8'
+    );
+    assert.match(canonicalTooling, /git fetch --prune origin main/u);
+    assert.match(canonicalTooling, /git rev-parse HEAD/u);
+    assert.match(canonicalTooling, /git rev-parse origin\/main/u);
+    assert.match(canonicalTooling, /operator tooling is not canonical origin\/main/u);
+    assert.match(command, /STAGING_CLASSROOMPATH_SHA/u);
+    assert.doesNotMatch(command, /STAGING_CLASSROOMPATH_SHA.*git rev-parse HEAD/u);
+  });
+
+  it('runs candidate-owned compatibility validation before production readiness', () => {
+    const plan = buildPromotionPlan({ tag: 'v1.2.3' });
+    const ids = plan.steps.map((step) => step.id);
+    const candidateToolingIndex = ids.indexOf('verify-candidate-tooling');
+
+    assert.ok(candidateToolingIndex > ids.indexOf('verify-staging-exact'));
+    assert.ok(candidateToolingIndex < ids.indexOf('production-readiness'));
+
+    const command = formatCommand(plan.steps[candidateToolingIndex]?.command);
+    assert.match(command, /scripts\/verify-candidate-tooling\.mjs/u);
+    assert.match(command, /--candidate-sha "\$STAGING_CLASSROOMPATH_SHA"/u);
+    assert.match(command, /--rc-run-id "\$STAGING_RELEASE_RUN_ID"/u);
+    assert.match(command, /--release-id "\$STAGING_RELEASE_ID"/u);
+    assert.match(command, /--openpath-sha "\$STAGING_OPENPATH_SHA"/u);
+    assert.match(command, /--contract-sha256 "\$STAGING_OPENPATH_CONTRACT_SHA256"/u);
   });
 
   it('builds a polling command for the tag-triggered deploy run', () => {
@@ -421,6 +456,7 @@ describe('release promotion orchestration', () => {
       'deploy-staging',
       'ensure-windows-prepromotion-evidence',
       'verify-staging-exact',
+      'verify-candidate-tooling',
       'production-readiness',
       'release-preflight',
       'tag-production',
@@ -428,6 +464,33 @@ describe('release promotion orchestration', () => {
       'verify-production-health',
       'report-residual-actions-runs',
     ]);
+  });
+
+  it('stops before tag creation when candidate-owned tooling compatibility fails', async () => {
+    const executedSteps = [];
+
+    const result = await runReleasePromoteCommand(
+      ['--tag', 'v0.0.0', '--execute', '--no-high-risk-windows', '--local-only'],
+      {
+        stdout: () => {},
+        stderr: () => {},
+        runStep: async (step) => {
+          executedSteps.push(step.id);
+          return step.id === 'verify-candidate-tooling'
+            ? {
+                id: step.id,
+                status: 'failed',
+                seconds: 0,
+                stderr: 'candidate tooling is incompatible with the exact promotion identity',
+              }
+            : { id: step.id, status: 'success', seconds: 0 };
+        },
+      }
+    );
+
+    assert.equal(result.status, 1);
+    assert.ok(executedSteps.includes('verify-candidate-tooling'));
+    assert.equal(executedSteps.includes('tag-production'), false);
   });
 
   it('refreshes stale Windows prepromotion evidence once and retries staging verification', async () => {

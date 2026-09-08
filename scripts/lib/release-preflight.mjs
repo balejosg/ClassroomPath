@@ -309,22 +309,24 @@ export async function runReleasePreflight({
     inferNextTag(effectiveStatus);
   const gitStatus = readGit(runCommand, ['status', '--porcelain'], env);
   const head = readGit(runCommand, ['rev-parse', 'HEAD'], env);
-  const originMain = exactIdentity.candidateSha
-    ? ''
-    : readGit(runCommand, ['rev-parse', 'origin/main'], env);
+  const originMain = readGit(runCommand, ['rev-parse', 'origin/main'], env);
   const existingTag = tag ? readGit(runCommand, ['tag', '--list', tag], env) : '';
 
   const checks = {
     cleanCheckout: gitStatus
       ? failedCheck('checkout-not-clean', 'checkout has uncommitted changes')
       : okCheck('checkout is clean'),
-    headAtCandidate: exactIdentity.candidateSha
-      ? okCheck(
-          `operator HEAD ${head} is decoupled from the selected RC ${exactIdentity.candidateSha}; explicit RC identity remains authoritative`
-        )
-      : originMain === head
-        ? okCheck('HEAD matches origin/main')
-        : failedCheck('classroompath-head-not-origin-main', 'HEAD does not match origin/main'),
+    headAtCandidate:
+      originMain === head
+        ? exactIdentity.candidateSha
+          ? okCheck(
+              `operator tooling HEAD ${head} matches origin/main; explicit RC ${exactIdentity.candidateSha} remains authoritative`
+            )
+          : okCheck('HEAD matches origin/main')
+        : failedCheck(
+            'classroompath-head-not-origin-main',
+            `operator tooling HEAD ${head || 'missing'} does not match origin/main ${originMain || 'missing'}`
+          ),
     exactPromotionIdentity: checkExactPromotionIdentity(
       effectiveStatus,
       runCommand,

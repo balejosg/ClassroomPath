@@ -56,6 +56,7 @@ describe('release:promote RC-first contract', () => {
         'verify-promotion-identity',
         'deploy-staging',
         'verify-staging-exact',
+        'verify-candidate-tooling',
         'production-readiness',
         'release-preflight',
         'approval',
@@ -75,6 +76,10 @@ describe('release:promote RC-first contract', () => {
     assert.match(commandsById['deploy-staging'], /deploy:staging.*--rc-run-id/u);
     assert.match(commandsById['production-readiness'], /verify:production-readiness/u);
     assert.match(commandsById['production-readiness'], /--rc-run-id/u);
+    assert.match(
+      commandsById['verify-candidate-tooling'],
+      /scripts\/verify-candidate-tooling\.mjs/u
+    );
     assert.match(commandsById['tag-production'], /--rc-run-id "\$STAGING_RELEASE_RUN_ID"/u);
   });
 

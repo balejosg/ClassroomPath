@@ -60,6 +60,7 @@ const ALL_STEP_IDS = [
   'deploy-staging',
   'ensure-windows-prepromotion-evidence',
   'verify-staging-exact',
+  'verify-candidate-tooling',
   'production-readiness',
   'release-preflight',
   'approval',
@@ -75,6 +76,7 @@ const ALL_STEP_IDS = [
 const GATE_IDS = [
   'verify-clean-repos',
   'verify-staging-exact',
+  'verify-candidate-tooling',
   'production-readiness',
   'release-preflight',
 ];

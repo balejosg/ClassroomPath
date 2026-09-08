@@ -296,7 +296,11 @@ test('explicit RC preflight accepts a newer clean operator HEAD and keeps the RC
   const candidateA = 'a'.repeat(40);
   const operatorHeadB = 'b'.repeat(40);
   const releaseId = 'c'.repeat(64);
-  const harness = createHarness({ head: operatorHeadB, candidateOpenpath: OPENPATH_SHA });
+  const harness = createHarness({
+    head: operatorHeadB,
+    originMain: operatorHeadB,
+    candidateOpenpath: OPENPATH_SHA,
+  });
   const status = {
     ...healthyStatus,
     classroompath: {
@@ -368,6 +372,89 @@ test('explicit RC preflight accepts a newer clean operator HEAD and keeps the RC
   assert.ok(
     harness.calls.some((call) => call.args.includes(`${candidateA}:upstream/openpath`)),
     'exact RC preflight must verify the OpenPath gitlink from candidate A'
+  );
+});
+
+test('explicit RC preflight blocks non-canonical operator tooling without changing the RC candidate', async () => {
+  const candidateA = 'a'.repeat(40);
+  const operatorHeadX = 'b'.repeat(40);
+  const canonicalOriginMainB = 'c'.repeat(40);
+  const releaseId = 'd'.repeat(64);
+  const harness = createHarness({
+    head: operatorHeadX,
+    originMain: canonicalOriginMainB,
+    candidateOpenpath: OPENPATH_SHA,
+  });
+  const status = {
+    ...healthyStatus,
+    classroompath: {
+      ...healthyStatus.classroompath,
+      headSha: operatorHeadX,
+      originMainSha: canonicalOriginMainB,
+    },
+    releaseCandidate: {
+      ...healthyStatus.releaseCandidate,
+      latestRun: {
+        ...healthyStatus.releaseCandidate.latestRun,
+        databaseId: 123456,
+        headSha: candidateA,
+        event: 'push',
+      },
+      manifest: {
+        ...healthyStatus.releaseCandidate.manifest,
+        app_sha: candidateA,
+      },
+    },
+    staging: {
+      ...healthyStatus.staging,
+      currentImages: {
+        ...healthyStatus.staging.currentImages,
+        APP_SHA: candidateA,
+        RELEASE_ID: releaseId,
+        RC_RUN_ID: '123456',
+        OPENPATH_SHA,
+        OPENPATH_CONTRACT_SHA256: 'd'.repeat(64),
+      },
+      verification: {
+        ...healthyStatus.staging.verification,
+        STAGING_VERIFIED_APP_SHA: candidateA,
+        STAGING_VERIFIED_RELEASE_ID: releaseId,
+        STAGING_VERIFIED_RC_RUN_ID: '123456',
+        STAGING_VERIFIED_OPENPATH_SHA: OPENPATH_SHA,
+        STAGING_VERIFIED_OPENPATH_CONTRACT_SHA256: 'd'.repeat(64),
+      },
+    },
+  };
+
+  const result = await runReleasePreflight({
+    status,
+    nextTag: 'v1.2.3',
+    env: {
+      STAGING_HOST: 'staging.internal',
+      DEPLOY_HOST: 'prod.internal',
+      PROXMOX_HOST: 'proxmox.internal',
+      RELEASE_PREFLIGHT_CANDIDATE_SHA: candidateA,
+      RELEASE_PREFLIGHT_RC_RUN_ID: '123456',
+      RELEASE_PREFLIGHT_RELEASE_ID: releaseId,
+      RELEASE_PREFLIGHT_OPENPATH_SHA: OPENPATH_SHA,
+      RELEASE_PREFLIGHT_CONTRACT_SHA256: 'd'.repeat(64),
+    },
+    runCommand: harness.runCommand,
+    projectRootOverride: NO_ENV_LOCAL_PROJECT_ROOT,
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.blockers.includes('classroompath-head-not-origin-main'));
+  assert.equal(result.checks.headAtCandidate.ok, false);
+  assert.match(result.checks.headAtCandidate.message, /origin\/main/);
+  assert.equal(result.checks.exactPromotionIdentity.ok, true);
+  assert.equal(result.checks.releaseCandidate.ok, true);
+  assert.equal(status.releaseCandidate.latestRun.headSha, candidateA);
+  assert.equal(status.staging.currentImages.APP_SHA, candidateA);
+  assert.equal(
+    harness.calls.some((call) => call.args.includes('HEAD:upstream/openpath')),
+    false,
+    'non-canonical operator tooling must not replace the explicit RC candidate identity'
   );
 });
 
