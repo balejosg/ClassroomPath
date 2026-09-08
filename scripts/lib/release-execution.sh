@@ -106,7 +106,7 @@ release_execution_mark_stage() {
       readiness|verification) deployment_transaction_mark_stage VERIFY ;;
       completed) deployment_transaction_mark_stage COMMIT ;;
       failed) deployment_transaction_mark_stage FAILED ;;
-    esac
+    esac || return 1
   fi
 
   if [ -n "${DEPLOY_CONTEXT_FILE:-}" ] && declare -f write_deploy_context_state >/dev/null 2>&1; then

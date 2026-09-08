@@ -122,26 +122,29 @@ write_release_runtime_state() {
 prepare_openpath_firefox_assets_from_image() {
   local image_ref="${1:-${OPENPATH_FIREFOX_ASSETS_IMAGE:-}}"
   local app_sha="${2:-${TARGET_SHA:-${STAGING_RELEASE_SHA:-current}}}"
+  local mode="${3:-activate}"
   local host_root="${OPENPATH_FIREFOX_RELEASE_HOST_ROOT:-${CLASSROOMPATH_DEPLOY_ROOT:-/srv/classroompath}/openpath-firefox-release}"
   local tmp_dir=""
   local target_dir=""
   local assets_container=""
   local generation_id=""
 
+  case "$mode" in activate|prepare-only) ;; *) return 1 ;; esac
+
   if [ -z "$image_ref" ]; then
     log_error "OPENPATH_FIREFOX_ASSETS_IMAGE is missing from release-candidate runtime"
     return 1
   fi
 
-  mkdir -p "$host_root"
-  tmp_dir="$(mktemp -d "$host_root/.tmp.XXXXXX")"
+  mkdir -p "$host_root" || return 1
+  tmp_dir="$(mktemp -d "$host_root/.tmp.XXXXXX")" || return 1
   generation_id="${RELEASE_ID:-$app_sha}"
   if [[ ! "$generation_id" =~ ^[A-Za-z0-9._-]+$ ]]; then
     log_error "OpenPath Firefox release generation id is invalid: $generation_id"
     rm -rf "$tmp_dir"
     return 1
   fi
-  mkdir -p "$host_root/generations"
+  mkdir -p "$host_root/generations" || return 1
   target_dir="$host_root/generations/generation-$generation_id"
 
   docker pull "$image_ref" || {
@@ -161,9 +164,9 @@ prepare_openpath_firefox_assets_from_image() {
     return 1
   fi
 
-  chmod 755 "$tmp_dir"
-  chmod 644 "$tmp_dir/metadata.json"
-  chmod 644 "$tmp_dir/openpath-firefox-extension.xpi"
+  chmod 755 "$tmp_dir" || return 1
+  chmod 644 "$tmp_dir/metadata.json" || return 1
+  chmod 644 "$tmp_dir/openpath-firefox-extension.xpi" || return 1
 
   docker rm "$assets_container" >/dev/null 2>&1 || true
   if [ -e "$target_dir" ]; then
@@ -175,11 +178,20 @@ prepare_openpath_firefox_assets_from_image() {
     fi
     rm -rf "$tmp_dir"
   else
-    mv "$tmp_dir" "$target_dir"
+    mv "$tmp_dir" "$target_dir" || return 1
   fi
-  ln -sfn "$target_dir" "$host_root/current"
-
-  export OPENPATH_FIREFOX_RELEASE_DIR="$host_root/current"
+  export OPENPATH_FIREFOX_RELEASE_DIR="$target_dir"
   export OPENPATH_FIREFOX_RELEASE_ROOT=/openpath-firefox-release
   export OPENPATH_FIREFOX_RELEASE_GENERATION="$target_dir"
+  if [ "$mode" = activate ]; then
+    activate_openpath_firefox_assets_generation || return 1
+  fi
+}
+
+activate_openpath_firefox_assets_generation() {
+  local generation="${OPENPATH_FIREFOX_RELEASE_GENERATION:-}"
+  local host_root="${OPENPATH_FIREFOX_RELEASE_HOST_ROOT:-${CLASSROOMPATH_DEPLOY_ROOT:-/srv/classroompath}/openpath-firefox-release}"
+  [ -d "$generation" ] && [ ! -L "$generation" ] || return 1
+  ln -sfn "$generation" "$host_root/current" || return 1
+  export OPENPATH_FIREFOX_RELEASE_DIR="$host_root/current"
 }

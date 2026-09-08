@@ -305,6 +305,12 @@ function requiredOption(options, key) {
 }
 
 export function runReleaseBundleStateCli(argv = process.argv.slice(2)) {
+  if (argv[0] === '--help') {
+    process.stdout.write(
+      'Usage: release-bundle-state.mjs persist|read|activate|capture-previous|activate-previous [options]\n'
+    );
+    return;
+  }
   const { command, options } = parseCliArgs(argv);
   const stateRoot = requiredOption(options, 'stateroot');
 

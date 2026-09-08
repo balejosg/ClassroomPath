@@ -119,6 +119,11 @@ async function main() {
   const { command, options } = parseArgs(process.argv.slice(2));
 
   switch (command) {
+    case '--help':
+      process.stdout.write(
+        'Usage: release-state-cli.mjs write-snapshot|list-fields|verify-staging|verify-promotion-ready [options]\n'
+      );
+      return;
     case 'write-snapshot': {
       const snapshotType = requireOption(options, 'snapshot-type');
       const outputPath = requireOption(options, 'output');

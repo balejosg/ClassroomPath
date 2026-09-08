@@ -205,7 +205,12 @@ test('production deploy pins recovery to an external immutable SHA, never the ca
   assert.match(job, /[Pp]ro[a-z -]*40|[Ff]ull.*SHA/u);
   assert.match(job, /git rev-parse HEAD/u);
   assert.match(job, /recovery_sha|recovery source/i);
-  assert.doesNotMatch(job, /ref: \$\{\{ github\.sha \}\}/u);
+  // Candidate tooling may coordinate preflight on the runner; only the
+  // checkout supplying recovery bytes must be independent of the candidate.
+  const recoveryCheckout = parseYaml(job)['prepare-production-recovery'].steps.find(
+    (step: { with?: { path?: string } }) => step.with?.path === 'recovery-source'
+  );
+  assert.equal(recoveryCheckout.with.ref, '${{ vars.PRODUCTION_RECOVERY_SHA }}');
   assert.doesNotMatch(job, /source_sha=.*GITHUB_SHA/u);
   assert.match(job, /source_version/u);
   assert.match(job, /contract_version/u);

@@ -202,6 +202,7 @@ cleanup_production_deploy_artifacts() {
     "${RELEASE_BUNDLE_FILE:-}" \
     "${OPENPATH_CONTRACT_FILE:-}" \
     "${RELEASE_BUNDLE_RUNTIME_FILE:-}" \
+    "${PRODUCTION_CANDIDATE_ENV_FILE:-}" \
     "${DEPLOY_PAYLOAD_FILE:-}"
   if [ "${PRODUCTION_REGISTRY_LOGGED_IN:-0}" = "1" ]; then
     docker logout ghcr.io >/dev/null 2>&1 || true
@@ -630,11 +631,9 @@ classify_production_migration_risk() {
     "$CANDIDATE_RELEASE_ID" \
     "$CURRENT_RELEASE_ID" || return 1
 
-  if command -v node >/dev/null 2>&1; then
-    release_execution_classify_migration_risk "$APP_DIR" "$PREVIOUS_APP_SHA" "$TARGET_SHA"
-  else
-    classify_migration_risk_without_node
-  fi
+  # Use the same host contract even when an unrelated Node binary happens to
+  # be installed. Production must not select a different executor by PATH.
+  classify_migration_risk_without_node || return 1
 
   if [ "${MIGRATION_RISK_LEVEL:-safe}" = "destructive" ]; then
     log_warn "Destructive migration risk detected: ${MIGRATION_DESTRUCTIVE_FILES:-unknown files}"
@@ -649,22 +648,24 @@ run_production_database_migrations() {
   FAILURE_CATEGORY="migration"
   FAILURE_MESSAGE="production migration or switch preparation failed"
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
-  release_execution_mark_stage migrations
+  release_execution_mark_stage migrations || return 1
 
-  cleanup_production_disk_if_needed
-  login_production_registry
+  production_runtime_activate_prepared_files || return 1
+
+  cleanup_production_disk_if_needed || return 1
+  login_production_registry || return 1
 
   log_info "Checking transactional email delivery..."
   CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA="${CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA:-0}" \
     CP_EMAIL_PREFLIGHT_MODE="${CP_EMAIL_PREFLIGHT_MODE:-required}" \
     CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" \
-    bash scripts/check-email-delivery-docker.sh
+    bash scripts/check-email-delivery-docker.sh || return 1
 
   log_info "Running database migrations from the release candidate runner..."
-  bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"
+  bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
 
   DB_MIGRATED=1
-  release_execution_mark_stage startup
+  release_execution_mark_stage startup || return 1
 }
 
 production_runtime_adapter_migrate() {

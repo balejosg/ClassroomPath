@@ -88,5 +88,8 @@ tmp_file="$(mktemp "$output_file.tmp.XXXXXX")" || exit 1
   exit 1
 }
 
-install -m 600 "$tmp_file" "$output_file"
+if ! install -m 600 "$tmp_file" "$output_file"; then
+  rm -f "$tmp_file"
+  exit 1
+fi
 rm -f "$tmp_file"

@@ -202,7 +202,11 @@ production_deployment_diagnostic_run() {
     printf '  "candidateRuntimeAvailable":%s\n' "$(if [ -s "$pending_runtime_file" ]; then printf true; else printf false; fi)"
     printf '}\n'
   } > "$tmp_file"
-  install -m 600 "$tmp_file" "$output_file"
+  if ! install -m 600 "$tmp_file" "$output_file"; then
+    rm -f "$tmp_file"
+    rm -rf "$output_dir"
+    return 1
+  fi
   rm -f "$tmp_file"
   rm -rf "$output_dir"
   printf '%s\n' "$output_file"

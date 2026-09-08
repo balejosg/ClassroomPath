@@ -25,6 +25,8 @@ Rules:
 
 ## Canonical Contracts
 
+- Production executor, mutation boundary, and evidence limits: [`docs/contracts/production-executor.md`](contracts/production-executor.md)
+
 - Environment variables and runtime policy: [`docs/contracts/env.md`](contracts/env.md)
 - Public routes, passthroughs, and port wiring: [`docs/contracts/routes-ports.md`](contracts/routes-ports.md)
 - Cross-system mutation ledger and retry model: [`docs/contracts/cross-system-mutations.md`](contracts/cross-system-mutations.md)

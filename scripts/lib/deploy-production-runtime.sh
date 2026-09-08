@@ -176,27 +176,37 @@ validate_production_runtime_projection_live() {
 }
 
 production_runtime_adapter_prepare() {
-  cd "$APP_DIR/docker"
+  FAILURE_POINT=host-contract
+  FAILURE_CATEGORY=host-contract
+  FAILURE_MESSAGE='production runtime preparation prerequisites failed'
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  cd "$APP_DIR/docker" || return 1
+  declare -f activate_openpath_firefox_assets_generation >/dev/null 2>&1 || return 1
+  declare -f production_runtime_activate_prepared_files >/dev/null 2>&1 || return 1
   export COMPOSE_PROJECT_NAME=classroompath-production
   configure_deploy_container_platform "${PRODUCTION_CONTAINER_PLATFORM:-linux/amd64}" || return 1
   verify_deploy_container_platform || return 1
   ensure_production_release_candidate_runtime_env || return 1
 
   if declare -f cleanup_production_disk_if_needed >/dev/null 2>&1; then
-    cleanup_production_disk_if_needed
+    cleanup_production_disk_if_needed || return 1
   fi
 
-  login_production_registry
+  login_production_registry || return 1
 
   log_info "Preparing OpenPath Firefox release assets..."
-  prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "${TARGET_SHA:-current}"
+  FAILURE_POINT=firefox-assets
+  FAILURE_CATEGORY=runtime-projection
+  FAILURE_MESSAGE='candidate Firefox assets could not be prepared'
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "${TARGET_SHA:-current}" prepare-only || return 1
 
   log_info "Pulling immutable release images..."
   FAILURE_POINT="docker-pull"
   FAILURE_CATEGORY="image-pull"
   FAILURE_MESSAGE="immutable production image pull failed"
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
-  docker compose pull gateway api windows-offline-installer-provision spa
+  docker compose pull gateway api windows-offline-installer-provision spa || return 1
 
   # Persist the candidate bundle and runtime projection before stopping the
   # known-good containers. This makes every post-switch state recoverable and
@@ -225,26 +235,45 @@ production_runtime_adapter_prepare() {
     "$OPENPATH_SHA" \
     "$OPENPATH_CONTRACT_SHA256" \
     "$CLASSROOMPATH_VERIFIER_IMAGE" \
-    "$RC_RUN_ID"
+    "$RC_RUN_ID" || return 1
 
   deployment_state_persist_v2_release \
     "$RELEASE_BUNDLE_FILE" \
     "$OPENPATH_CONTRACT_FILE" \
     "$RELEASE_ID" \
-    "$RC_RUN_ID"
+    "$RC_RUN_ID" || return 1
 
   FAILURE_POINT="runtime-projection"
   FAILURE_CATEGORY="state-write"
   FAILURE_MESSAGE="candidate runtime projection materialization failed"
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  PRODUCTION_CANDIDATE_ENV_FILE="$(mktemp "$STATE_DIR/candidate-config.XXXXXX")" || return 1
+  export PRODUCTION_CANDIDATE_ENV_FILE
+  cp "$APP_DIR/config/.env" "$PRODUCTION_CANDIDATE_ENV_FILE" || return 1
+  chmod 600 "$PRODUCTION_CANDIDATE_ENV_FILE" || return 1
   apply_release_runtime_projection_to_env_file \
     "${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/$RELEASE_ID/runtime.env" \
-    "$APP_DIR/config/.env"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
+    "$PRODUCTION_CANDIDATE_ENV_FILE" || return 1
+  upsert_env_file_var "$PRODUCTION_CANDIDATE_ENV_FILE" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release || return 1
   export CP_REQUIRE_PUSH_NOTIFICATIONS=1
-  bash "$APP_DIR/scripts/sync-billing-env.sh" "$APP_DIR/config/.env"
-  bash "$APP_DIR/scripts/validate-runtime-config-docker.sh" --app-dir "$APP_DIR" --env-file "$APP_DIR/config/.env"
+  bash "$APP_DIR/scripts/sync-billing-env.sh" "$PRODUCTION_CANDIDATE_ENV_FILE" || return 1
+  bash "$APP_DIR/scripts/validate-runtime-config-docker.sh" --app-dir "$APP_DIR" --env-file "$PRODUCTION_CANDIDATE_ENV_FILE" || return 1
 
+}
+
+production_runtime_activate_prepared_files() {
+  local installed_env=""
+  [ "${MUTATION_BOUNDARY_REACHED:-0}" = 1 ] || return 1
+  [ -f "${PRODUCTION_CANDIDATE_ENV_FILE:-}" ] && [ ! -L "$PRODUCTION_CANDIDATE_ENV_FILE" ] || return 1
+  # Install only the config already validated in PREPARE. The sensitive temp
+  # file is removed by the entrypoint's EXIT cleanup on success or failure.
+  installed_env="$(mktemp "$APP_DIR/config/.env.candidate.XXXXXX")" || return 1
+  if ! install -m 600 "$PRODUCTION_CANDIDATE_ENV_FILE" "$installed_env" ||
+    ! mv -f "$installed_env" "$APP_DIR/config/.env"; then
+    rm -f "$installed_env"
+    return 1
+  fi
+  activate_openpath_firefox_assets_generation || return 1
 }
 
 production_runtime_adapter_switch() {
@@ -253,11 +282,11 @@ production_runtime_adapter_switch() {
   FAILURE_MESSAGE="production candidate container switch failed"
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
   log_info "Stopping existing containers..."
-  docker compose down --remove-orphans
+  docker compose down --remove-orphans || return 1
   docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
   docker rm -f classroompath-production-api-1 classroompath-production-gateway-1 classroompath-production-spa-1 2>/dev/null || true
   log_info "Starting containers from immutable images..."
-  docker compose up -d --force-recreate --no-build
+  docker compose up -d --force-recreate --no-build || return 1
 }
 
 production_runtime_adapter_validate_live() {

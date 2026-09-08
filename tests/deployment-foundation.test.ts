@@ -266,7 +266,7 @@ describe('Deployment foundation contracts', () => {
     assert.ok(existsSync(syncBillingEnvScriptPath));
     assert.ok(
       productionRuntime.includes(
-        'bash "$APP_DIR/scripts/sync-billing-env.sh" "$APP_DIR/config/.env"'
+        'bash "$APP_DIR/scripts/sync-billing-env.sh" "$PRODUCTION_CANDIDATE_ENV_FILE"'
       )
     );
     assert.ok(

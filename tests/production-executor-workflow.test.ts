@@ -1,9 +1,47 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
 const projectRoot = resolve(import.meta.dirname, '..');
+
+for (const fallback of [false, true]) {
+  test(`diagnostic ${fallback ? 'fallback' : 'primary'} fails when output installation fails`, () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'cp-diagnostic-write-'));
+    mkdirSync(resolve(root, 'release-state'));
+    const stateFile = resolve(root, 'release-state/deployment-phase.env');
+    writeFileSync(stateFile, 'MUTATION_BOUNDARY_REACHED=0\n');
+    try {
+      const script = fallback
+        ? 'scripts/lib/production-deployment-diagnostic-fallback.sh'
+        : 'scripts/production-deployment-diagnostic.sh';
+      const result = spawnSync(
+        'bash',
+        [
+          '-c',
+          `
+        install() { return 1; }
+        source "$1" "$2" "$3"
+        ${fallback ? '' : 'production_deployment_diagnostic_run'}
+      `,
+          'diagnostic',
+          resolve(projectRoot, script),
+          stateFile,
+          resolve(root, 'output.json'),
+        ],
+        {
+          encoding: 'utf8',
+          env: { ...process.env, CLASSROOMPATH_DEPLOY_ROOT: root },
+        }
+      );
+      assert.notEqual(result.status, 0, result.stdout);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
 const deployWorkflow = readFileSync(resolve(projectRoot, '.github/workflows/deploy.yml'), 'utf8');
 const smokeWorkflow = readFileSync(
   resolve(projectRoot, '.github/workflows/smoke-tests.yml'),

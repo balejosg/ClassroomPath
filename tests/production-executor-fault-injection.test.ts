@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+// Keep real-shell regressions in the canonical deployment suite as well as
+// the pure state model below.
+import './production-adapter-failures.test.ts';
+import './deploy-runtime-executor.test.ts';
+
 import {
   POST_SWITCH_FAULT_POINTS,
   PRODUCTION_EXECUTOR_FAULT_POINTS,

@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
+import { checkReleaseVerifierPackage } from '../scripts/release-verifier-package.mjs';
 
 import {
   PRODUCTION_HOST_REQUIRED_COMMANDS,
@@ -17,6 +18,23 @@ import {
 } from '../scripts/lib/release-verifier-contract.mjs';
 
 const projectRoot = resolve(import.meta.dirname, '..');
+
+test('package check executes its critical entrypoints and rejects broken packaged code', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cp-verifier-package-'));
+  try {
+    cpSync(join(projectRoot, 'scripts'), join(root, 'scripts'), { recursive: true });
+    assert.equal(checkReleaseVerifierPackage(root).ok, true);
+    writeFileSync(
+      join(root, 'scripts/release-state-cli.mjs'),
+      'throw new Error("synthetic-private-detail");\n'
+    );
+    const broken = checkReleaseVerifierPackage(root);
+    assert.equal(broken.ok, false);
+    assert.doesNotMatch(JSON.stringify(broken), /synthetic-private-detail/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('production host contract is POSIX/Docker based and does not require Node', () => {
   assert.deepEqual(PRODUCTION_HOST_REQUIRED_COMMANDS, [

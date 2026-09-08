@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 import {
   RELEASE_VERIFIER_COMMANDS,
@@ -16,7 +17,28 @@ export function checkReleaseVerifierPackage(root = '/app') {
   const availableFiles = RELEASE_VERIFIER_REQUIRED_FILES.filter((imagePath) =>
     existsSync(`${root}/${imagePathToLocalPath(imagePath)}`)
   );
-  return validateReleaseVerifierPackageFiles(availableFiles);
+  const report = validateReleaseVerifierPackageFiles(availableFiles);
+  const entrypoints = [...new Set(RELEASE_VERIFIER_COMMANDS.map(({ entrypoint }) => entrypoint))];
+  // This runs inside the exact verifier image in both RC and remote preflight.
+  // Presence alone cannot detect omitted imports or a broken CLI entrypoint.
+  const executions = report.ok
+    ? entrypoints.map((entrypoint) => {
+        const result = spawnSync(
+          process.execPath,
+          [`${root}/${imagePathToLocalPath(entrypoint)}`, '--help'],
+          {
+            encoding: 'utf8',
+            timeout: 10000,
+            maxBuffer: 65536,
+          }
+        );
+        return {
+          entrypoint,
+          ok: result.status === 0 && result.stdout?.startsWith('Usage:') === true,
+        };
+      })
+    : [];
+  return { ...report, ok: report.ok && executions.every(({ ok }) => ok), executions };
 }
 
 export function runReleaseVerifierPackageCommand(argv = process.argv.slice(2)) {

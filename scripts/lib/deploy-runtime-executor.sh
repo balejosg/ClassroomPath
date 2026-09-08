@@ -20,6 +20,7 @@ deploy_runtime_wait_for_health_and_readiness() {
   local curl_timeout="${DEPLOY_RUNTIME_CURL_TIMEOUT_SECONDS:-10}"
   local health_status=""
   local ready_response=""
+  local ready_http_status=""
   local attempt=0
 
   FAILURE_POINT="health"
@@ -29,9 +30,10 @@ deploy_runtime_wait_for_health_and_readiness() {
 
   while [ "$attempt" -lt "$attempts" ]; do
     attempt=$((attempt + 1))
-    health_status="$(curl --max-time "$curl_timeout" -sS -o /dev/null -w '%{http_code}' "$health_url" 2>/dev/null || true)"
-    if [ "$health_status" = "200" ]; then
-      break
+    if health_status="$(curl --max-time "$curl_timeout" -sS -o /dev/null -w '%{http_code}' "$health_url" 2>/dev/null)"; then
+      if [ "$health_status" = "200" ]; then break; fi
+    else
+      health_status=0
     fi
     if [ "$attempt" -lt "$attempts" ]; then
       sleep "$delay_seconds"
@@ -53,14 +55,21 @@ deploy_runtime_wait_for_health_and_readiness() {
   attempt=0
   while [ "$attempt" -lt "$attempts" ]; do
     attempt=$((attempt + 1))
-    ready_response="$(curl --max-time "$curl_timeout" -sS "$ready_url" 2>/dev/null || true)"
-    if declare -f rollback_readiness_json_is_ready >/dev/null 2>&1 &&
+    # Keep transport success, HTTP status, and semantic readiness separate.
+    # A proxy error (or redirect) can contain a valid-looking ready payload.
+    ready_http_status=""
+    if ready_response="$(curl --max-time "$curl_timeout" -sS -w '\n%{http_code}' "$ready_url" 2>/dev/null)"; then
+      ready_http_status="${ready_response##*$'\n'}"
+      ready_response="${ready_response%$'\n'*}"
+    fi
+    if [ "$ready_http_status" = 200 ] &&
+      declare -f rollback_readiness_json_is_ready >/dev/null 2>&1 &&
       rollback_readiness_json_is_ready "$ready_response"; then
       DEPLOYMENT_HEALTH_STATUS=200
       DEPLOYMENT_READY=true
       export DEPLOYMENT_HEALTH_STATUS DEPLOYMENT_READY
       if declare -f release_execution_mark_stage >/dev/null 2>&1; then
-        release_execution_mark_stage readiness
+        release_execution_mark_stage readiness || return 1
       fi
       return 0
     fi
@@ -158,8 +167,13 @@ deploy_runtime_executor_fail() {
     declare -f deployment_transaction_begin_rollback >/dev/null 2>&1; then
     deployment_transaction_begin_rollback || true
     if deploy_runtime_adapter_recover; then
-      deployment_transaction_mark_rollback_success || true
-      recovered=1
+      if deployment_transaction_mark_rollback_success; then
+        recovered=1
+      else
+        deployment_transaction_mark_rollback_failure \
+          PERSISTENCE rollback-state-write state-write \
+          'Previous runtime restored but rollback terminal state could not be persisted' || true
+      fi
     else
       deployment_transaction_mark_rollback_failure \
         ROLLBACK "${FAILURE_POINT:-rollback-failed}" "${FAILURE_CATEGORY:-rollback-execution}" \
@@ -174,7 +188,7 @@ deploy_runtime_executor_fail() {
     DEPLOYMENT_HEALTH_STATUS=200
     DEPLOYMENT_READY=true
     export DEPLOYMENT_HEALTH_STATUS DEPLOYMENT_READY
-    deploy_runtime_record_terminal ROLLED_BACK "${PREVIOUS_APP_SHA:-${TARGET_SHA:-}}" || true
+    deploy_runtime_record_terminal ROLLED_BACK "${ROLLBACK_RELEASE_APP_SHA:-${PREVIOUS_APP_SHA:-}}" || true
   else
     deploy_runtime_record_terminal FAILED "${APP_SHA:-${TARGET_SHA:-}}" || true
   fi
@@ -248,26 +262,51 @@ deploy_runtime_execute() {
     }
   fi
   if declare -f deployment_state_activate_v2_release >/dev/null 2>&1; then
+    FAILURE_POINT=commit-current-activation
+    FAILURE_CATEGORY=state-write
+    FAILURE_MESSAGE='verified release pointer activation failed'
+    export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
     deployment_state_activate_v2_release "${RELEASE_ID:-}" || {
       deploy_runtime_executor_fail 'Unable to activate the verified Release Bundle state'
       return 1
     }
   fi
   if declare -f deployment_state_publish_pending_release >/dev/null 2>&1; then
+    FAILURE_POINT=candidate-pointer-update
+    FAILURE_MESSAGE='verified pending runtime publication failed'
+    export FAILURE_POINT FAILURE_MESSAGE
     deployment_state_publish_pending_release || {
       deploy_runtime_executor_fail 'Unable to publish the verified runtime state'
       return 1
     }
   fi
+  if declare -f release_execution_mark_stage >/dev/null 2>&1; then
+    FAILURE_POINT=commit-context
+    FAILURE_MESSAGE='completed release context persistence failed'
+    export FAILURE_POINT FAILURE_MESSAGE
+    release_execution_mark_stage completed || {
+      deploy_runtime_executor_fail 'Unable to persist the completed release context'
+      return 1
+    }
+  fi
   if declare -f deployment_transaction_transition >/dev/null 2>&1; then
+    FAILURE_POINT=commit-state
+    FAILURE_MESSAGE='committed transaction persistence failed'
+    export FAILURE_POINT FAILURE_MESSAGE
     deployment_transaction_transition "${DEPLOYMENT_PHASE_COMMITTED:-COMMITTED}" COMMIT || {
       deploy_runtime_executor_fail 'Unable to record committed runtime state'
       return 1
     }
   fi
-  if declare -f release_execution_mark_stage >/dev/null 2>&1; then
-    release_execution_mark_stage completed
+  if ! deploy_runtime_record_terminal COMMITTED "${APP_SHA:-${TARGET_SHA:-}}"; then
+    # Runtime verification and current activation are already durable. Record
+    # the evidence failure without pretending the previous release is active.
+    FAILURE_POINT=terminal-ledger
+    FAILURE_CATEGORY=state-write
+    FAILURE_MESSAGE='runtime committed but terminal ledger evidence could not be persisted'
+    export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+    deployment_transaction_write "${DEPLOYMENT_TRANSACTION_FILE:-}" || true
+    return 1
   fi
-  deploy_runtime_record_terminal COMMITTED "${APP_SHA:-${TARGET_SHA:-}}" || return 1
   return 0
 }

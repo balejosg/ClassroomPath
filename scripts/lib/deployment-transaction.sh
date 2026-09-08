@@ -331,7 +331,14 @@ deployment_transaction_transition() {
     export ROLLBACK_ATTEMPTED ROLLBACK_RESULT
     return 1
   fi
-  deployment_transaction_append_history
+  # The atomic marker is authoritative. A secondary history failure cannot
+  # undo a durable transition or turn a restored runtime into a failed one.
+  if ! deployment_transaction_append_history; then
+    DEPLOYMENT_TRANSACTION_HISTORY_STATUS=incomplete
+    export DEPLOYMENT_TRANSACTION_HISTORY_STATUS
+    deployment_transaction_log_error 'Deployment phase persisted; secondary history is incomplete'
+  fi
+  return 0
 }
 
 deployment_transaction_mark_failure() {
@@ -361,10 +368,8 @@ deployment_transaction_begin_rollback() {
 }
 
 deployment_transaction_mark_rollback_success() {
-  ROLLBACK_ATTEMPTED=1
-  ROLLBACK_PHASE="ROLLED_BACK"
-  ROLLBACK_RESULT="success"
-  export ROLLBACK_ATTEMPTED ROLLBACK_PHASE ROLLBACK_RESULT
+  # The transition owns these fields and restores them if persistence fails.
+  # Pre-setting success here would make the rollback snapshot itself false.
   deployment_transaction_transition "$DEPLOYMENT_PHASE_ROLLED_BACK" "ROLLBACK"
 }
 

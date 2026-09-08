@@ -152,6 +152,10 @@ function runVerify(options, env) {
 
 export async function runReleaseBundleCommand(argv = process.argv.slice(2), env = process.env) {
   const [command, ...commandArgs] = argv;
+  if (command === '--help') {
+    process.stdout.write('Usage: release-bundle.mjs build|verify [options]\n');
+    return;
+  }
   const options = parseReleaseBundleCliArgs(commandArgs);
   const result =
     command === 'build'

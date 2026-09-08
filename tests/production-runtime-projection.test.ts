@@ -13,6 +13,43 @@ const transactionHelper = resolve(projectRoot, 'scripts/lib/deployment-transacti
 const productionRuntimeHelper = resolve(projectRoot, 'scripts/lib/deploy-production-runtime.sh');
 const productionRemoteScript = resolve(projectRoot, 'scripts/deploy-production-remote.sh');
 
+test('Firefox generation preparation preserves the active asset pointer until activation', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cp-firefox-prepare-'));
+  try {
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        `
+      set -euo pipefail
+      source "$1"
+      export OPENPATH_FIREFOX_RELEASE_HOST_ROOT="$2"
+      mkdir -p "$2/previous"
+      ln -s "$2/previous" "$2/current"
+      docker() {
+        case "$1" in
+          create) echo fixture-container;;
+          cp) printf fixture > "$3";;
+          *) :;;
+        esac
+      }
+      prepare_openpath_firefox_assets_from_image fixture candidate prepare-only
+      [ "$(readlink "$2/current")" = "$2/previous" ]
+      activate_openpath_firefox_assets_generation
+      [ "$(readlink "$2/current")" = "$2/generations/generation-candidate" ]
+    `,
+        'assets',
+        releaseRuntimeHelper,
+        root,
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 const runtimeProjectionKeys = [
   'RELEASE_ID',
   'RC_RUN_ID',
@@ -156,7 +193,7 @@ test('runtime projection helper applies every canonical field without dropping e
   }
 });
 
-function runForwardProjectionFixture(persistedProjection: string) {
+function runForwardProjectionFixture(persistedProjection: string, prepareOnly = false) {
   const tempDir = mkdtempSync(join(tmpdir(), 'classroompath-forward-projection-'));
   const appDir = join(tempDir, 'app');
   const stateDir = join(tempDir, 'release-state');
@@ -241,6 +278,7 @@ function runForwardProjectionFixture(persistedProjection: string) {
     'verify_deploy_container_platform() { :; }',
     'login_production_registry() { :; }',
     'prepare_openpath_firefox_assets_from_image() { :; }',
+    'activate_openpath_firefox_assets_generation() { :; }',
     'deployment_state_persist_v2_release() {',
     '  mkdir -p "$DEPLOYMENT_STATE_RELEASES_DIR/$3"',
     '  cp "$PERSISTED_PROJECTION" "$DEPLOYMENT_STATE_RELEASES_DIR/$3/runtime.env"',
@@ -255,8 +293,12 @@ function runForwardProjectionFixture(persistedProjection: string) {
     'trap capture_production_deploy_failure ERR',
     'plan_production_runtime_deploy_impl',
     'deployment_transaction_init "$DEPLOYMENT_TRANSACTION_FILE" "$9" "${10}" "${11}"',
+    'production_runtime_adapter_prepare',
+    ...(prepareOnly ? ['exit 0'] : []),
     'deployment_transaction_transition SWITCHING SWITCH',
-    'apply_production_runtime_deploy_impl',
+    'production_runtime_activate_prepared_files',
+    'production_runtime_adapter_switch',
+    'deployment_transaction_transition ACTIVATED_UNVERIFIED SWITCH',
   ].join('\n');
 
   const result = spawnSync(
@@ -307,7 +349,22 @@ function runForwardProjectionFixture(persistedProjection: string) {
   };
 }
 
-test('forward materializes C after the mutation boundary and both recreated services receive C', () => {
+test('prepare leaves the active configuration untouched', () => {
+  const fixture = runForwardProjectionFixture(candidateProjection(), true);
+  try {
+    assert.equal(fixture.result.status, 0, fixture.result.stderr);
+    assertProjectionInEnv(
+      readFileSync(fixture.envPath, 'utf8'),
+      previousProjection(),
+      'active P config'
+    );
+    assert.match(readFileSync(fixture.stateFile, 'utf8'), /^MUTATION_BOUNDARY_REACHED=0$/mu);
+  } finally {
+    rmSync(fixture.tempDir, { recursive: true, force: true });
+  }
+});
+
+test('forward prepares C before the boundary and both recreated services receive C', () => {
   const fixture = runForwardProjectionFixture(candidateProjection());
 
   try {
@@ -342,7 +399,7 @@ test('forward materializes C after the mutation boundary and both recreated serv
   }
 });
 
-test('projection application failure after the boundary is recoverable to P', () => {
+test('invalid candidate projection fails before the boundary and preserves P', () => {
   const malformedProjection = candidateProjection()
     .split('\n')
     .filter((line) => !line.startsWith('CLASSROOMPATH_GATEWAY_IMAGE='))
@@ -354,19 +411,11 @@ test('projection application failure after the boundary is recoverable to P', ()
     assert.equal(fixture.result.status, 1, output);
     const failedMarker = readFileSync(fixture.stateFile, 'utf8');
     assert.match(failedMarker, /^DEPLOYMENT_PHASE=FAILED$/mu);
-    assert.match(failedMarker, /^MUTATION_BOUNDARY_REACHED=1$/mu);
+    assert.match(failedMarker, /^MUTATION_BOUNDARY_REACHED=0$/mu);
     assert.match(failedMarker, new RegExp(`CURRENT_RELEASE_ID=${fixture.previousId}`, 'u'));
     assert.doesNotMatch(readFileSync(fixture.tracePath, 'utf8'), /compose-up/u);
 
-    recoverTransaction(fixture.stateFile, fixture.historyFile);
-    const rolledBackMarker = readFileSync(fixture.stateFile, 'utf8');
-    assert.match(rolledBackMarker, /^DEPLOYMENT_PHASE=ROLLED_BACK$/mu);
-    assert.match(rolledBackMarker, new RegExp(`CURRENT_RELEASE_ID=${fixture.previousId}`, 'u'));
-    assertHistory(
-      fixture.historyFile,
-      ['PREPARED', 'SWITCHING', 'FAILED', 'ROLLING_BACK', 'ROLLED_BACK'],
-      fixture.transactionId
-    );
+    assertHistory(fixture.historyFile, ['PREPARED', 'FAILED'], fixture.transactionId);
   } finally {
     rmSync(fixture.tempDir, { recursive: true, force: true });
   }
@@ -411,8 +460,8 @@ function runLiveReadinessFixture(liveProjection: string) {
       '#!/usr/bin/env bash',
       'url="${!#}"',
       'case "$url" in',
-      '  */cp/health) exit 0 ;;',
-      '  */cp/ready) printf "%s\\n" "{\\"ready\\":true}"; exit 0 ;;',
+      '  */cp/health) printf 200; exit 0 ;;',
+      '  */cp/ready) printf "%s\\n200" "{\\"ready\\":true}"; exit 0 ;;',
       '  *) exit 22 ;;',
       'esac',
       '',
@@ -456,7 +505,11 @@ function runLiveReadinessFixture(liveProjection: string) {
     '  local phase_name=""',
     '  for phase_name in "$@"; do "$phase_name"; done',
     '}',
-    'run_remote_deploy_phases wait_for_production_runtime_readiness_impl',
+    'production_runtime_ensure_shared_executor',
+    'deploy_runtime_wait_for_health_and_readiness',
+    'validate_production_runtime_projection_live',
+    'deployment_transaction_transition VERIFIED VERIFY',
+    'deployment_transaction_transition COMMITTED COMMIT',
   ].join('\n');
 
   const result = spawnSync(
@@ -531,23 +584,20 @@ test('matching live projection allows the normal VERIFIED to COMMITTED path', ()
   }
 });
 
-test('candidate runtime projection is only applied after persistence and the switch boundary', () => {
+test('candidate preparation precedes the shared executor mutation boundary', () => {
   const runtimeSource = readFileSync(productionRuntimeHelper, 'utf8');
-  const persistIndex = runtimeSource.indexOf('deployment_state_persist_v2_release');
-  const projectionApplyIndex = runtimeSource.lastIndexOf(
-    [
-      '  apply_release_runtime_projection_to_env_file \\',
-      '    "${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/$RELEASE_ID/runtime.env"',
-    ].join('\n')
+  assert.ok(
+    runtimeSource.indexOf('deployment_state_persist_v2_release') <
+      runtimeSource.indexOf('  apply_release_runtime_projection_to_env_file')
   );
-  assert.ok(persistIndex >= 0);
-  assert.ok(projectionApplyIndex > persistIndex);
-
-  const remoteSource = readFileSync(productionRemoteScript, 'utf8');
-  const boundaryIndex = remoteSource.indexOf(
-    'deployment_transaction_transition "$DEPLOYMENT_PHASE_SWITCHING" "SWITCH"'
+  const executor = readFileSync(
+    resolve(projectRoot, 'scripts/lib/deploy-runtime-executor.sh'),
+    'utf8'
   );
-  const runtimePhaseIndex = remoteSource.lastIndexOf('\n  start_production_runtime');
-  assert.ok(boundaryIndex >= 0);
-  assert.ok(runtimePhaseIndex > boundaryIndex);
+  const prepare = executor.indexOf('if ! "$prepare_fn"');
+  const boundary = executor.indexOf(
+    'deployment_transaction_transition "${DEPLOYMENT_PHASE_SWITCHING:-SWITCHING}" SWITCH'
+  );
+  const migrate = executor.indexOf('if ! "$migrate_fn"');
+  assert.ok(prepare >= 0 && boundary > prepare && migrate > boundary);
 });

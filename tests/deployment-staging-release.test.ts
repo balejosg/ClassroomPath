@@ -574,7 +574,7 @@ docker() {
       printf 'fake-container\n'
       ;;
     cp)
-      local destination="\${!#}"
+      local destination="$3"
       mkdir -p "$(dirname "$destination")"
       case "$destination" in
         *metadata.json) printf '%s\n' '{"version":"4.1.0"}' >"$destination" ;;
