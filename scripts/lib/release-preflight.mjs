@@ -24,6 +24,44 @@ import { evaluateStagingEligibility } from './promotion-eligibility-contract.mjs
 const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '../..');
 
+/** @typedef {Record<string, string|number|boolean|null|undefined>} ReleaseState */
+/** @typedef {{databaseId?: string|number; runId?: string|number; conclusion?: string|null; event?: string|null; headSha?: string|null}} ReleasePreflightRun */
+/**
+ * @typedef {object} ReleasePreflightStatus
+ * @property {{latestRun?: ReleasePreflightRun|null; manifestStatus?: string; manifest?: Record<string, unknown>|null}} [releaseCandidate]
+ * @property {{currentImages?: ReleaseState; verification?: ReleaseState}} [staging]
+ * @property {{state?: ReleaseState|null}} [stagingCurrentImages]
+ * @property {{state?: ReleaseState|null}} [stagingVerification]
+ * @property {string[]} [promotionBlockers]
+ * @property {string[]} [productionBlockers]
+ */
+/** @typedef {{cwd?: string; env?: NodeJS.ProcessEnv; encoding?: 'buffer'|'utf8'}} CommandOptions */
+/** @typedef {(command: string, args: string[], options?: CommandOptions) => string|Buffer} RunCommand */
+/**
+ * @typedef {object} ReleasePreflightOptions
+ * @property {string[]} [argv]
+ * @property {NodeJS.ProcessEnv} [env]
+ * @property {RunCommand} [runCommand]
+ * @property {ReleasePreflightStatus|null} [status]
+ * @property {string} [nextTag]
+ * @property {string} [projectRootOverride]
+ */
+/** @typedef {{ok: boolean; message: string; blocker?: string}} ReleasePreflightCheck */
+/**
+ * @typedef {object} ReleasePreflightResult
+ * @property {boolean} ok
+ * @property {string} nextTag
+ * @property {string[]} blockers
+ * @property {Record<string, ReleasePreflightCheck>} checks
+ * @property {ReleasePreflightStatus} status
+ */
+
+/**
+ * @param {string} command
+ * @param {string[]} args
+ * @param {CommandOptions} [options]
+ * @returns {string|Buffer}
+ */
 export function defaultRunCommand(command, args, options = {}) {
   return execFileSync(command, args, {
     cwd: options.cwd ?? projectRoot,
@@ -33,10 +71,12 @@ export function defaultRunCommand(command, args, options = {}) {
   });
 }
 
+/** @param {string} message @returns {ReleasePreflightCheck} */
 function okCheck(message) {
   return { ok: true, message };
 }
 
+/** @param {string} blocker @param {string} message @returns {ReleasePreflightCheck} */
 function failedCheck(blocker, message) {
   return { ok: false, blocker, message };
 }
@@ -266,6 +306,10 @@ function checkReleaseFence(status, env) {
       );
 }
 
+/**
+ * @param {ReleasePreflightOptions} [options]
+ * @returns {Promise<ReleasePreflightResult>}
+ */
 export async function runReleasePreflight({
   argv = [],
   env = process.env,

@@ -1,11 +1,23 @@
+// @ts-check
+
 /**
  * CLI option parsing helpers: parseCommandLine, requireCliOption, and runCli wrappers used by release scripts.
  *
  * Invoked by: Imported by most release CLI entry points.
  * Usage: (library module, not invoked directly)
  */
+/** @typedef {Record<string, string|undefined>} CliOptions */
+/** @typedef {{command: string|undefined; options: CliOptions}} ParsedCommandLine */
+/** @typedef {{valueFlags?: string[]}} ParseCommandLineOptions */
+
+/**
+ * @param {string[]} argv
+ * @param {ParseCommandLineOptions} [options]
+ * @returns {ParsedCommandLine}
+ */
 export function parseCommandLine(argv, { valueFlags = [] } = {}) {
   const [command, ...rest] = argv;
+  /** @type {CliOptions} */
   const options = {};
   const flagsWithValues = new Set(valueFlags);
 
@@ -22,15 +34,26 @@ export function parseCommandLine(argv, { valueFlags = [] } = {}) {
   return { command, options };
 }
 
+/**
+ * @param {Record<string, unknown>} options
+ * @param {string} key
+ * @param {string} message
+ * @returns {string}
+ */
 export function requireCliOption(options, key, message) {
   const value = options?.[key];
-  if (value) {
+  if (typeof value === 'string' && value) {
     return value;
   }
 
   throw new Error(message);
 }
 
+/**
+ * @param {(argv: string[]) => unknown} main
+ * @param {{argv?: string[]}} [options]
+ * @returns {void}
+ */
 export function runCli(main, { argv = process.argv.slice(2) } = {}) {
   try {
     const exitCode = main(argv);

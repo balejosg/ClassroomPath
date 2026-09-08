@@ -81,6 +81,8 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'deploy-shell',
     patterns: [
+      '^scripts/lib/(?:deploy-runtime-executor|deployment-ledger)\\.sh$',
+      '^tests/(?:deploy-runtime-executor|deploy-runtime-boundary-guards|deployment-ledger|production-runtime-projection|production-adapter-failures|production-recovery-authority|production-durable-state-workflow|staging-runtime-projection)\\.test\\.ts$',
       '^scripts/(?:deploy-.+|detect-email-delivery-risk|detect-windows-firefox-risk|package-production-recovery-bundle|production-deployment-diagnostic|production-recovery-authority|promote-production-recovery-authority|rollback-.+|persist-.+|run-migrations(?:-docker|-image)?|run-staging-release-gate|tag-production-release|verify-production-promotion-ready|verify-staging-release-state)\\.sh$',
       '^scripts/lib/(?:deployment-state|deployment-transaction|production-deployment-diagnostic-fallback|production-host-contract|production-recovery-artifact|production-recovery-contract|production-recovery-executor|release-execution|release-risk|release-risk-policy|release-runtime|release-state|remote-bootstrap|remote-deploy-scaffold|deploy-production-context|deploy-production-runtime|rollback-executor|rollback-readiness|staging-gates|staging-rollback)\\.sh$',
     ],
@@ -90,6 +92,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-cli',
     patterns: [
+      '^scripts/(?:production-readiness|release-promote|release-preflight|release-status|promotion-evidence-cli|verify-candidate-tooling|check-scripts-typecheck)\\.mjs$',
       '^scripts/(?:check-npm-audit-critical|create-production-windows-bootstrap-canary|create-production-linux-bootstrap-canary|detect-ci-relevant-changes|enrollment-download-canary|firefox-release-evidence|firefox-release-version|linux-ajax-auto-allow-canary|measure-ci-cache|measure-ci-routing|measure-release-candidate-timings|openpath-required-checks|prepromotion-runner-rehearsal|print-verify-report-summary|production-enrollment-download-canary|release-images|release-risk-cli|release-state-cli|release-verifier-package|resolve-deployed-release-state|resolve-firefox-release-assets-cache|resolve-latest-verifier-image|resolve-openpath-linux-agent-version|run-ci-regression|summarize-linux-ajax-auto-allow-evidence|verify-full|verify-release-manifest-platforms|wait-for-release-candidate|windows-ajax-auto-allow-canary|write-release-evidence)\\.(?:mjs|ts)$',
     ],
     capabilities: {
@@ -102,6 +105,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-library',
     patterns: [
+      '^scripts/lib/(?:production-readiness|release-candidate-resolution|release-orchestration|release-transcript|release-preflight|release-status-collector)\\.mjs$',
       '^scripts/lib/(?:ajax-auto-allow-canary-harness|ajax-auto-allow-canary-runtime|auto-allow-boundary-evidence|deployed-release-state|firefox-release-version|github-actions|github-actions-artifacts|github-actions-diagnostic-client|linux-auto-allow-canary-evidence|migration-risk-classifier|openpath-ci-checks|prepromotion-runner-rehearsal|production-executor-scenario|production-host-contract|promotion-eligibility|regression-plan|release-candidate|release-candidate-components|release-cli|release-evidence|release-images|release-risk|release-risk-policy|release-state-contract|release-verifier-contract|resolve-latest-verifier-image|rollback-executor|runner-diagnostic-execution|verification-catalog|verification-report-contract|verify-report-consumer|windows-ajax-auto-allow-runtime|windows-auto-allow-canary-evidence)\\.mjs$',
     ],
     capabilities: {
@@ -124,6 +128,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-contract-test',
     patterns: [
+      '^tests/(?:production-readiness|release-candidate-resolution|release-orchestration|release-promote-rc-first|release-promote-resume|release-preflight|release-status|candidate-tooling-provenance|check-scripts-typecheck|regression-plan-layout)\\.test\\.ts$',
       '^tests/(?:ajax-auto-allow-canary-harness|ci-cache-measurement|ci-routing-measurement|deploy-intent|deployed-release-state|deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-assets-cache|firefox-release-version|github-actions-artifacts|linux-auto-allow-canary|linux-ajax-auto-allow-canary|npm-audit-critical|openpath-required-checks|prepromotion-runner-rehearsal|production-enrollment-download-canary|production-executor-fault-injection|production-executor-hermetic|production-executor-state|production-executor-workflow|production-remote-regressions|promotion-eligibility|release-candidate-components|release-candidate-timings|release-cli|release-evidence|release-images|release-manifest-platforms|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|rollback-executor|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|windows-ajax-auto-allow-runtime|workflow(?:-core|-deploy|-production-client-canary|-release-candidate|-config|-production-executor)?)\\.test\\.ts$',
     ],
     capabilities: {
@@ -308,6 +313,23 @@ export const VERIFICATION_STAGE_DEFINITIONS = Object.fromEntries(
 export const REGRESSION_PLAN_DEFINITIONS = {
   ci: {
     files: [
+      'tests/production-readiness.test.ts',
+      'tests/release-candidate-resolution.test.ts',
+      'tests/release-promote-rc-first.test.ts',
+      'tests/release-promote-resume.test.ts',
+      'tests/release-orchestration.test.ts',
+      'tests/release-preflight.test.ts',
+      'tests/release-status.test.ts',
+      'tests/candidate-tooling-provenance.test.ts',
+      'tests/deployment-ledger.test.ts',
+      'tests/deploy-runtime-executor.test.ts',
+      'tests/deploy-runtime-boundary-guards.test.ts',
+      'tests/production-durable-state-workflow.test.ts',
+      'tests/production-runtime-projection.test.ts',
+      'tests/staging-runtime-projection.test.ts',
+      'tests/production-recovery-authority.test.ts',
+      'tests/check-scripts-typecheck.test.ts',
+      'tests/regression-plan-layout.test.ts',
       'tests/docs-verification.test.ts',
       'tests/agent-docs-consistency.test.ts',
       'tests/deployment-foundation.test.ts',

@@ -4,6 +4,31 @@ import { describe, test } from 'node:test';
 import { resolveRegressionPlan } from '../scripts/lib/regression-plan.mjs';
 
 describe('regression plan layout', () => {
+  test('CI and release automation retain the release operations acceptance suites', () => {
+    const required = [
+      'tests/production-readiness.test.ts',
+      'tests/release-candidate-resolution.test.ts',
+      'tests/release-promote-rc-first.test.ts',
+      'tests/release-promote-resume.test.ts',
+      'tests/release-orchestration.test.ts',
+      'tests/release-preflight.test.ts',
+      'tests/release-status.test.ts',
+      'tests/candidate-tooling-provenance.test.ts',
+      'tests/deployment-ledger.test.ts',
+      'tests/deploy-runtime-executor.test.ts',
+      'tests/deploy-runtime-boundary-guards.test.ts',
+      'tests/production-durable-state-workflow.test.ts',
+      'tests/production-runtime-projection.test.ts',
+      'tests/staging-runtime-projection.test.ts',
+      'tests/production-recovery-authority.test.ts',
+      'tests/check-scripts-typecheck.test.ts',
+    ];
+    for (const plan of ['ci', 'release-automation']) {
+      const files = resolveRegressionPlan(plan);
+      for (const file of required) assert.ok(files.includes(file), `${plan} omits ${file}`);
+    }
+  });
+
   test('ci and workflow regression plans target sharded ops suites instead of monoliths', () => {
     const ciPlan = resolveRegressionPlan('ci');
     const workflowPlan = resolveRegressionPlan('workflow-config');

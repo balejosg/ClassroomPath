@@ -150,6 +150,14 @@ deploy_runtime_executor_fail() {
   local current_phase="${DEPLOYMENT_PHASE:-}"
   local recovered=0
 
+  # Terminal outcomes belong to the completed transaction. A later error
+  # cannot initiate a new recovery or append a contradictory terminal fact.
+  if [ "$current_phase" = "${DEPLOYMENT_PHASE_COMMITTED:-COMMITTED}" ] ||
+    [ "$current_phase" = "${DEPLOYMENT_PHASE_ROLLED_BACK:-ROLLED_BACK}" ]; then
+    deploy_runtime_executor_log_error "$message"
+    return 1
+  fi
+
   FAILURE_MESSAGE="${FAILURE_MESSAGE:-$message}"
   export FAILURE_MESSAGE
   if [ -n "$current_phase" ] && declare -f deployment_transaction_mark_failure >/dev/null 2>&1 &&
@@ -215,12 +223,22 @@ deploy_runtime_execute() {
     return 1
   fi
 
-  if declare -f deployment_transaction_transition >/dev/null 2>&1 &&
-    [ "${DEPLOYMENT_PHASE:-}" = "${DEPLOYMENT_PHASE_PREPARED:-PREPARED}" ]; then
-    deployment_transaction_transition "${DEPLOYMENT_PHASE_SWITCHING:-SWITCHING}" SWITCH || {
-      deploy_runtime_executor_fail 'Unable to cross the deployment mutation boundary'
-      return 1
-    }
+  if ! declare -f deployment_transaction_transition >/dev/null 2>&1; then
+    deploy_runtime_executor_fail 'Deployment transaction boundary helper is unavailable'
+    return 1
+  fi
+  if [ "${DEPLOYMENT_PHASE:-}" != "${DEPLOYMENT_PHASE_PREPARED:-PREPARED}" ]; then
+    deploy_runtime_executor_fail 'Deployment transaction is not PREPARED before the mutation boundary'
+    return 1
+  fi
+  if ! deployment_transaction_transition "${DEPLOYMENT_PHASE_SWITCHING:-SWITCHING}" SWITCH; then
+    deploy_runtime_executor_fail 'Unable to cross the deployment mutation boundary'
+    return 1
+  fi
+  if [ "${DEPLOYMENT_PHASE:-}" != "${DEPLOYMENT_PHASE_SWITCHING:-SWITCHING}" ] ||
+    [ "${MUTATION_BOUNDARY_REACHED:-0}" != "1" ]; then
+    deploy_runtime_executor_fail 'Deployment mutation boundary was not durably reached'
+    return 1
   fi
   if ! "$migrate_fn"; then
     deploy_runtime_executor_fail "Runtime adapter migration failed"

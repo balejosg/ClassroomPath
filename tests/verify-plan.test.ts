@@ -15,6 +15,47 @@ import {
 } from '../scripts/lib/verify-plan.ts';
 
 describe('verify plan', () => {
+  test('routes release operations helpers and their tests to automatic verification', () => {
+    for (const file of [
+      'scripts/production-readiness.mjs',
+      'scripts/release-promote.mjs',
+      'scripts/promotion-evidence-cli.mjs',
+      'scripts/verify-candidate-tooling.mjs',
+      'scripts/check-scripts-typecheck.mjs',
+      'scripts/lib/production-readiness.mjs',
+      'scripts/lib/release-candidate-resolution.mjs',
+      'scripts/lib/release-transcript.mjs',
+      'scripts/lib/release-preflight.mjs',
+      'scripts/lib/release-status-collector.mjs',
+      'tests/production-readiness.test.ts',
+      'tests/release-candidate-resolution.test.ts',
+      'tests/release-promote-rc-first.test.ts',
+      'tests/release-promote-resume.test.ts',
+      'tests/release-orchestration.test.ts',
+      'tests/release-preflight.test.ts',
+      'tests/release-status.test.ts',
+      'tests/candidate-tooling-provenance.test.ts',
+      'tests/check-scripts-typecheck.test.ts',
+    ]) {
+      assert.equal(detectVerificationScope([file], 'commit'), 'release-automation', file);
+      assert.ok(summarizeVerifyDomains([file]).owners.includes('release-engineering'), file);
+    }
+    for (const file of [
+      'scripts/lib/deploy-runtime-executor.sh',
+      'scripts/lib/deployment-ledger.sh',
+      'tests/deployment-ledger.test.ts',
+      'tests/deploy-runtime-executor.test.ts',
+      'tests/deploy-runtime-boundary-guards.test.ts',
+      'tests/production-durable-state-workflow.test.ts',
+      'tests/production-runtime-projection.test.ts',
+      'tests/production-adapter-failures.test.ts',
+      'tests/staging-runtime-projection.test.ts',
+      'tests/production-recovery-authority.test.ts',
+    ]) {
+      assert.equal(detectVerificationScope([file], 'commit'), 'ops-regression', file);
+    }
+  });
+
   test('detects the release-automation scope for workflow and release-script diffs', () => {
     const stagedFiles = [
       '.github/workflows/firefox-release-assets.yml',

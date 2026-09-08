@@ -28,6 +28,84 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
 const projectRoot = resolve(scriptDir, '..');
 
+/** @typedef {Record<string, unknown> & {
+ *   intervalSeconds?: number;
+ *   openpathSha?: string;
+ *   bundleOutputDir?: string;
+ *   outputDir?: string;
+ *   outputFile?: string;
+ *   legacyManifestFile?: string;
+ *   releaseId?: string;
+ *   repo?: string;
+ *   rcRunId?: string;
+ *   runId?: string;
+ *   sha?: string;
+ *   timeoutSeconds?: number;
+ * }} ReleaseCandidateCliOptions
+ */
+/**
+ * @typedef {object} ReleaseCandidateBundleOptions
+ * @property {string} [classroomPathSha]
+ * @property {string} [runId]
+ * @property {string} [releaseId]
+ * @property {string} [repository]
+ * @property {number} [timeoutSeconds]
+ * @property {number} [intervalSeconds]
+ * @property {string} [outputFile]
+ * @property {string} [outputDir]
+ * @property {string} [legacyManifestFile]
+ * @property {string} [cwd]
+ */
+/**
+ * @typedef {object} ReleaseCandidateBundleResult
+ * @property {string|number} [runId]
+ * @property {string} [artifactName]
+ * @property {string} [bundlePath]
+ * @property {string} [contractPath]
+ * @property {Record<string, unknown>} [runtime]
+ */
+
+/**
+ * @typedef {object} ReleaseCandidateManifestOptions
+ * @property {string} [sha]
+ * @property {string} [repository]
+ * @property {number} [timeoutSeconds]
+ * @property {number} [intervalSeconds]
+ * @property {string} [outputFile]
+ * @property {string} [upstreamSha]
+ * @property {string} [cwd]
+ */
+/**
+ * @typedef {object} FirefoxReleaseAssetsOptions
+ * @property {string} [openpathSha]
+ * @property {string} [repository]
+ * @property {number} [timeoutSeconds]
+ * @property {number} [intervalSeconds]
+ * @property {string} [outputDir]
+ * @property {string} [cwd]
+ */
+
+const RELEASE_CANDIDATE_VALUE_FLAGS = [
+  '--interval-seconds',
+  '--openpath-sha',
+  '--output-dir',
+  '--output-file',
+  '--legacy-manifest-file',
+  '--release-id',
+  '--repo',
+  '--rc-run-id',
+  '--run-id',
+  '--sha',
+  '--timeout-seconds',
+];
+
+/**
+ * Keep the imported bundle resolver at its exact CLI boundary. Its runtime
+ * contract is broader than the historical inferred JavaScript parameter type.
+ * @type {(options: ReleaseCandidateBundleOptions) => ReleaseCandidateBundleResult|undefined}
+ */
+const waitForExactReleaseCandidateBundleForCli = waitForExactReleaseCandidateBundle;
+
 function printUsage() {
   console.error('Usage:');
   console.error(
@@ -44,22 +122,12 @@ function printUsage() {
   );
 }
 
+/**
+ * @param {string[]} argv
+ * @returns {{command?: string; options: ReleaseCandidateCliOptions}}
+ */
 export function parseReleaseCandidateCliArgs(argv) {
-  const parsed = parseCommandLine(argv, {
-    valueFlags: [
-      '--interval-seconds',
-      '--openpath-sha',
-      '--output-dir',
-      '--output-file',
-      '--legacy-manifest-file',
-      '--release-id',
-      '--repo',
-      '--rc-run-id',
-      '--run-id',
-      '--sha',
-      '--timeout-seconds',
-    ],
-  });
+  const parsed = parseCommandLine(argv, { valueFlags: RELEASE_CANDIDATE_VALUE_FLAGS });
 
   return {
     command: parsed.command,
@@ -89,7 +157,8 @@ export function runReleaseCandidateCli(argv = process.argv.slice(2)) {
   const { command, options } = parseReleaseCandidateCliArgs(argv);
 
   if (command === 'resolve-manifest' && options.sha) {
-    const result = waitForReleaseCandidateManifest({
+    /** @type {ReleaseCandidateManifestOptions} */
+    const manifestOptions = {
       sha: options.sha,
       repository: options.repo ?? process.env.GITHUB_REPOSITORY,
       timeoutSeconds: options.timeoutSeconds ?? 900,
@@ -97,6 +166,9 @@ export function runReleaseCandidateCli(argv = process.argv.slice(2)) {
       outputFile: options.outputFile,
       upstreamSha: process.env.UPSTREAM_OPENPATH_SHA,
       cwd: projectRoot,
+    };
+    const result = waitForReleaseCandidateManifest({
+      ...manifestOptions,
     });
 
     writeOutputs(
@@ -115,14 +187,16 @@ export function runReleaseCandidateCli(argv = process.argv.slice(2)) {
       'openpathSha',
       'Usage error: --openpath-sha is required for resolve-firefox-assets'
     );
-    const result = waitForFirefoxReleaseAssets({
+    /** @type {FirefoxReleaseAssetsOptions} */
+    const firefoxAssetsOptions = {
       openpathSha,
       repository: options.repo ?? process.env.GITHUB_REPOSITORY,
       timeoutSeconds: options.timeoutSeconds ?? 900,
       intervalSeconds: options.intervalSeconds ?? 10,
       outputDir: options.outputDir,
       cwd: projectRoot,
-    });
+    };
+    const result = waitForFirefoxReleaseAssets({ ...firefoxAssetsOptions });
 
     writeOutputs({
       repository: result.repository,
@@ -134,7 +208,7 @@ export function runReleaseCandidateCli(argv = process.argv.slice(2)) {
   }
 
   if (command === 'resolve-bundle' && options.sha) {
-    const result = waitForExactReleaseCandidateBundle({
+    const result = waitForExactReleaseCandidateBundleForCli({
       classroomPathSha: options.sha,
       runId: options.runId,
       releaseId: options.releaseId,
@@ -146,6 +220,9 @@ export function runReleaseCandidateCli(argv = process.argv.slice(2)) {
       legacyManifestFile: options.legacyManifestFile,
       cwd: projectRoot,
     });
+    if (!result) {
+      throw new Error('Release Bundle resolver returned no result');
+    }
     const output = {
       ...buildReleaseCandidateBundleProjectionOutputs(result),
       release_bundle_run_id: result.runId,

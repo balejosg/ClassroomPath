@@ -80,3 +80,20 @@ test('rejects an explicit RC run that is failed, non-push, or has a different id
     /successful|conclusion/i
   );
 });
+
+test('requires a non-empty repository before resolving the exact bundle', () => {
+  assert.throws(
+    () =>
+      resolveExplicitReleaseCandidateBundle({
+        rcRunId: '10',
+        run: {
+          databaseId: 10,
+          headSha: classroomPathSha,
+          event: 'push',
+          status: 'completed',
+          conclusion: 'success',
+        },
+      }),
+    /repository is required/i
+  );
+});

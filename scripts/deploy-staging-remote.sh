@@ -186,7 +186,7 @@ trap cleanup_staging_release_manifest EXIT
 
 copy_release_state() {
   if [ -f "$CURRENT_STATE_FILE" ]; then
-    cp "$CURRENT_STATE_FILE" "$PREVIOUS_STATE_FILE"
+    cp "$CURRENT_STATE_FILE" "$PREVIOUS_STATE_FILE" || return 1
     PREVIOUS_APP_SHA="$(grep '^APP_SHA=' "$CURRENT_STATE_FILE" | cut -d= -f2- || true)"
   fi
 
@@ -199,7 +199,7 @@ copy_release_state() {
 write_release_state() {
   local state_output_file="$CURRENT_STATE_FILE"
 
-  copy_release_state
+  copy_release_state || return 1
   if [ "$IMAGE_SOURCE" = "release-candidate" ]; then
     state_output_file="$PENDING_STATE_FILE"
   fi
@@ -223,7 +223,7 @@ write_release_state() {
     "${OPENPATH_SHA:-}" \
     "${OPENPATH_CONTRACT_SHA256:-}" \
     "${RESOLVED_VERIFIER_IMAGE:-}" \
-    "${STAGING_RELEASE_RUN_ID:-}"
+    "${STAGING_RELEASE_RUN_ID:-}" || return 1
 
   if [ "$IMAGE_SOURCE" = "release-candidate" ]; then
     node "$APP_DIR/scripts/lib/release-bundle-state.mjs" persist \
@@ -231,7 +231,7 @@ write_release_state() {
       --bundle-file "$STAGING_RELEASE_BUNDLE_FILE" \
       --contract-file "$STAGING_OPENPATH_CONTRACT_FILE" \
       --release-id "$RELEASE_ID" \
-      --rc-run-id "${STAGING_RELEASE_RUN_ID:-}" >/dev/null
+      --rc-run-id "${STAGING_RELEASE_RUN_ID:-}" >/dev/null || return 1
   else
     return 0
   fi
@@ -257,12 +257,12 @@ resolve_pulled_digest() {
   local image_ref="$1"
   local repo_digest=""
   repo_digest="$(docker image inspect "$image_ref" --format '{{index .RepoDigests 0}}' 2>/dev/null || true)"
-  if [ -n "$repo_digest" ]; then
-    printf '%s' "$repo_digest"
-    return
+  if [[ ! "$repo_digest" =~ @sha256:[0-9a-f]{64}$ ]]; then
+    log_error "Pulled image did not resolve to an immutable digest: $image_ref"
+    return 1
   fi
 
-  printf '%s' "$image_ref"
+  printf '%s' "$repo_digest"
 }
 
 classify_migration_risk() {
@@ -329,34 +329,33 @@ deploy_with_release_candidates() {
   login_staging_registry || return 1
 
   export COMPOSE_PROJECT_NAME=classroompath-staging
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_VERSION "${OPENPATH_VERSION:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256 "${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}"
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release
 
   log_info "Pulling release candidate migrations image for ${STAGING_RELEASE_SHA:-origin-main}..."
   docker pull "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
 
+  if ! declare -f activate_openpath_firefox_assets_generation >/dev/null 2>&1; then
+    log_error "Release runtime helper does not support deferred OpenPath Firefox asset activation"
+    return 1
+  fi
   log_info "Preparing OpenPath Firefox release assets for ${STAGING_RELEASE_SHA:-origin-main}..."
-  prepare_openpath_firefox_assets_from_image "$OPENPATH_FIREFOX_ASSETS_IMAGE" "${STAGING_RELEASE_SHA:-origin-main}" || return 1
+  prepare_openpath_firefox_assets_from_image \
+    "$OPENPATH_FIREFOX_ASSETS_IMAGE" \
+    "${STAGING_RELEASE_SHA:-origin-main}" \
+    prepare-only || return 1
 
   log_info "Pulling release candidate images for ${STAGING_RELEASE_SHA:-origin-main}..."
   docker compose pull gateway api windows-offline-installer-provision spa || return 1
 
   IMAGE_SOURCE="release-candidate"
-  RESOLVED_GATEWAY_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_GATEWAY_IMAGE")"
-  RESOLVED_MIGRATIONS_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_MIGRATIONS_IMAGE")"
-  RESOLVED_OPENPATH_FIREFOX_ASSETS_IMAGE="$(resolve_pulled_digest "$OPENPATH_FIREFOX_ASSETS_IMAGE")"
-  RESOLVED_OPENPATH_API_IMAGE="$(resolve_pulled_digest "$OPENPATH_API_IMAGE")"
+  RESOLVED_GATEWAY_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_GATEWAY_IMAGE")" || return 1
+  RESOLVED_MIGRATIONS_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_MIGRATIONS_IMAGE")" || return 1
+  RESOLVED_OPENPATH_FIREFOX_ASSETS_IMAGE="$(resolve_pulled_digest "$OPENPATH_FIREFOX_ASSETS_IMAGE")" || return 1
+  RESOLVED_OPENPATH_API_IMAGE="$(resolve_pulled_digest "$OPENPATH_API_IMAGE")" || return 1
   RESOLVED_OPENPATH_VERSION="${OPENPATH_VERSION:-}"
   RESOLVED_OPENPATH_LINUX_AGENT_VERSION="${OPENPATH_LINUX_AGENT_VERSION:-}"
   RESOLVED_OPENPATH_LINUX_AGENT_APT_SUITE="${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
-  RESOLVED_SPA_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_SPA_IMAGE")"
-  RESOLVED_VERIFIER_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_VERIFIER_IMAGE")"
+  RESOLVED_SPA_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_SPA_IMAGE")" || return 1
+  RESOLVED_VERIFIER_IMAGE="$(resolve_pulled_digest "$CLASSROOMPATH_VERIFIER_IMAGE")" || return 1
   write_release_state || return 1
   return 0
 }
@@ -764,7 +763,7 @@ prepare_staging_checkout() {
   login_staging_registry
   preflight_staging_release_candidate_images
   classify_migration_risk
-  release_execution_mark_stage preflight
+  release_execution_mark_stage preflight || return 1
 }
 
 run_staging_runtime_validation() {
@@ -810,7 +809,15 @@ cleanup_staging_disk_if_needed() {
 }
 
 run_staging_database_migrations() {
-  release_execution_mark_stage migrations
+  release_execution_mark_stage migrations || return 1
+
+  # Release-candidate migrations consume APP_DIR/config/.env.  The candidate
+  # projection is therefore the first post-boundary mutation and must be
+  # present before the migration container starts.  Source-build keeps its
+  # legacy path and does not use the persisted release projection.
+  if [ "$STAGING_IMAGE_MODE" != "source-build" ]; then
+    apply_staging_release_candidate_runtime_projection || return 1
+  fi
 
   if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then
     log_info "Running database migrations from workspace sources..."
@@ -826,7 +833,7 @@ run_staging_database_migrations() {
 
   # shellcheck disable=SC2034 # consumed by release execution/state helpers
   DB_MIGRATED=1
-  release_execution_mark_stage startup
+  release_execution_mark_stage startup || return 1
 }
 
 staging_runtime_adapter_prepare() {
@@ -834,11 +841,24 @@ staging_runtime_adapter_prepare() {
   FAILURE_CATEGORY="runtime-prepare"
   FAILURE_MESSAGE="staging release candidate preparation failed"
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
-  deploy_with_release_candidates
+  deploy_with_release_candidates || return 1
 }
 
 staging_runtime_adapter_migrate() {
-  run_staging_database_migrations
+  run_staging_database_migrations || return 1
+}
+
+apply_staging_release_candidate_runtime_projection() {
+  local runtime_projection_file="${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/$RELEASE_ID/runtime.env"
+
+  FAILURE_POINT="runtime-projection"
+  FAILURE_CATEGORY="state-write"
+  FAILURE_MESSAGE="staging release candidate runtime projection failed"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  apply_release_runtime_projection_to_env_file \
+    "$runtime_projection_file" \
+    "$APP_DIR/config/.env" || return 1
+  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release || return 1
 }
 
 staging_runtime_adapter_switch() {
@@ -847,10 +867,11 @@ staging_runtime_adapter_switch() {
   FAILURE_MESSAGE="staging release candidate container switch failed"
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
   log_info "Starting staging from release candidate images..."
+  activate_openpath_firefox_assets_generation || return 1
   docker compose down --remove-orphans 2>/dev/null || true
   docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true
   docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
-  compose_up_force_recreate_no_build
+  compose_up_force_recreate_no_build || return 1
 }
 
 staging_runtime_adapter_validate_live() {
@@ -861,7 +882,7 @@ staging_runtime_adapter_validate_live() {
   DEPLOY_RUNTIME_PROJECTION_FILE="${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/$RELEASE_ID/runtime.env"
   DEPLOY_RUNTIME_PROJECTION_SERVICES="classroompath-gateway classroompath-api"
   export DEPLOY_RUNTIME_PROJECTION_FILE DEPLOY_RUNTIME_PROJECTION_SERVICES
-  deploy_runtime_validate_live_projection
+  deploy_runtime_validate_live_projection || return 1
 }
 
 staging_runtime_adapter_fault_barrier() {
@@ -869,7 +890,31 @@ staging_runtime_adapter_fault_barrier() {
 }
 
 deploy_runtime_adapter_recover() {
+  # Keep the candidate identity in the caller's scope for the terminal ledger.
+  # restore_previous_release_state is intentionally allowed to dynamically
+  # rebind these locals while it loads and starts the previous release.
+  local RELEASE_ID="${RELEASE_ID:-}"
+  local RC_RUN_ID="${RC_RUN_ID:-}"
+  local APP_SHA="${APP_SHA:-}"
+  local OPENPATH_SHA="${OPENPATH_SHA:-}"
+  local OPENPATH_CONTRACT_SHA256="${OPENPATH_CONTRACT_SHA256:-}"
+  local IMAGE_SOURCE="${IMAGE_SOURCE:-}"
+  local OPENPATH_VERSION="${OPENPATH_VERSION:-}"
+  local OPENPATH_LINUX_AGENT_VERSION="${OPENPATH_LINUX_AGENT_VERSION:-}"
+  local OPENPATH_LINUX_AGENT_APT_SUITE="${OPENPATH_LINUX_AGENT_APT_SUITE:-}"
+  local OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION="${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION:-}"
+  local OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT="${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT:-}"
+  local OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG="${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG:-}"
+  local OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256="${OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256:-}"
+  local CLASSROOMPATH_GATEWAY_IMAGE="${CLASSROOMPATH_GATEWAY_IMAGE:-}"
+  local CLASSROOMPATH_MIGRATIONS_IMAGE="${CLASSROOMPATH_MIGRATIONS_IMAGE:-}"
+  local OPENPATH_FIREFOX_ASSETS_IMAGE="${OPENPATH_FIREFOX_ASSETS_IMAGE:-}"
+  local OPENPATH_API_IMAGE="${OPENPATH_API_IMAGE:-}"
+  local CLASSROOMPATH_SPA_IMAGE="${CLASSROOMPATH_SPA_IMAGE:-}"
+  local CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}"
+
   restore_previous_release_state
+  return $?
 }
 
 execute_staging_runtime() {
@@ -950,7 +995,7 @@ wait_for_staging_runtime_readiness() {
     sleep 5
   done
 
-  release_execution_mark_stage readiness
+  release_execution_mark_stage readiness || return 1
 
   local ready_check=""
   for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
@@ -961,7 +1006,7 @@ wait_for_staging_runtime_readiness() {
 
     if echo "$ready_check" | grep -q '"ready":true'; then
       log_success "Application readiness OK"
-      release_execution_mark_stage completed
+      release_execution_mark_stage completed || return 1
       activate_release_bundle_state
       return 0
     fi

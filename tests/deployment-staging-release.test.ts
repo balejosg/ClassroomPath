@@ -15,7 +15,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readProjectWorkflow } from './helpers/ops-contracts.ts';
+import { extractShellFunction, readProjectWorkflow } from './helpers/ops-contracts.ts';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const testDir = dirname(currentFilePath);
@@ -833,13 +833,22 @@ bash "$2"
         remoteContent.includes('openpath_contract_base64') &&
         remoteContent.includes('node "$APP_DIR/scripts/release-bundle.mjs" verify')
     );
+    const prepare = extractShellFunction(remoteContent, 'deploy_with_release_candidates');
+    const project = extractShellFunction(
+      remoteContent,
+      'apply_staging_release_candidate_runtime_projection'
+    );
+    const migrate = extractShellFunction(remoteContent, 'run_staging_database_migrations');
+    assert.doesNotMatch(prepare, /upsert_env_file_var|apply_release_runtime_projection/u);
+    assert.match(project, /apply_release_runtime_projection_to_env_file/u);
+    assert.match(project, /\$runtime_projection_file/u);
+    assert.match(project, /\$APP_DIR\/config\/\.env/u);
+    assert.match(migrate, /apply_staging_release_candidate_runtime_projection/u);
+    assert.match(migrate, /bash scripts\/run-migrations-docker\.sh/u);
     assert.ok(
-      remoteContent.includes(
-        'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_VERSION "${OPENPATH_LINUX_AGENT_VERSION:-}"'
-      ) &&
-        remoteContent.includes(
-          'upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_LINUX_AGENT_APT_SUITE "${OPENPATH_LINUX_AGENT_APT_SUITE:-}"'
-        )
+      migrate.indexOf('apply_staging_release_candidate_runtime_projection') <
+        migrate.indexOf('bash scripts/run-migrations-docker.sh'),
+      'candidate configuration must be projected before release-candidate migrations'
     );
     assert.ok(
       !localContent.includes('node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA"')

@@ -605,6 +605,12 @@ jobs:
         windows-staging-bootstrap-canary,
         prepare-production-recovery,
       ]
+    outputs:
+      durable_phase: ${{ steps.read-durable-deployment-state.outputs.phase }}
+      durable_candidate_sha: ${{ steps.read-durable-deployment-state.outputs.candidate_sha }}
+      durable_release_id: ${{ steps.read-durable-deployment-state.outputs.release_id }}
+      durable_transaction_id: ${{ steps.read-durable-deployment-state.outputs.transaction_id }}
+      transaction_id: ${{ steps.resolve.outputs.transaction_id }}
     if: always() && needs.resolve-release-images.result == 'success' && needs.verify-staging-release-state.result == 'success' && needs.prepare-production-recovery.result == 'success' && (needs.verify-staging-release-state.outputs.staging_windows_firefox_high_risk != 'true' || needs.windows-staging-bootstrap-canary.result == 'success') && startsWith(github.ref, 'refs/tags/v')
     environment: production
     permissions:
@@ -621,6 +627,7 @@ jobs:
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          RELEASE_ID: ${{ needs.resolve-release-images.outputs.release_id }}
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
@@ -629,11 +636,16 @@ jobs:
             "${DEPLOY_PORT:-22}" \
             "" \
             "production deployment" >> "$GITHUB_OUTPUT"
+          transaction_id="$(printf '%s' \
+            "${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT:-1}:${GITHUB_SHA}:${GITHUB_REF}:${RELEASE_ID}" |
+            sha256sum | awk '{ print $1; exit }')"
+          printf 'transaction_id=%s\n' "$transaction_id" >> "$GITHUB_OUTPUT"
 
       - name: Deploy via SSH
         env:
           DEPLOY_REF: ${{ github.ref }}
           DEPLOY_SHA: ${{ github.sha }}
+          DEPLOYMENT_TRANSACTION_ID: ${{ steps.resolve.outputs.transaction_id }}
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_MANIFEST_B64: ${{ needs.resolve-release-images.outputs.manifest_base64 }}
@@ -673,7 +685,7 @@ jobs:
           port: ${{ steps.resolve.outputs.port }}
           timeout: 60s
           command_timeout: 20m
-          envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64,DEPLOY_REF,DEPLOY_SHA,RELEASE_MANIFEST_B64,PRODUCTION_RECOVERY_BUNDLE_B64,PRODUCTION_RECOVERY_SHA,PRODUCTION_RECOVERY_ARTIFACT_SHA256,PRODUCTION_RECOVERY_EXECUTOR_SHA256,PRODUCTION_RECOVERY_SOURCE_SHA,PRODUCTION_RECOVERY_SOURCE_VERSION,PRODUCTION_RECOVERY_CONTRACT_VERSION,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID,CLASSROOMPATH_DEPLOY_ROOT,CP_BILLING_MODE,CP_PLATFORM_ADMIN_EMAILS,CP_CLIENT_CANARY_ADMIN_TOKEN,VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY,VAPID_CONTACT,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_ANNUAL_PRICE_1_10,STRIPE_ANNUAL_PRICE_11_25,STRIPE_ANNUAL_PRICE_26_50,STRIPE_ANNUAL_PRICE_51_100,STRIPE_ONBOARDING_PRICE_1_25,STRIPE_ONBOARDING_PRICE_26_100,STRIPE_PILOT_PRICE,CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA,CP_EMAIL_PREFLIGHT_MODE
+          envs: GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PAYLOAD_B64,DEPLOY_REF,DEPLOY_SHA,DEPLOYMENT_TRANSACTION_ID,RELEASE_MANIFEST_B64,PRODUCTION_RECOVERY_BUNDLE_B64,PRODUCTION_RECOVERY_SHA,PRODUCTION_RECOVERY_ARTIFACT_SHA256,PRODUCTION_RECOVERY_EXECUTOR_SHA256,PRODUCTION_RECOVERY_SOURCE_SHA,PRODUCTION_RECOVERY_SOURCE_VERSION,PRODUCTION_RECOVERY_CONTRACT_VERSION,PRODUCTION_CONTAINER_PLATFORM,PRODUCTION_DB_BACKUP_COMMAND,PRODUCTION_DB_BACKUP_ID,CLASSROOMPATH_DEPLOY_ROOT,CP_BILLING_MODE,CP_PLATFORM_ADMIN_EMAILS,CP_CLIENT_CANARY_ADMIN_TOKEN,VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY,VAPID_CONTACT,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_ANNUAL_PRICE_1_10,STRIPE_ANNUAL_PRICE_11_25,STRIPE_ANNUAL_PRICE_26_50,STRIPE_ANNUAL_PRICE_51_100,STRIPE_ONBOARDING_PRICE_1_25,STRIPE_ONBOARDING_PRICE_26_100,STRIPE_PILOT_PRICE,CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA,CP_EMAIL_PREFLIGHT_MODE
           script_path: scripts/deploy-production-remote.sh
 
       - name: Download deploy debug artifact
@@ -703,6 +715,52 @@ jobs:
           if-no-files-found: ignore
           path: deploy-debug.json
           retention-days: 7
+
+      - name: Read durable deployment state
+        id: read-durable-deployment-state
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ steps.resolve.outputs.ip }}
+          DEPLOY_PORT: ${{ steps.resolve.outputs.port }}
+          DEPLOY_ROOT: ${{ vars.CLASSROOMPATH_DEPLOY_ROOT }}
+        run: |
+          set +e
+          phase=UNKNOWN
+          candidate_sha=UNKNOWN
+          release_id=UNKNOWN
+          transaction_id=UNKNOWN
+          state_status=1
+          if [ -n "${DEPLOY_ROOT:-}" ] &&
+            [ -n "${DEPLOY_HOST:-}" ] &&
+            [ -n "${DEPLOY_PORT:-}" ]; then
+            source scripts/lib/github-actions-remote.sh
+            github_actions_remote_install_ssh_key \
+              "$DEPLOY_SSH_KEY" \
+              ~/.ssh/classroompath-production-phase
+            state_path="${DEPLOY_ROOT%/}/release-state/deployment-phase.env"
+            state_contents="$(github_actions_remote_read_file \
+              ~/.ssh/classroompath-production-phase \
+              "$DEPLOY_PORT" \
+              "$DEPLOY_USER" \
+              "$DEPLOY_HOST" \
+              "$state_path" 2>/dev/null)"
+            state_status=$?
+          fi
+          if [ "$state_status" -eq 0 ]; then
+            phase="$(printf '%s\n' "$state_contents" | sed -n 's/^DEPLOYMENT_PHASE=//p' | head -n 1)"
+            candidate_sha="$(printf '%s\n' "$state_contents" | sed -n 's/^CANDIDATE_SHA=//p' | head -n 1)"
+            release_id="$(printf '%s\n' "$state_contents" | sed -n 's/^CANDIDATE_RELEASE_ID=//p' | head -n 1)"
+            transaction_id="$(printf '%s\n' "$state_contents" | sed -n 's/^DEPLOYMENT_TRANSACTION_ID=//p' | head -n 1)"
+          fi
+          printf 'phase=%s\n' "${phase:-UNKNOWN}" >> "$GITHUB_OUTPUT"
+          printf 'candidate_sha=%s\n' "${candidate_sha:-UNKNOWN}" >> "$GITHUB_OUTPUT"
+          printf 'release_id=%s\n' "${release_id:-UNKNOWN}" >> "$GITHUB_OUTPUT"
+          printf 'transaction_id=%s\n' "${transaction_id:-UNKNOWN}" >> "$GITHUB_OUTPUT"
+          exit 0
 
   production-deploy-diagnostics:
     name: Production Deploy Diagnostics
@@ -1141,7 +1199,7 @@ jobs:
         resolve-release-images,
         prepare-production-recovery,
       ]
-    if: always() && needs.prepare-production-recovery.result == 'success' && (needs.deploy-production.result == 'failure' || needs.smoke-test-production.result == 'failure')
+    if: always() && needs.prepare-production-recovery.result == 'success' && ((needs.deploy-production.result == 'failure' && (needs.deploy-production.outputs.durable_phase != 'COMMITTED' || needs.deploy-production.outputs.durable_candidate_sha != github.sha || needs.deploy-production.outputs.durable_release_id != needs.resolve-release-images.outputs.release_id || needs.deploy-production.outputs.durable_transaction_id != needs.deploy-production.outputs.transaction_id)) || needs.smoke-test-production.result == 'failure')
     permissions:
       contents: read
       packages: read

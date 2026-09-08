@@ -90,6 +90,23 @@ function ensureFile(path, label) {
   return path;
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} label
+ * @returns {string}
+ */
+function requirePath(value, label) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    throw new Error(`${label} is required for candidate tooling compatibility`);
+  }
+  return normalized;
+}
+
+/**
+ * @param {string} candidateRoot
+ * @param {Record<string, string>} identity
+ */
 async function assertReadinessContract(candidateRoot, identity) {
   const modulePath = ensureFile(
     join(candidateRoot, 'scripts/lib/production-readiness.mjs'),
@@ -116,6 +133,9 @@ async function assertReadinessContract(candidateRoot, identity) {
   return report;
 }
 
+/**
+ * @param {{candidateSha?: string; rcRunId?: string; tag?: string; releaseId?: string; openpathSha?: string; contractSha256?: string; bundleFile?: string; contractFile?: string; stagingCurrent?: string; stagingVerification?: string; repoRoot?: string}} [options]
+ */
 export async function runCandidateToolingCompatibility({
   candidateSha,
   rcRunId,
@@ -141,12 +161,18 @@ export async function runCandidateToolingCompatibility({
     throw new Error('tag has an invalid production tag format');
   }
 
-  const operatorRoot = resolve(repoRoot);
-  const bundlePath = ensureFile(resolve(bundleFile), 'Release Bundle');
-  const contractPath = ensureFile(resolve(contractFile), 'OpenPath contract');
-  const stagingCurrentPath = ensureFile(resolve(stagingCurrent), 'staging current evidence');
+  const operatorRoot = resolve(requirePath(repoRoot, 'repoRoot'));
+  const bundlePath = ensureFile(resolve(requirePath(bundleFile, 'bundleFile')), 'Release Bundle');
+  const contractPath = ensureFile(
+    resolve(requirePath(contractFile, 'contractFile')),
+    'OpenPath contract'
+  );
+  const stagingCurrentPath = ensureFile(
+    resolve(requirePath(stagingCurrent, 'stagingCurrent')),
+    'staging current evidence'
+  );
   const stagingVerificationPath = ensureFile(
-    resolve(stagingVerification),
+    resolve(requirePath(stagingVerification, 'stagingVerification')),
     'staging verification evidence'
   );
 

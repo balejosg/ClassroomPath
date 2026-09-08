@@ -3,6 +3,21 @@ import { resolveExactReleaseCandidateBundle } from './release-candidate-bundle.m
 
 const SHA40_PATTERN = /^[0-9a-f]{40}$/;
 
+/** @typedef {Record<string, unknown>} JsonObject */
+
+/**
+ * @param {unknown} value
+ * @param {string} label
+ * @returns {string}
+ */
+function requireNonEmptyString(value, label) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    throw new Error(`${label} is required to resolve an exact release candidate`);
+  }
+  return normalized;
+}
+
 export function normalizeExplicitRcRunId(value, label = 'RC run id') {
   const normalized = String(value ?? '').trim();
   if (!/^\d+$/.test(normalized)) {
@@ -75,6 +90,9 @@ export function assertSuccessfulReleaseCandidateRun(run, expectedRunId) {
 /**
  * Resolve exactly one successful release-candidate run selected by its immutable run id.
  * The run's head SHA is the only candidate SHA accepted by the exact bundle resolver.
+ *
+ * @param {{repository?: string; rcRunId?: string|number; run?: JsonObject; resolveBundle?: (options: JsonObject) => JsonObject; viewRun?: (options: {repo: string; runId: string; cwd?: string}) => JsonObject; cwd?: string; [key: string]: unknown}} [params]
+ * @returns {JsonObject}
  */
 export function resolveExplicitReleaseCandidateBundle({
   repository,
@@ -86,7 +104,8 @@ export function resolveExplicitReleaseCandidateBundle({
   ...options
 } = {}) {
   const requestedRunId = normalizeExplicitRcRunId(rcRunId);
-  const selectedRun = run ?? viewRun({ repo: repository, runId: requestedRunId, cwd });
+  const repo = requireNonEmptyString(repository, 'repository');
+  const selectedRun = run ?? viewRun({ repo, runId: requestedRunId, cwd });
   assertSuccessfulReleaseCandidateRun(selectedRun, requestedRunId);
 
   const classroomPathSha = normalizeSha40(
@@ -95,7 +114,7 @@ export function resolveExplicitReleaseCandidateBundle({
   );
   const resolved = resolveBundle({
     ...options,
-    repository,
+    repository: repo,
     classroomPathSha,
     runId: requestedRunId,
     run: selectedRun,

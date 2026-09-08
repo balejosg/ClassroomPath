@@ -1,11 +1,57 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 import {
   compareToBaseline,
   isRatchetOwnedFile,
   parseTscOutput,
+  runTscScriptsCheck,
 } from '../scripts/check-scripts-typecheck.mjs';
+
+test('typecheck fails when the compiler cannot start instead of reporting an empty baseline', (t) => {
+  const cwd = mkdtempSync(join(tmpdir(), 'scripts-typecheck-missing-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  assert.throws(() => runTscScriptsCheck({ cwd }), /TypeScript check failed/);
+});
+
+test('typecheck rejects compiler configuration errors without source locations', (t) => {
+  const cwd = mkdtempSync(join(tmpdir(), 'scripts-typecheck-config-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const binDir = join(cwd, 'node_modules/typescript/bin');
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(
+    join(binDir, 'tsc'),
+    "console.log('error TS5058: The specified path does not exist.'); process.exit(1);\n"
+  );
+  assert.throws(() => runTscScriptsCheck({ cwd }), /TypeScript check failed.*TS5058/s);
+});
+
+test('typecheck still permits source diagnostics outside ratchet ownership', (t) => {
+  const cwd = mkdtempSync(join(tmpdir(), 'scripts-typecheck-unowned-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const binDir = join(cwd, 'node_modules/typescript/bin');
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(
+    join(binDir, 'tsc'),
+    "console.log('api/src/example.ts(1,1): error TS2322: Type mismatch.'); process.exit(2);\n"
+  );
+  assert.deepEqual(runTscScriptsCheck({ cwd }), {});
+});
+
+test('typecheck rejects configuration diagnostics even when they have source locations', (t) => {
+  const cwd = mkdtempSync(join(tmpdir(), 'scripts-typecheck-config-location-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const binDir = join(cwd, 'node_modules/typescript/bin');
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(
+    join(binDir, 'tsc'),
+    "console.log('tsconfig.scripts.json(1,1): error TS5023: Unknown compiler option.'); process.exit(2);\n"
+  );
+  assert.throws(() => runTscScriptsCheck({ cwd }), /TypeScript check failed.*TS5023/s);
+});
 
 test('flags a file whose current error count exceeds the baseline as a regression', () => {
   const result = compareToBaseline({ 'scripts/foo.mjs': 5 }, { 'scripts/foo.mjs': 2 });

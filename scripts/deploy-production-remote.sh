@@ -697,7 +697,7 @@ apply_production_runtime_deploy() {
 }
 
 start_production_runtime() {
-  start_production_runtime_impl "$@"
+  execute_production_runtime "$@"
 }
 
 wait_for_production_runtime_readiness() {

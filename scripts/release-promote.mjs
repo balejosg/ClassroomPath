@@ -28,6 +28,31 @@ import { buildReleaseTranscript, writeReleaseTranscript } from './lib/release-tr
 
 const execFile = promisify(nodeExecFile);
 
+/**
+ * @typedef {object} ReleasePromoteOptions
+ * @property {string} rcRunId
+ * @property {string} tag
+ * @property {boolean} autoTag
+ * @property {boolean} dryRun
+ * @property {boolean} execute
+ * @property {boolean} localOnly
+ * @property {boolean} highRiskWindows
+ * @property {boolean} postProductionWindowsCanary
+ * @property {boolean} help
+ * @property {string|null} fromStep
+ * @property {string[]} only
+ * @property {boolean} resume
+ */
+/**
+ * @typedef {object} PromotionIdentityState
+ * @property {string} [tag]
+ * @property {string} [releaseId]
+ * @property {string} [classroomPathSha]
+ * @property {string} [openpathSha]
+ * @property {string} [openpathContractSha256]
+ * @property {string} [rcRunId]
+ */
+
 function usage() {
   return `Usage: npm run release:promote -- --rc-run-id <id> (--tag <vX.Y.Z>|--auto-tag) [--execute|--dry-run] [--local-only] [--high-risk-windows|--no-high-risk-windows] [--post-production-windows-canary|--no-post-production-windows-canary] [--from-step <id>|--only <id>|--resume]
 
@@ -59,7 +84,12 @@ Options:
 `;
 }
 
+/**
+ * @param {string[]} argv
+ * @returns {ReleasePromoteOptions}
+ */
 export function parseReleasePromoteArgs(argv) {
+  /** @type {ReleasePromoteOptions} */
   const options = {
     rcRunId: '',
     tag: '',
@@ -469,6 +499,9 @@ function resolveSkipSet({ plan, options, stateRoot, tag, rcRunId, identityRoot, 
   return { skipSet, skipReasons };
 }
 
+/**
+ * @param {{state?: PromotionIdentityState|null; locator?: PromotionIdentityState|null; tag?: string; rcRunId?: string|number}} [params]
+ */
 export function assertPromotionResumeIdentity({ state, locator, tag, rcRunId } = {}) {
   const requestedTag = String(tag ?? '').trim();
   const requestedRcRunId = normalizePromotionRcRunId(rcRunId, 'rcRunId');
@@ -778,13 +811,17 @@ export async function resolveNextPatchTag({ execFile: runExecFile = execFile } =
     .split(/\r?\n/)
     .map((line) => line.trim().split(/\s+/)[1] ?? '')
     .map((ref) => ref.replace(/^refs\/tags\//, ''))
-    .map((tag) => /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag))
-    .filter(Boolean)
-    .map((match) => ({
-      major: Number(match[1]),
-      minor: Number(match[2]),
-      patch: Number(match[3]),
-    }))
+    .flatMap((tag) => {
+      const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag);
+      if (!match) return [];
+      return [
+        {
+          major: Number(match[1]),
+          minor: Number(match[2]),
+          patch: Number(match[3]),
+        },
+      ];
+    })
     .sort((left, right) => {
       if (left.major !== right.major) return right.major - left.major;
       if (left.minor !== right.minor) return right.minor - left.minor;

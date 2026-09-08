@@ -83,6 +83,23 @@ export function runTscScriptsCheck({ cwd = projectRoot, tscPath = TSCONFIG_PATH 
     throw result.error;
   }
 
+  const lines = output.split(/\r?\n/);
+  const hasSourceDiagnostics = lines.some((line) => TSC_ERROR_LINE.test(line));
+  const hasGlobalDiagnostics = lines.some((line) => /^error TS\d+:/.test(line));
+  const hasConfigurationDiagnostics = lines.some((line) =>
+    TSC_ERROR_LINE.exec(line)?.[1].endsWith('.json')
+  );
+  if (
+    result.signal ||
+    hasGlobalDiagnostics ||
+    hasConfigurationDiagnostics ||
+    (result.status !== 0 && (!hasSourceDiagnostics || (result.status !== 1 && result.status !== 2)))
+  ) {
+    throw new Error(
+      `TypeScript check failed (exit ${result.status ?? result.signal ?? 'unknown'}):\n${output.trim()}`
+    );
+  }
+
   return parseTscOutput(output);
 }
 

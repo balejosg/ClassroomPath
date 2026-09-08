@@ -374,12 +374,6 @@ deploy_runtime_adapter_recover() {
     bash "$recovery_executor_path"
 }
 
-start_production_runtime_impl() {
-  plan_production_runtime_deploy_impl
-  production_runtime_adapter_prepare
-  production_runtime_adapter_switch
-}
-
 wait_for_production_runtime_readiness_impl() {
   production_runtime_ensure_shared_executor || return 1
   DEPLOY_RUNTIME_HEALTH_URL="${PRODUCTION_GATEWAY_HEALTH_URL:-http://localhost:3001/cp/health}"

@@ -39,6 +39,34 @@ const CLASSROOMPATH_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const OPENPATH_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const CONTRACT_SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
+/**
+ * @typedef {{openpathSha: string; contractSha256: string}|{openpathSha?: undefined; contractSha256?: undefined}} OpenPathTagIdentity
+ * @typedef {{releaseId: string; rcRunId: string; classroomPathSha: string} & OpenPathTagIdentity} ProductionTagIdentity
+ */
+
+/**
+ * @param {string|undefined} openpathSha
+ * @param {string|undefined} contractSha256
+ * @returns {OpenPathTagIdentity}
+ */
+function normalizeOpenPathTagIdentity(openpathSha, contractSha256) {
+  const normalizedOpenpathSha = String(openpathSha ?? '').trim();
+  const normalizedContractSha256 = String(contractSha256 ?? '').trim();
+  if (Boolean(normalizedOpenpathSha) !== Boolean(normalizedContractSha256)) {
+    throw new Error('openpathSha and contractSha256 must be provided together');
+  }
+  if (!normalizedOpenpathSha) {
+    return {};
+  }
+  if (!OPENPATH_SHA_PATTERN.test(normalizedOpenpathSha)) {
+    throw new Error('openpathSha must be a 40-character lowercase SHA');
+  }
+  if (!CONTRACT_SHA256_PATTERN.test(normalizedContractSha256)) {
+    throw new Error('contractSha256 must be a 64-character lowercase SHA-256 hex string');
+  }
+  return { openpathSha: normalizedOpenpathSha, contractSha256: normalizedContractSha256 };
+}
+
 function extractUniqueMarker(messageText, markerName) {
   const values = [
     ...String(messageText ?? '').matchAll(new RegExp(`^${markerName}:\\s*(\\S+)\\s*$`, 'gmu')),
@@ -52,6 +80,10 @@ function extractUniqueMarker(messageText, markerName) {
   return values[0];
 }
 
+/**
+ * @param {{releaseId?: string; rcRunId?: string; classroomPathSha?: string} & OpenPathTagIdentity} [identity]
+ * @returns {ProductionTagIdentity}
+ */
 export function buildProductionTagIdentity({
   releaseId,
   rcRunId,
@@ -71,24 +103,11 @@ export function buildProductionTagIdentity({
   if (!CLASSROOMPATH_SHA_PATTERN.test(normalizedClassroomPathSha)) {
     throw new Error('classroomPathSha must be a 40-character lowercase SHA');
   }
-  const normalizedOpenpathSha = String(openpathSha ?? '').trim();
-  const normalizedContractSha256 = String(contractSha256 ?? '').trim();
-  if (Boolean(normalizedOpenpathSha) !== Boolean(normalizedContractSha256)) {
-    throw new Error('openpathSha and contractSha256 must be provided together');
-  }
-  if (normalizedOpenpathSha && !OPENPATH_SHA_PATTERN.test(normalizedOpenpathSha)) {
-    throw new Error('openpathSha must be a 40-character lowercase SHA');
-  }
-  if (normalizedContractSha256 && !CONTRACT_SHA256_PATTERN.test(normalizedContractSha256)) {
-    throw new Error('contractSha256 must be a 64-character lowercase SHA-256 hex string');
-  }
   return {
     releaseId: normalizedReleaseId,
     rcRunId: normalizedRcRunId,
     classroomPathSha: normalizedClassroomPathSha,
-    ...(normalizedOpenpathSha
-      ? { openpathSha: normalizedOpenpathSha, contractSha256: normalizedContractSha256 }
-      : {}),
+    ...normalizeOpenPathTagIdentity(openpathSha, contractSha256),
   };
 }
 

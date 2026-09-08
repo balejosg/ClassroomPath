@@ -42,6 +42,36 @@ const RC_WORKFLOW = 'release-candidate-images.yml';
 const PRODUCTION_DEPLOY_WORKFLOW = 'deploy.yml';
 const DEFAULT_STAGING_DEPLOY_ROOT = '/srv/classroompath';
 
+/** @typedef {Record<string, string|number|boolean|null|undefined>} ReleaseStatusState */
+/** @typedef {{databaseId?: string|number; runId?: string|number; headSha?: string|null; event?: string|null; status?: string|null; conclusion?: string|null; updatedAt?: string|null; url?: string|null; html_url?: string|null}} ReleaseStatusRun */
+/** @typedef {{name: string; status: string; detailsUrl?: string|null}} ReleaseStatusCheck */
+/** @typedef {{ok: boolean; state: ReleaseStatusState|null; error: string}} ReleaseStatusRemoteState */
+/** @typedef {{cwd?: string; env?: NodeJS.ProcessEnv; encoding?: 'buffer'|'utf8'}} CommandOptions */
+/** @typedef {(command: string, args: string[], options?: CommandOptions) => string|Buffer} RunCommand */
+/**
+ * @typedef {object} ReleaseStatusCollectionOptions
+ * @property {string[]} [argv]
+ * @property {NodeJS.ProcessEnv} [env]
+ * @property {RunCommand} [runCommand]
+ * @property {string} [projectRootOverride]
+ */
+/**
+ * @typedef {object} ReleaseStatusSnapshot
+ * @property {string} generatedAt
+ * @property {{repository: string; headSha: string; originMainSha: string|null; originMainError: string}} classroomPath
+ * @property {{repository: string; submoduleSha: string; baseSha: string; changedFiles: string[]; requiredChecks: ReleaseStatusCheck[]; requiredChecksError: string; prereleaseAptRequiredCheck: string}} openPath
+ * @property {{workflow?: string; runId?: string|number|null; status?: string|null; conclusion?: string|null; workflowStatus?: string|null; latestRun?: ReleaseStatusRun|null; runsError?: string; manifest: Record<string, unknown>|null; manifestStatus: string; manifestArtifact: string; manifestError: string}} releaseCandidate
+ * @property {{pin: unknown; requiredCheck: string}} prereleaseApt
+ * @property {ReleaseStatusRemoteState} stagingVerification
+ * @property {ReleaseStatusRemoteState} stagingCurrentImages
+ * @property {{workflow: string; latestRun: ReleaseStatusRun|null; runsError: string; currentState: ReleaseStatusState|null; currentStateError: string}} productionDeploy
+ * @property {{nextTag: string; nextTagError: string}} release
+ * @property {{placeholders: Array<{name: string; value: string}>}} operationalTargets
+ * @property {string[]} [promotionBlockers]
+ * @property {string[]} [productionBlockers]
+ * @property {string[]} [blockers]
+ */
+
 function usage() {
   return `Usage: npm run release:status -- [--sha <classroompath-sha>] [--openpath-sha <sha>] [--rc-run-id <id>] [--json]
 
@@ -56,6 +86,7 @@ Options:
 `;
 }
 
+/** @param {string[]} argv @param {number} index @param {string} flag @returns {string} */
 function readValue(argv, index, flag) {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
@@ -65,6 +96,10 @@ function readValue(argv, index, flag) {
   return value;
 }
 
+/**
+ * @param {string[]} argv
+ * @returns {{sha: string; openpathSha: string; rcRunId: string; json: boolean; help?: boolean}}
+ */
 export function parseReleaseStatusArgs(argv) {
   const parsed = {
     sha: '',
@@ -100,6 +135,12 @@ export function parseReleaseStatusArgs(argv) {
   return parsed;
 }
 
+/**
+ * @param {string} command
+ * @param {string[]} args
+ * @param {CommandOptions} [options]
+ * @returns {string|Buffer}
+ */
 function defaultRunCommand(command, args, options = {}) {
   return execFileSync(command, args, {
     cwd: options.cwd ?? projectRoot,
@@ -150,13 +191,20 @@ export function resolveNextPatchTagFromRemoteTags(text) {
     .split(/\r?\n/)
     .map((line) => line.trim().split(/\s+/)[1] ?? '')
     .map((ref) => ref.replace(/^refs\/tags\//, ''))
-    .map((tag) => /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag))
-    .filter(Boolean)
-    .map((match) => ({
-      major: Number(match[1]),
-      minor: Number(match[2]),
-      patch: Number(match[3]),
-    }))
+    .flatMap((tag) => {
+      const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag);
+      if (!match) {
+        return [];
+      }
+
+      return [
+        {
+          major: Number(match[1]),
+          minor: Number(match[2]),
+          patch: Number(match[3]),
+        },
+      ];
+    })
     .sort((left, right) => {
       if (left.major !== right.major) return right.major - left.major;
       if (left.minor !== right.minor) return right.minor - left.minor;
@@ -208,6 +256,7 @@ function latestRun(runs) {
   return sortWorkflowRunsNewestFirst(runs)[0] ?? null;
 }
 
+/** @param {ReleaseStatusRun|null|undefined} run @returns {ReleaseStatusRun|null} */
 function normalizeRun(run) {
   if (!run) {
     return null;
@@ -241,6 +290,7 @@ function normalizeReleaseRun(run) {
   };
 }
 
+/** @param {NodeJS.ProcessEnv} env @returns {Array<{name: string; value: string}>} */
 export function detectOperationalTargetPlaceholders(env) {
   const proxmoxAlias = String(env.PROXMOX_SSH_ALIAS ?? '').trim();
   const windowsRunnerProxmoxHost = String(env.WINDOWS_RUNNER_PROXMOX_HOST ?? '').trim();
@@ -263,10 +313,12 @@ export function detectOperationalTargetPlaceholders(env) {
     .filter(({ value }) => value && /(^|[.])example[.]invalid$/.test(value));
 }
 
+/** @param {RunCommand} runCommand @param {string[]} args @param {NodeJS.ProcessEnv} env @returns {string} */
 function runGit(runCommand, args, env) {
   return String(runCommand('git', args, { cwd: projectRoot, env })).trim();
 }
 
+/** @param {RunCommand} runCommand @param {string[]} args @param {NodeJS.ProcessEnv} env @returns {string} */
 function runGh(runCommand, args, env) {
   return String(runCommand('gh', args, { cwd: projectRoot, env })).trim();
 }
@@ -595,6 +647,10 @@ function readReleaseCandidateManifest({ runCommand, env, repo, run, sha }) {
   }
 }
 
+/**
+ * @param {ReleaseStatusCollectionOptions} [options]
+ * @returns {Promise<ReleaseStatusSnapshot>}
+ */
 export async function collectReleaseStatusEvidence({
   argv = [],
   env = process.env,

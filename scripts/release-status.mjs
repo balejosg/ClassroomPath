@@ -30,6 +30,26 @@ import {
 const currentFilePath = fileURLToPath(import.meta.url);
 const projectRoot = resolve(dirname(currentFilePath), '..');
 
+/** @typedef {import('./lib/release-status-collector.mjs').ReleaseStatusSnapshot} ReleaseStatusSnapshot */
+/** @typedef {import('./lib/release-status-collector.mjs').ReleaseStatusRun} ReleaseStatusRun */
+/** @typedef {import('./lib/release-status-collector.mjs').ReleaseStatusCheck} ReleaseStatusCheck */
+/** @typedef {import('./lib/release-status-collector.mjs').ReleaseStatusState} ReleaseStatusState */
+/** @typedef {import('./lib/release-status-collector.mjs').RunCommand} RunCommand */
+/**
+ * @typedef {object} ReleaseStatusJson
+ * @property {{head: string; headSha: string; originMain: string|null; originMainSha: string|null; repository: string}} classroompath
+ * @property {{repository: string; submoduleSha: string; requiredChecks: ReleaseStatusCheck[]; prereleaseAptRequiredCheck: string}} openpath
+ * @property {{workflow?: string; runId?: string|number|null; status?: string|null; conclusion?: string|null; workflowStatus?: string|null; latestRun?: ReleaseStatusRun|null; runsError?: string; manifest: Record<string, unknown>|null; manifestStatus: string; manifestArtifact: string; manifestError: string}} releaseCandidate
+ * @property {{currentImages: ReleaseStatusState; currentImagesError: string; verification: ReleaseStatusState; verificationError: string}} staging
+ * @property {{lastDeploy: ReleaseStatusRun|null; currentImages: ReleaseStatusState; currentImagesError: string}} production
+ * @property {{nextTag: string}} release
+ * @property {{placeholders: Array<{name: string; value: string}>}} operationalTargets
+ * @property {string[]} promotionBlockers
+ * @property {string[]} productionBlockers
+ * @property {string[]} blockers
+ */
+/** @typedef {Omit<ReleaseStatusSnapshot, 'releaseCandidate'|'release'> & ReleaseStatusJson} ReleaseStatusResult */
+
 function usage() {
   return `Usage: npm run release:status -- [--sha <classroompath-sha>] [--openpath-sha <sha>] [--rc-run-id <id>] [--json]
 
@@ -132,6 +152,7 @@ export {
   resolveNextPatchTagFromRemoteTags,
 };
 
+/** @param {ReleaseStatusSnapshot} status @returns {ReleaseStatusJson} */
 export function buildReleaseStatusJson(status) {
   const stagingState = status.stagingVerification.state ?? {};
   const stagingCurrentImages = status.stagingCurrentImages.state ?? {};
@@ -199,6 +220,10 @@ export function buildReleaseStatusJson(status) {
   };
 }
 
+/**
+ * @param {{argv?: string[]; env?: NodeJS.ProcessEnv; runCommand?: RunCommand}} [options]
+ * @returns {Promise<ReleaseStatusResult>}
+ */
 export async function buildReleaseStatus({
   argv = [],
   env = process.env,
@@ -209,11 +234,10 @@ export async function buildReleaseStatus({
   const blockers = evaluateProductionCurrentAtTarget(status)
     ? [...blockerGroups.productionBlockers]
     : [...blockerGroups.promotionBlockers, ...blockerGroups.productionBlockers];
+  const enrichedStatus = { ...status, ...blockerGroups, blockers };
   return {
-    ...status,
-    ...blockerGroups,
-    blockers,
-    ...buildReleaseStatusJson({ ...status, ...blockerGroups, blockers }),
+    ...enrichedStatus,
+    ...buildReleaseStatusJson(enrichedStatus),
   };
 }
 
@@ -221,6 +245,7 @@ function formatCheck(check) {
   return `  - ${check.name}: ${check.status}`;
 }
 
+/** @param {ReleaseStatusResult|ReleaseStatusSnapshot} status @returns {string} */
 export function renderReleaseStatusText(status) {
   const stagingState = status.stagingVerification.state ?? {};
   const productionState = status.productionDeploy.currentState ?? {};

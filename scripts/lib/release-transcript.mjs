@@ -9,6 +9,37 @@ import { join } from 'node:path';
 
 const DEFAULT_TRANSCRIPT_ROOT = '.opencode/tmp/release-promote';
 
+/**
+ * @typedef {object} ReleaseTranscriptStep
+ * @property {string} id
+ * @property {string|null} [command]
+ * @property {string} [status]
+ * @property {number} [seconds]
+ * @property {{runId?: string|number; url?: string}} [githubRun]
+ * @property {string|number|null} [runId]
+ * @property {string|null} [url]
+ * @property {string|null} [retryOf]
+ */
+/** @typedef {{step?: string; reason?: string}} ReleaseTranscriptRetry */
+/** @typedef {{step?: string; runId?: string|number}} ReleaseTranscriptRerun */
+/**
+ * @typedef {object} ReleaseTranscript
+ * @property {string} [tag]
+ * @property {string} [rcRunId]
+ * @property {string} [status]
+ * @property {string|null} [startedAt]
+ * @property {string|null} [finishedAt]
+ * @property {Record<string, string>} [shas]
+ * @property {ReleaseTranscriptStep[]} [steps]
+ * @property {ReleaseTranscriptRetry[]} [retries]
+ * @property {ReleaseTranscriptRerun[]} [reruns]
+ * @property {string|null} [healthStepResult]
+ */
+
+/**
+ * @param {{tag?: string; rcRunId?: string; status?: string; startedAt?: string|null; finishedAt?: string|null; steps?: ReleaseTranscriptStep[]; retries?: ReleaseTranscriptRetry[]; reruns?: ReleaseTranscriptRerun[]; shas?: Record<string, string>}} [params]
+ * @returns {ReleaseTranscript}
+ */
 export function buildReleaseTranscript({
   tag,
   rcRunId = '',
@@ -42,6 +73,10 @@ export function buildReleaseTranscript({
   };
 }
 
+/**
+ * @param {{transcript?: ReleaseTranscript; root?: string; identityKey?: string}} [params]
+ * @returns {{outputDir: string}}
+ */
 export function writeReleaseTranscript({
   transcript,
   root = DEFAULT_TRANSCRIPT_ROOT,
@@ -64,6 +99,7 @@ export function writeReleaseTranscript({
   return { outputDir };
 }
 
+/** @param {ReleaseTranscript} transcript */
 export function renderReleaseTranscriptMarkdown(transcript) {
   const lines = [
     `# Release Promote Transcript: ${transcript.tag}`,
@@ -81,16 +117,18 @@ export function renderReleaseTranscriptMarkdown(transcript) {
     lines.push(`| ${step.id} | ${step.status} | ${step.seconds ?? 0} | ${run} |`);
   }
 
-  if ((transcript.retries ?? []).length > 0) {
+  const retries = transcript.retries ?? [];
+  if (retries.length > 0) {
     lines.push('', '## Retries');
-    for (const retry of transcript.retries) {
+    for (const retry of retries) {
       lines.push(`- ${retry.step}: ${retry.reason}`);
     }
   }
 
-  if ((transcript.reruns ?? []).length > 0) {
+  const reruns = transcript.reruns ?? [];
+  if (reruns.length > 0) {
     lines.push('', '## Reruns');
-    for (const rerun of transcript.reruns) {
+    for (const rerun of reruns) {
       lines.push(`- ${rerun.step}: run ${rerun.runId}`);
     }
   }
