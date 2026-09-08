@@ -155,7 +155,7 @@ production_tag_reconcile_existing
   assert.match(`${result.stdout}\n${result.stderr}`, /Unable to inspect origin tag v1\.2\.3/);
 });
 
-test('tag-production-release local-only creates and reconciles locally without remote fence or push', () => {
+function createTagProductionFixture({ tagName = 'v9.9.9', nonCanonicalOperator = false } = {}) {
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'classroompath-tag-local-only-'));
   const bareRepository = join(fixtureRoot, 'origin.git');
   const worktree = join(fixtureRoot, 'a', 'b', 'worktree');
@@ -163,7 +163,6 @@ test('tag-production-release local-only creates and reconciles locally without r
   const guardDirectory = join(fixtureRoot, 'a', 'scripts');
   const guardLog = join(fixtureRoot, 'guard.log');
   const pushLog = join(fixtureRoot, 'push.log');
-  const tagName = 'v9.9.9';
   const releaseId = 'a'.repeat(64);
   const openpathSha = 'b'.repeat(40);
   const contractFile = join(fixtureRoot, 'openpath-contract.json');
@@ -176,7 +175,7 @@ test('tag-production-release local-only creates and reconciles locally without r
     execFileSync('git', ['clone', '--bare', projectRoot, bareRepository], { stdio: 'ignore' });
     mkdirSync(resolve(worktree, '..'), { recursive: true });
     execFileSync('git', ['clone', bareRepository, worktree], { stdio: 'ignore' });
-    execFileSync('git', ['-C', worktree, 'config', 'user.name', 'Local-only fixture']);
+    execFileSync('git', ['-C', worktree, 'config', 'user.name', 'Tag fixture']);
     execFileSync('git', ['-C', worktree, 'config', 'user.email', 'fixture@example.invalid']);
 
     const candidateSha = execFileSync('git', ['-C', worktree, 'rev-parse', 'HEAD'], {
@@ -186,6 +185,7 @@ test('tag-production-release local-only creates and reconciles locally without r
     for (const relativePath of [
       'scripts/tag-production-release.sh',
       'scripts/require-main-branch.sh',
+      'scripts/require-canonical-operator-tooling.sh',
       'scripts/lib/common.sh',
       'scripts/lib/github-token.sh',
       'scripts/lib/production-tag.sh',
@@ -197,10 +197,24 @@ test('tag-production-release local-only creates and reconciles locally without r
     writeFileSync(resolve(worktree, 'operator-head-b-marker.txt'), 'operator checkout B\n', 'utf8');
     execFileSync('git', ['-C', worktree, 'add', 'scripts', 'operator-head-b-marker.txt']);
     execFileSync('git', ['-C', worktree, 'commit', '--quiet', '-m', 'operator checkout B']);
-    const operatorHead = execFileSync('git', ['-C', worktree, 'rev-parse', 'HEAD'], {
+    const operatorHeadB = execFileSync('git', ['-C', worktree, 'rev-parse', 'HEAD'], {
       encoding: 'utf8',
     }).trim();
-    assert.notEqual(candidateSha, operatorHead);
+    execFileSync('git', ['-C', worktree, 'push', '--quiet', 'origin', 'HEAD:main']);
+
+    let operatorHead = operatorHeadB;
+    if (nonCanonicalOperator) {
+      writeFileSync(
+        resolve(worktree, 'operator-head-x-marker.txt'),
+        'operator checkout X\n',
+        'utf8'
+      );
+      execFileSync('git', ['-C', worktree, 'add', 'operator-head-x-marker.txt']);
+      execFileSync('git', ['-C', worktree, 'commit', '--quiet', '-m', 'operator checkout X']);
+      operatorHead = execFileSync('git', ['-C', worktree, 'rev-parse', 'HEAD'], {
+        encoding: 'utf8',
+      }).trim();
+    }
 
     mkdirSync(guardDirectory, { recursive: true });
     const guardPath = join(guardDirectory, 'parallel_session_guard.py');
@@ -354,23 +368,113 @@ esac
       TEST_PUSH_LOG: pushLog,
     };
 
-    execFileSync('bash', args, { cwd: worktree, env: environment, stdio: 'pipe' });
-    execFileSync('bash', args, { cwd: worktree, env: environment, stdio: 'pipe' });
+    return {
+      fixtureRoot,
+      bareRepository,
+      worktree,
+      tagName,
+      candidateSha,
+      operatorHeadB,
+      operatorHead,
+      args,
+      environment,
+      guardLog,
+      pushLog,
+      cleanup: () => rmSync(fixtureRoot, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+test('tag-production-release local-only accepts canonical B while tagging explicit RC A', () => {
+  const fixture = createTagProductionFixture();
+  try {
+    assert.notEqual(fixture.candidateSha, fixture.operatorHead);
+    assert.equal(fixture.operatorHead, fixture.operatorHeadB);
+    assert.equal(
+      execFileSync('git', ['-C', fixture.worktree, 'rev-parse', 'HEAD'], {
+        encoding: 'utf8',
+      }).trim(),
+      fixture.operatorHeadB
+    );
+    assert.equal(
+      execFileSync('git', ['-C', fixture.worktree, 'rev-parse', 'origin/main'], {
+        encoding: 'utf8',
+      }).trim(),
+      fixture.operatorHeadB
+    );
+
+    execFileSync('bash', fixture.args, {
+      cwd: fixture.worktree,
+      env: fixture.environment,
+      stdio: 'pipe',
+    });
+    execFileSync('bash', fixture.args, {
+      cwd: fixture.worktree,
+      env: fixture.environment,
+      stdio: 'pipe',
+    });
 
     const taggedCommit = execFileSync(
       'git',
-      ['-C', worktree, 'rev-parse', `refs/tags/${tagName}^{commit}`],
+      ['-C', fixture.worktree, 'rev-parse', `refs/tags/${fixture.tagName}^{commit}`],
       { encoding: 'utf8' }
     ).trim();
-    const remoteTag = execFileSync('git', ['ls-remote', bareRepository, `refs/tags/${tagName}`], {
-      encoding: 'utf8',
-    }).trim();
+    const remoteTag = execFileSync(
+      'git',
+      ['ls-remote', fixture.bareRepository, `refs/tags/${fixture.tagName}`],
+      { encoding: 'utf8' }
+    ).trim();
 
-    assert.equal(taggedCommit, candidateSha);
+    assert.equal(taggedCommit, fixture.candidateSha);
     assert.equal(remoteTag, '');
-    assert.equal(existsSync(guardLog) ? readFileSync(guardLog, 'utf8') : '', '');
-    assert.equal(existsSync(pushLog) ? readFileSync(pushLog, 'utf8') : '', '');
+    assert.equal(existsSync(fixture.guardLog) ? readFileSync(fixture.guardLog, 'utf8') : '', '');
+    assert.equal(existsSync(fixture.pushLog) ? readFileSync(fixture.pushLog, 'utf8') : '', '');
   } finally {
-    rmSync(fixtureRoot, { recursive: true, force: true });
+    fixture.cleanup();
+  }
+});
+
+test('tag-production-release blocks non-canonical tooling before local-only tag creation', () => {
+  const fixture = createTagProductionFixture({
+    tagName: 'v9.9.10',
+    nonCanonicalOperator: true,
+  });
+  try {
+    assert.notEqual(fixture.operatorHead, fixture.operatorHeadB);
+    assert.equal(
+      execFileSync('git', ['-C', fixture.worktree, 'rev-parse', 'origin/main'], {
+        encoding: 'utf8',
+      }).trim(),
+      fixture.operatorHeadB
+    );
+
+    const result = spawnSync('bash', fixture.args, {
+      cwd: fixture.worktree,
+      env: fixture.environment,
+      encoding: 'utf8',
+    });
+
+    assert.notEqual(result.status, 0);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /operator tooling is not canonical origin\/main/u
+    );
+    assert.equal(
+      execFileSync('git', ['-C', fixture.worktree, 'tag', '--list', fixture.tagName], {
+        encoding: 'utf8',
+      }).trim(),
+      ''
+    );
+    assert.equal(
+      execFileSync('git', ['ls-remote', fixture.bareRepository, `refs/tags/${fixture.tagName}`], {
+        encoding: 'utf8',
+      }).trim(),
+      ''
+    );
+  } finally {
+    fixture.cleanup();
   }
 });

@@ -134,7 +134,7 @@ for required_file in "$BUNDLE_FILE" "$CONTRACT_FILE" "$STAGING_CURRENT_FILE" "$S
 done
 
 cd "$PROJECT_ROOT"
-bash scripts/require-main-branch.sh git ClassroomPath
+bash scripts/require-canonical-operator-tooling.sh
 
 WORKSPACE_GUARD="$SCRIPT_DIR/../../scripts/parallel_session_guard.py"
 

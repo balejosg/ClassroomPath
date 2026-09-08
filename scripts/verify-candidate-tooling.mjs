@@ -21,32 +21,32 @@ const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const RC_RUN_ID_PATTERN = /^\d+$/;
 const TAG_PATTERN = /^v\d+(?:\.\d+){2,}$/;
 
-const VALUE_FLAGS = new Set([
-  '--candidate-sha',
-  '--rc-run-id',
-  '--tag',
-  '--release-id',
-  '--openpath-sha',
-  '--contract-sha256',
-  '--bundle-file',
-  '--contract-file',
-  '--staging-current',
-  '--staging-verification',
-  '--repo-root',
-]);
+const FLAG_TO_OPTION = Object.freeze({
+  '--candidate-sha': 'candidateSha',
+  '--rc-run-id': 'rcRunId',
+  '--tag': 'tag',
+  '--release-id': 'releaseId',
+  '--openpath-sha': 'openpathSha',
+  '--contract-sha256': 'contractSha256',
+  '--bundle-file': 'bundleFile',
+  '--contract-file': 'contractFile',
+  '--staging-current': 'stagingCurrent',
+  '--staging-verification': 'stagingVerification',
+  '--repo-root': 'repoRoot',
+});
 
 export function parseCandidateToolingArgs(argv = []) {
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
-    if (!VALUE_FLAGS.has(flag)) {
+    if (!Object.hasOwn(FLAG_TO_OPTION, flag)) {
       throw new Error(`Unknown argument: ${flag}`);
     }
     const value = String(argv[++index] ?? '').trim();
     if (!value || value.startsWith('--')) {
       throw new Error(`${flag} requires a value`);
     }
-    options[flag.slice(2).replaceAll('-', '')] = value;
+    options[FLAG_TO_OPTION[flag]] = value;
   }
   return options;
 }
@@ -292,7 +292,9 @@ function isDirectExecution() {
 
 if (isDirectExecution()) {
   try {
-    const result = await runCandidateToolingCompatibility(parseCandidateToolingArgs());
+    const result = await runCandidateToolingCompatibility(
+      parseCandidateToolingArgs(process.argv.slice(2))
+    );
     process.stdout.write(
       JSON.stringify({
         candidateSha: result.candidateSha,

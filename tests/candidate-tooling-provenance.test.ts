@@ -194,6 +194,58 @@ test('candidate-owned compatibility uses A worktree helpers while operator tooli
   }
 });
 
+test('candidate tooling CLI maps kebab-case arguments into the exact candidate gate', () => {
+  const fixture = createFixture({ brokenOperatorBundle: true });
+  try {
+    const options = compatibilityOptions(fixture);
+    const cliArgs = [
+      '--candidate-sha',
+      options.candidateSha,
+      '--rc-run-id',
+      options.rcRunId,
+      '--tag',
+      options.tag,
+      '--release-id',
+      options.releaseId,
+      '--openpath-sha',
+      options.openpathSha,
+      '--contract-sha256',
+      options.contractSha256,
+      '--bundle-file',
+      options.bundleFile,
+      '--contract-file',
+      options.contractFile,
+      '--staging-current',
+      options.stagingCurrent,
+      '--staging-verification',
+      options.stagingVerification,
+      '--repo-root',
+      options.repoRoot,
+    ];
+    const stdout = execFileSync(
+      process.execPath,
+      [resolve(projectRoot, 'scripts/verify-candidate-tooling.mjs'), ...cliArgs],
+      { cwd: projectRoot, encoding: 'utf8' }
+    );
+    const result = JSON.parse(stdout);
+
+    assert.equal(result.candidateSha, fixture.candidateSha);
+    assert.equal(result.candidateOpenpathSha, fixture.openpathSha);
+    assert.deepEqual(result.checks, [
+      'release-bundle-v2',
+      'promotion-tag-identity',
+      'production-readiness-contract',
+    ]);
+    assert.notEqual(fixture.candidateSha, fixture.operatorHead);
+    assert.doesNotMatch(
+      git(fixture.fixtureRoot, 'worktree', 'list', '--porcelain'),
+      /\/candidate\n/u
+    );
+  } finally {
+    cleanupFixture(fixture);
+  }
+});
+
 test('incompatible candidate tooling blocks before any local or remote tag exists', async () => {
   const fixture = createFixture({ incompatibleCandidate: true });
   try {
