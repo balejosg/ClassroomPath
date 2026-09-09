@@ -171,7 +171,9 @@ ensure_production_release_candidate_runtime_env() {
 validate_production_runtime_projection_live() {
   DEPLOY_RUNTIME_PROJECTION_FILE="${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/${RELEASE_ID:-}/runtime.env"
   DEPLOY_RUNTIME_PROJECTION_SERVICES="classroompath-gateway classroompath-api"
+  DEPLOY_RUNTIME_EXPECTED_COMPOSE_PROJECT=classroompath-production
   export DEPLOY_RUNTIME_PROJECTION_FILE DEPLOY_RUNTIME_PROJECTION_SERVICES
+  export DEPLOY_RUNTIME_EXPECTED_COMPOSE_PROJECT
   deploy_runtime_validate_live_projection
 }
 
@@ -281,12 +283,14 @@ production_runtime_adapter_switch() {
   FAILURE_CATEGORY="container-switch"
   FAILURE_MESSAGE="production candidate container switch failed"
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
-  log_info "Stopping existing containers..."
-  docker compose down --remove-orphans || return 1
-  docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
-  docker rm -f classroompath-production-api-1 classroompath-production-gateway-1 classroompath-production-spa-1 2>/dev/null || true
+  deploy_runtime_compose_switch \
+    production_runtime_activate_prepared_files \
+    production_runtime_start_candidate || return 1
+}
+
+production_runtime_start_candidate() {
   log_info "Starting containers from immutable images..."
-  docker compose up -d --force-recreate --no-build || return 1
+  docker compose up -d --force-recreate --no-build
 }
 
 production_runtime_adapter_validate_live() {

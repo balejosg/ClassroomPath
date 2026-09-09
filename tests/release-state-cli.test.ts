@@ -25,6 +25,60 @@ const projectRoot = resolve(dirname(currentFilePath), '..');
 const cliPath = resolve(projectRoot, 'scripts/release-state-cli.mjs');
 const promotionEvidenceCliPath = resolve(projectRoot, 'scripts/promotion-evidence-cli.mjs');
 
+test('release-runtime fails closed when projection fields cannot be enumerated', () => {
+  const result = spawnSync(
+    'bash',
+    [
+      '-c',
+      `
+      source scripts/lib/release-runtime.sh
+      runtime="$(mktemp)"
+      env_file="$(mktemp)"
+      trap 'rm -f "$runtime" "$env_file"' EXIT
+      log_error() { :; }
+      release_state_require_snapshot_fields() { :; }
+      release_state_list_fields() { return 42; }
+      release_state_snapshot_value() { printf candidate; }
+      upsert_env_file_var() { :; }
+      if apply_release_runtime_projection_to_env_file "$runtime" "$env_file"; then
+        echo accepted
+      else
+        echo rejected
+      fi
+    `,
+    ],
+    { cwd: projectRoot, encoding: 'utf8' }
+  );
+  assert.equal(result.stdout.trim(), 'rejected');
+});
+
+test('release-runtime fails closed when projection field enumeration is empty', () => {
+  const result = spawnSync(
+    'bash',
+    [
+      '-c',
+      `
+      source scripts/lib/release-runtime.sh
+      runtime="$(mktemp)"
+      env_file="$(mktemp)"
+      trap 'rm -f "$runtime" "$env_file"' EXIT
+      log_error() { :; }
+      release_state_require_snapshot_fields() { :; }
+      release_state_list_fields() { :; }
+      release_state_snapshot_value() { printf candidate; }
+      upsert_env_file_var() { :; }
+      if apply_release_runtime_projection_to_env_file "$runtime" "$env_file"; then
+        echo accepted
+      else
+        echo rejected
+      fi
+    `,
+    ],
+    { cwd: projectRoot, encoding: 'utf8' }
+  );
+  assert.equal(result.stdout.trim(), 'rejected');
+});
+
 function runCommand(
   command: string,
   args: string[],

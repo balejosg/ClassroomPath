@@ -93,34 +93,60 @@ deploy_runtime_validate_live_projection() {
   local expected=""
   local actual=""
   local live_env=""
+  local projection_fields=""
+  local expected_compose_project="${DEPLOY_RUNTIME_EXPECTED_COMPOSE_PROJECT:-}"
+  local actual_compose_project=""
 
   [ -f "$projection_file" ] && [ ! -L "$projection_file" ] || {
     deploy_runtime_executor_log_error 'Candidate runtime projection is missing before live validation'
     return 1
   }
-  if declare -f release_state_require_snapshot_fields >/dev/null 2>&1; then
-    release_state_require_snapshot_fields "$projection_file" current-runtime || return 1
-  fi
+  for field in \
+    release_state_require_snapshot_fields \
+    release_state_list_fields \
+    release_state_snapshot_value; do
+    declare -f "$field" >/dev/null 2>&1 || {
+      deploy_runtime_executor_log_error "Canonical runtime projection helper is missing: $field"
+      return 1
+    }
+  done
+  release_state_require_snapshot_fields "$projection_file" current-runtime || return 1
+  projection_fields="$(release_state_list_fields current-runtime)" || {
+    deploy_runtime_executor_log_error 'Unable to enumerate canonical runtime projection fields'
+    return 1
+  }
+  [ -n "$projection_fields" ] || {
+    deploy_runtime_executor_log_error 'Canonical runtime projection field list is empty'
+    return 1
+  }
 
   for service in $services; do
+    if [ -n "$expected_compose_project" ]; then
+      actual_compose_project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$service" 2>/dev/null)" || {
+        deploy_runtime_executor_log_error "Unable to inspect Compose project for $service"
+        return 1
+      }
+      if [ "$actual_compose_project" != "$expected_compose_project" ]; then
+        deploy_runtime_executor_log_error "$service belongs to a different Compose project"
+        return 1
+      fi
+    fi
     live_env="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$service" 2>/dev/null)" || {
       deploy_runtime_executor_log_error "Unable to inspect live runtime environment for $service"
       return 1
     }
-    if declare -f release_state_list_fields >/dev/null 2>&1; then
-      while IFS= read -r field; do
-        [ -n "$field" ] || continue
-        expected="$(release_state_snapshot_value "$projection_file" "$field")" || return 1
-        actual="$(printf '%s\n' "$live_env" | awk -F= -v expected_field="$field" '$1 == expected_field { print substr($0, index($0, "=") + 1); found=1; exit } END { if (!found) exit 1 }')" || {
-          deploy_runtime_executor_log_error "$service is missing runtime projection field $field"
-          return 1
-        }
-        if [ "$actual" != "$expected" ]; then
-          deploy_runtime_executor_log_error "$service live runtime projection differs for $field"
-          return 1
-        fi
-      done < <(release_state_list_fields current-runtime)
-    fi
+    while IFS= read -r field; do
+      [ -n "$field" ] || continue
+      expected="$(release_state_snapshot_value "$projection_file" "$field")" || return 1
+      actual="$(printf '%s\n' "$live_env" | awk -F= -v expected_field="$field" '$1 == expected_field { print substr($0, index($0, "=") + 1); found=1; exit } END { if (!found) exit 1 }')" || {
+        deploy_runtime_executor_log_error "$service is missing runtime projection field $field"
+        return 1
+      }
+      if [ "$actual" != "$expected" ]; then
+        deploy_runtime_executor_log_error "$service live runtime projection differs for $field"
+        return 1
+      fi
+    done <<< "$projection_fields"
   done
 }
 
@@ -327,4 +353,22 @@ deploy_runtime_execute() {
     return 1
   fi
   return 0
+}
+
+deploy_runtime_compose_switch() {
+  local activate_fn="${1:-}"
+  local start_fn="${2:-}"
+  local function_name=""
+
+  for function_name in "$activate_fn" "$start_fn"; do
+    if [ -z "$function_name" ] || ! declare -f "$function_name" >/dev/null 2>&1; then
+      deploy_runtime_executor_log_error "Shared Compose switch adapter function is missing: ${function_name:-unset}"
+      return 1
+    fi
+  done
+  [ "${MUTATION_BOUNDARY_REACHED:-0}" = 1 ] || return 1
+  "$activate_fn" || return 1
+  docker compose down --remove-orphans || return 1
+  docker compose rm -f -s || return 1
+  "$start_fn" || return 1
 }

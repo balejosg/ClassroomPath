@@ -836,20 +836,16 @@ bash "$2"
     const prepare = extractShellFunction(remoteContent, 'deploy_with_release_candidates');
     const project = extractShellFunction(
       remoteContent,
-      'apply_staging_release_candidate_runtime_projection'
+      'prepare_staging_release_candidate_runtime_projection'
     );
     const migrate = extractShellFunction(remoteContent, 'run_staging_database_migrations');
     assert.doesNotMatch(prepare, /upsert_env_file_var|apply_release_runtime_projection/u);
     assert.match(project, /apply_release_runtime_projection_to_env_file/u);
     assert.match(project, /\$runtime_projection_file/u);
-    assert.match(project, /\$APP_DIR\/config\/\.env/u);
-    assert.match(migrate, /apply_staging_release_candidate_runtime_projection/u);
+    assert.match(project, /\$STAGING_CANDIDATE_ENV_FILE/u);
+    assert.doesNotMatch(migrate, /prepare_staging_release_candidate_runtime_projection/u);
     assert.match(migrate, /bash scripts\/run-migrations-docker\.sh/u);
-    assert.ok(
-      migrate.indexOf('apply_staging_release_candidate_runtime_projection') <
-        migrate.indexOf('bash scripts/run-migrations-docker.sh'),
-      'candidate configuration must be projected before release-candidate migrations'
-    );
+    assert.match(migrate, /--env-file "\$STAGING_CANDIDATE_ENV_FILE"/u);
     assert.ok(
       !localContent.includes('node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA"')
     );
@@ -1131,11 +1127,7 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(workflowContent.includes('OPENPATH_LINUX_AGENT_VERSION'));
     assert.ok(workflowContent.includes('OPENPATH_LINUX_AGENT_APT_SUITE'));
     assert.ok(workflowContent.includes('verify-staging-release-state'));
-    assert.ok(
-      deployRemoteScript.includes(
-        'bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE"'
-      )
-    );
+    assert.ok(deployRemoteScript.includes('--env-file "$PRODUCTION_CANDIDATE_ENV_FILE"'));
     assert.ok(workflowContent.includes('staging-verification.env'));
     assert.ok(releaseStateHelper.includes('STAGING_RELEASE_GATE_RESULT'));
     assert.ok(

@@ -228,6 +228,7 @@ function runForwardProjectionFixture(persistedProjection: string, prepareOnly = 
     join(binDir, 'docker'),
     [
       '#!/usr/bin/env bash',
+      'if [[ "$*" == *com.docker.compose.project* ]]; then printf classroompath-production; exit 0; fi',
       'case "${1:-}:${2:-}" in',
       '  compose:pull|compose:down)',
       '    printf "docker %s %s phase=%s\\n" "${1:-}" "${2:-}" "${DEPLOYMENT_PHASE:-unset}" >> "$TRACE_FILE"',
@@ -253,6 +254,7 @@ function runForwardProjectionFixture(persistedProjection: string, prepareOnly = 
     'source "$3"',
     'source "$4"',
     'source "$5"',
+    'source "$RUNTIME_EXECUTOR_HELPER"',
     'projection_path="$6"',
     'state_dir="$7"',
     'app_dir="$8"',
@@ -329,6 +331,7 @@ function runForwardProjectionFixture(persistedProjection: string, prepareOnly = 
         PATH: `${binDir}:/usr/bin:/bin`,
         PERSISTED_PROJECTION: persistedProjectionPath,
         TRACE_FILE: tracePath,
+        RUNTIME_EXECUTOR_HELPER: resolve(projectRoot, 'scripts/lib/deploy-runtime-executor.sh'),
       },
       encoding: 'utf8',
     }
@@ -444,6 +447,7 @@ function runLiveReadinessFixture(liveProjection: string) {
     join(binDir, 'docker'),
     [
       '#!/usr/bin/env bash',
+      'if [[ "$*" == *com.docker.compose.project* ]]; then printf classroompath-production; exit 0; fi',
       'case "${1:-}:${2:-}" in',
       '  inspect:*) cat "$LIVE_ENV_FILE" ;;',
       '  logs:*) exit 0 ;;',
@@ -600,4 +604,21 @@ test('candidate preparation precedes the shared executor mutation boundary', () 
   );
   const migrate = executor.indexOf('if ! "$migrate_fn"');
   assert.ok(prepare >= 0 && boundary > prepare && migrate > boundary);
+});
+
+test('production consumes the private candidate env until switch activation', () => {
+  const remote = readFileSync(resolve(projectRoot, 'scripts/deploy-production-remote.sh'), 'utf8');
+  const runtime = readFileSync(productionRuntimeHelper, 'utf8');
+  const migrations = remote.slice(
+    remote.indexOf('run_production_database_migrations() {'),
+    remote.indexOf('\nproduction_runtime_adapter_migrate()')
+  );
+  const switchAdapter = runtime.slice(
+    runtime.indexOf('production_runtime_adapter_switch() {'),
+    runtime.indexOf('\nproduction_runtime_adapter_validate_live()')
+  );
+
+  assert.doesNotMatch(migrations, /production_runtime_activate_prepared_files/u);
+  assert.match(migrations, /--env-file "\$PRODUCTION_CANDIDATE_ENV_FILE"/u);
+  assert.match(switchAdapter, /deploy_runtime_compose_switch/u);
 });

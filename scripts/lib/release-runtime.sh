@@ -17,6 +17,7 @@ apply_release_runtime_projection_to_env_file() {
   local env_file="$2"
   local field=""
   local value=""
+  local projection_fields=""
 
   [ -f "$runtime_file" ] && [ ! -L "$runtime_file" ] || {
     log_error "Release runtime projection must be a regular non-symlink file"
@@ -24,6 +25,14 @@ apply_release_runtime_projection_to_env_file() {
   }
   release_state_require_snapshot_fields "$runtime_file" current-runtime || return 1
 
+  projection_fields="$(release_state_list_fields current-runtime)" || {
+    log_error 'Unable to enumerate canonical runtime projection fields'
+    return 1
+  }
+  [ -n "$projection_fields" ] || {
+    log_error 'Canonical runtime projection field list is empty'
+    return 1
+  }
   while IFS= read -r field; do
     [ -n "$field" ] || continue
     value="$(release_state_snapshot_value "$runtime_file" "$field")" || return 1
@@ -34,7 +43,7 @@ apply_release_runtime_projection_to_env_file() {
         ;;
     esac
     upsert_env_file_var "$env_file" "$field" "$value" || return 1
-  done < <(release_state_list_fields current-runtime)
+  done <<< "$projection_fields"
 }
 
 require_windows_offline_installer_runtime_pin() {

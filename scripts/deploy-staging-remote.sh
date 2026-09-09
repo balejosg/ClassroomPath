@@ -171,6 +171,7 @@ STAGING_RELEASE_MANIFEST_FILE=""
 STAGING_RELEASE_BUNDLE_FILE=""
 STAGING_OPENPATH_CONTRACT_FILE=""
 STAGING_RELEASE_BUNDLE_RUNTIME_FILE=""
+STAGING_CANDIDATE_ENV_FILE=""
 
 cleanup_staging_release_manifest() {
   rm -f \
@@ -178,6 +179,7 @@ cleanup_staging_release_manifest() {
     "${STAGING_RELEASE_BUNDLE_FILE:-}" \
     "${STAGING_OPENPATH_CONTRACT_FILE:-}" \
     "${STAGING_RELEASE_BUNDLE_RUNTIME_FILE:-}" \
+    "${STAGING_CANDIDATE_ENV_FILE:-}" \
     "${STAGING_DEPLOY_PAYLOAD_FILE:-}" \
     "${PENDING_STATE_FILE:-}"
 }
@@ -226,12 +228,11 @@ write_release_state() {
     "${STAGING_RELEASE_RUN_ID:-}" || return 1
 
   if [ "$IMAGE_SOURCE" = "release-candidate" ]; then
-    node "$APP_DIR/scripts/lib/release-bundle-state.mjs" persist \
-      --state-root "$STATE_DIR" \
-      --bundle-file "$STAGING_RELEASE_BUNDLE_FILE" \
-      --contract-file "$STAGING_OPENPATH_CONTRACT_FILE" \
-      --release-id "$RELEASE_ID" \
-      --rc-run-id "${STAGING_RELEASE_RUN_ID:-}" >/dev/null || return 1
+    deployment_state_persist_v2_release \
+      "$STAGING_RELEASE_BUNDLE_FILE" \
+      "$STAGING_OPENPATH_CONTRACT_FILE" \
+      "$RELEASE_ID" \
+      "${STAGING_RELEASE_RUN_ID:-}" || return 1
   else
     return 0
   fi
@@ -242,9 +243,7 @@ activate_release_bundle_state() {
     return 0
   fi
 
-  node "$APP_DIR/scripts/lib/release-bundle-state.mjs" activate \
-    --state-root "$STATE_DIR" \
-    --release-id "$RELEASE_ID" >/dev/null
+  deployment_state_activate_v2_release "$RELEASE_ID" || return 1
   mv -f "$PENDING_STATE_FILE" "$CURRENT_STATE_FILE"
 }
 
@@ -300,9 +299,8 @@ compose_up_force_recreate_no_build() {
 
   if printf '%s\n' "$compose_output" | grep -q "No such container"; then
     log_warn "docker compose reported a stale container reference; retrying once after cleanup..."
-    docker compose down --remove-orphans 2>/dev/null || true
-    docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true
-    docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
+    docker compose down --remove-orphans || return 1
+    docker compose rm -f -s || return 1
     docker compose up -d --force-recreate --no-build
     return $?
   fi
@@ -667,8 +665,9 @@ load_staging_runtime_executor_helpers() {
   DEPLOYMENT_TRANSACTION_HISTORY_FILE="$STATE_DIR/deployment-phase-history.env"
   DEPLOYMENT_LEDGER_FILE="$STATE_DIR/deployment-ledger.jsonl"
   DEPLOYMENT_ENVIRONMENT=staging
+  DEPLOYMENT_STATE_USE_VERIFIER=1
   export DEPLOYMENT_TRANSACTION_FILE DEPLOYMENT_TRANSACTION_HISTORY_FILE
-  export DEPLOYMENT_LEDGER_FILE DEPLOYMENT_ENVIRONMENT
+  export DEPLOYMENT_LEDGER_FILE DEPLOYMENT_ENVIRONMENT DEPLOYMENT_STATE_USE_VERIFIER
 }
 
 initialize_staging_runtime_transaction() {
@@ -811,14 +810,6 @@ cleanup_staging_disk_if_needed() {
 run_staging_database_migrations() {
   release_execution_mark_stage migrations || return 1
 
-  # Release-candidate migrations consume APP_DIR/config/.env.  The candidate
-  # projection is therefore the first post-boundary mutation and must be
-  # present before the migration container starts.  Source-build keeps its
-  # legacy path and does not use the persisted release projection.
-  if [ "$STAGING_IMAGE_MODE" != "source-build" ]; then
-    apply_staging_release_candidate_runtime_projection || return 1
-  fi
-
   if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then
     log_info "Running database migrations from workspace sources..."
     bash scripts/run-migrations-docker.sh --cp --openpath || return 1
@@ -828,7 +819,9 @@ run_staging_database_migrations() {
     fi
 
     log_info "Running database migrations from release candidate image..."
-    bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
+    bash scripts/run-migrations-docker.sh --cp --openpath \
+      --env-file "$STAGING_CANDIDATE_ENV_FILE" \
+      --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
   fi
 
   # shellcheck disable=SC2034 # consumed by release execution/state helpers
@@ -842,23 +835,40 @@ staging_runtime_adapter_prepare() {
   FAILURE_MESSAGE="staging release candidate preparation failed"
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
   deploy_with_release_candidates || return 1
+  prepare_staging_release_candidate_runtime_projection || return 1
 }
 
 staging_runtime_adapter_migrate() {
   run_staging_database_migrations || return 1
 }
 
-apply_staging_release_candidate_runtime_projection() {
+prepare_staging_release_candidate_runtime_projection() {
   local runtime_projection_file="${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/$RELEASE_ID/runtime.env"
 
   FAILURE_POINT="runtime-projection"
   FAILURE_CATEGORY="state-write"
   FAILURE_MESSAGE="staging release candidate runtime projection failed"
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  STAGING_CANDIDATE_ENV_FILE="$(mktemp "$STATE_DIR/candidate-config.XXXXXX")" || return 1
+  export STAGING_CANDIDATE_ENV_FILE
+  cp "$APP_DIR/config/.env" "$STAGING_CANDIDATE_ENV_FILE" || return 1
+  chmod 600 "$STAGING_CANDIDATE_ENV_FILE" || return 1
   apply_release_runtime_projection_to_env_file \
     "$runtime_projection_file" \
-    "$APP_DIR/config/.env" || return 1
-  upsert_env_file_var "$APP_DIR/config/.env" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release || return 1
+    "$STAGING_CANDIDATE_ENV_FILE" || return 1
+  upsert_env_file_var "$STAGING_CANDIDATE_ENV_FILE" OPENPATH_FIREFOX_RELEASE_ROOT /openpath-firefox-release || return 1
+}
+
+activate_staging_release_candidate_runtime_projection() {
+  local installed_env=""
+  [ "${MUTATION_BOUNDARY_REACHED:-0}" = 1 ] || return 1
+  [ -f "${STAGING_CANDIDATE_ENV_FILE:-}" ] && [ ! -L "$STAGING_CANDIDATE_ENV_FILE" ] || return 1
+  installed_env="$(mktemp "$APP_DIR/config/.env.candidate.XXXXXX")" || return 1
+  if ! install -m 600 "$STAGING_CANDIDATE_ENV_FILE" "$installed_env" ||
+    ! mv -f "$installed_env" "$APP_DIR/config/.env"; then
+    rm -f "$installed_env"
+    return 1
+  fi
 }
 
 staging_runtime_adapter_switch() {
@@ -866,12 +876,15 @@ staging_runtime_adapter_switch() {
   FAILURE_CATEGORY="container-switch"
   FAILURE_MESSAGE="staging release candidate container switch failed"
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+  deploy_runtime_compose_switch \
+    activate_staging_release_candidate_runtime \
+    compose_up_force_recreate_no_build || return 1
+}
+
+activate_staging_release_candidate_runtime() {
   log_info "Starting staging from release candidate images..."
+  activate_staging_release_candidate_runtime_projection || return 1
   activate_openpath_firefox_assets_generation || return 1
-  docker compose down --remove-orphans 2>/dev/null || true
-  docker rm -f classroompath-staging-api-1 classroompath-staging-gateway-1 classroompath-staging-spa-1 2>/dev/null || true
-  docker rm -f classroompath-api classroompath-gateway classroompath-spa 2>/dev/null || true
-  compose_up_force_recreate_no_build || return 1
 }
 
 staging_runtime_adapter_validate_live() {
@@ -881,7 +894,9 @@ staging_runtime_adapter_validate_live() {
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
   DEPLOY_RUNTIME_PROJECTION_FILE="${DEPLOYMENT_STATE_RELEASES_DIR:-$STATE_DIR/releases}/$RELEASE_ID/runtime.env"
   DEPLOY_RUNTIME_PROJECTION_SERVICES="classroompath-gateway classroompath-api"
+  DEPLOY_RUNTIME_EXPECTED_COMPOSE_PROJECT=classroompath-staging
   export DEPLOY_RUNTIME_PROJECTION_FILE DEPLOY_RUNTIME_PROJECTION_SERVICES
+  export DEPLOY_RUNTIME_EXPECTED_COMPOSE_PROJECT
   deploy_runtime_validate_live_projection || return 1
 }
 

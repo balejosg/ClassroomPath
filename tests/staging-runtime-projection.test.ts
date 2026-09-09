@@ -25,7 +25,9 @@ const stagingFunctions = [
   'resolve_pulled_digest',
   'deploy_with_release_candidates',
   'run_staging_database_migrations',
-  'apply_staging_release_candidate_runtime_projection',
+  'prepare_staging_release_candidate_runtime_projection',
+  'activate_staging_release_candidate_runtime_projection',
+  'activate_staging_release_candidate_runtime',
   'staging_runtime_adapter_prepare',
   'staging_runtime_adapter_migrate',
   'compose_up_force_recreate_no_build',
@@ -186,7 +188,8 @@ release_execution_mark_stage() {
 
 bash() {
   if [[ "$*" == *run-migrations-docker.sh* ]]; then
-    if grep -q '^OPENPATH_VERSION=candidate-version$' "$CONFIG_FILE"; then
+    migration_env="$STAGING_CANDIDATE_ENV_FILE"
+    if grep -q '^OPENPATH_VERSION=candidate-version$' "$migration_env"; then
       trace migration-config:candidate
     else
       trace migration-config:previous
@@ -227,7 +230,13 @@ docker() {
   return 0
 }
 
-deploy_runtime_wait_for_health_and_readiness() { trace health; return 0; }
+deploy_runtime_wait_for_health_and_readiness() {
+  trace health
+  DEPLOYMENT_HEALTH_STATUS=200
+  DEPLOYMENT_READY=true
+  export DEPLOYMENT_HEALTH_STATUS DEPLOYMENT_READY
+  return 0
+}
 staging_runtime_adapter_validate_live() {
   trace validate
   [ "$FAILURE_MODE" != restore-unavailable ]
@@ -456,7 +465,7 @@ test('projection failure propagates before compose switch and commit', () => {
       false
     );
     const ledger = ledgerRecords(fixture.ledgerPath).at(-1);
-    assert.equal(ledger?.result, 'ROLLED_BACK');
+    assert.equal(ledger?.result, 'FAILED');
     assert.equal(ledger?.candidateSha, candidateSha);
     assert.equal(ledger?.releaseId, candidateReleaseId);
     assert.equal(ledger?.current, previousSha);
@@ -471,11 +480,11 @@ test('staging migration stage failure is propagated before the migration side ef
     assert.equal(fixture.result.status, 1, `${fixture.result.stdout}\n${fixture.result.stderr}`);
     const trace = lines(fixture.tracePath);
     assert.ok(trace.includes('stage:migrations'));
-    assert.equal(trace.includes('projection:RELEASE_ID'), false);
+    assert.equal(trace.includes('projection:RELEASE_ID'), true);
     assert.equal(trace.includes('migration'), false);
     assert.equal(
       trace.some((entry) => entry.startsWith('projection:')),
-      false
+      true
     );
     assert.equal(
       trace.some((entry) => entry.startsWith('compose:down')),
@@ -504,6 +513,26 @@ test('staging switch failure is propagated after projection and boundary', () =>
     assert.equal(ledger?.candidateSha, candidateSha);
     assert.equal(ledger?.releaseId, candidateReleaseId);
     assert.equal(ledger?.current, previousSha);
+  } finally {
+    rmSync(fixture.tempDir, { recursive: true, force: true });
+  }
+});
+
+test('real ledger records rollback failure truthfully after a post-boundary fault', () => {
+  const fixture = createHarness('restore-unavailable');
+  try {
+    assert.equal(fixture.result.status, 1, `${fixture.result.stdout}\n${fixture.result.stderr}`);
+    const records = ledgerRecords(fixture.ledgerPath);
+    assert.equal(
+      records.some((record) => record.result === 'ROLLED_BACK'),
+      false
+    );
+    const terminal = records.at(-1);
+    assert.equal(terminal?.result, 'FAILED');
+    assert.equal(terminal?.rollbackAttempted, true);
+    assert.equal(terminal?.rollbackResult, 'failed');
+    assert.equal(terminal?.candidateSha, candidateSha);
+    assert.equal(terminal?.releaseId, candidateReleaseId);
   } finally {
     rmSync(fixture.tempDir, { recursive: true, force: true });
   }
@@ -596,6 +625,26 @@ test('source-build keeps its legacy build path outside the RC projection adapter
   assert.match(sourceBuild, /docker compose up -d --force-recreate/u);
   assert.doesNotMatch(sourceBuild, /apply_release_runtime_projection_to_env_file/u);
   assert.equal((source.match(/apply_release_runtime_projection_to_env_file/g) ?? []).length, 1);
+});
+
+test('release-candidate staging prepares projection before the boundary and activates it only at switch', () => {
+  const source = readFileSync(stagingRemoteScript, 'utf8');
+  const prepare = extractShellFunction(source, 'staging_runtime_adapter_prepare');
+  const migrate = extractShellFunction(source, 'run_staging_database_migrations');
+  const switchAdapter = extractShellFunction(source, 'staging_runtime_adapter_switch');
+
+  assert.match(prepare, /prepare_staging_release_candidate_runtime_projection/u);
+  assert.match(migrate, /--env-file "\$STAGING_CANDIDATE_ENV_FILE"/u);
+  assert.doesNotMatch(migrate, /apply_staging_release_candidate_runtime_projection/u);
+  assert.match(switchAdapter, /deploy_runtime_compose_switch/u);
+});
+
+test('release-candidate staging forces state operations through the verifier image', () => {
+  const source = readFileSync(stagingRemoteScript, 'utf8');
+  const loader = extractShellFunction(source, 'load_staging_runtime_executor_helpers');
+
+  assert.match(loader, /DEPLOYMENT_STATE_USE_VERIFIER=1/u);
+  assert.match(loader, /export .*DEPLOYMENT_STATE_USE_VERIFIER/u);
 });
 
 test('pulled release images must resolve to an immutable digest', () => {

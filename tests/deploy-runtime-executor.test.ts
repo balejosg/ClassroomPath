@@ -14,6 +14,89 @@ const execFileAsync = promisify(execFile);
 const projectRoot = resolve(import.meta.dirname, '..');
 
 describe('shared deployment runtime executor', () => {
+  it('fails closed when the canonical live-projection field list cannot be read', async () => {
+    const result = await execFileAsync(
+      'bash',
+      [
+        '-c',
+        `
+      source scripts/lib/deploy-runtime-executor.sh
+      projection="$(mktemp)"
+      trap 'rm -f "$projection"' EXIT
+      release_state_require_snapshot_fields() { :; }
+      release_state_list_fields() { return 42; }
+      docker() { printf 'CLASSROOMPATH_SHA=candidate\n'; }
+      if DEPLOY_RUNTIME_PROJECTION_FILE="$projection" deploy_runtime_validate_live_projection; then
+        echo accepted
+      else
+        echo rejected
+      fi
+    `,
+      ],
+      { cwd: projectRoot }
+    );
+    assert.equal(result.stdout.trim(), 'rejected');
+  });
+  it('rejects a live container outside the environment-specific Compose project', async () => {
+    const result = await execFileAsync(
+      'bash',
+      [
+        '-c',
+        `
+      source scripts/lib/deploy-runtime-executor.sh
+      projection="$(mktemp)"
+      trap 'rm -f "$projection"' EXIT
+      release_state_require_snapshot_fields() { :; }
+      release_state_list_fields() { printf 'CLASSROOMPATH_SHA\n'; }
+      release_state_snapshot_value() { printf candidate; }
+      docker() {
+        case "$*" in
+          *com.docker.compose.project*) printf classroompath-staging ;;
+          *) printf 'CLASSROOMPATH_SHA=candidate\n' ;;
+        esac
+      }
+      if DEPLOY_RUNTIME_PROJECTION_FILE="$projection" \
+        DEPLOY_RUNTIME_EXPECTED_COMPOSE_PROJECT=classroompath-production \
+        deploy_runtime_validate_live_projection; then
+        echo accepted
+      else
+        echo rejected
+      fi
+    `,
+      ],
+      { cwd: projectRoot }
+    );
+    assert.equal(result.stdout.trim(), 'rejected');
+  });
+  for (const mode of ['missing-helpers', 'empty-fields']) {
+    it(`fails closed for ${mode} during live projection validation`, async () => {
+      const result = await execFileAsync(
+        'bash',
+        [
+          '-c',
+          `
+        source scripts/lib/deploy-runtime-executor.sh
+        projection="$(mktemp)"
+        trap 'rm -f "$projection"' EXIT
+        docker() { printf 'CLASSROOMPATH_SHA=candidate\n'; }
+        if [ "$1" = empty-fields ]; then
+          release_state_require_snapshot_fields() { :; }
+          release_state_list_fields() { :; }
+          release_state_snapshot_value() { printf candidate; }
+        fi
+        if DEPLOY_RUNTIME_PROJECTION_FILE="$projection" deploy_runtime_validate_live_projection; then
+          echo accepted
+        else
+          echo rejected
+        fi
+      `,
+          mode,
+        ],
+        { cwd: projectRoot }
+      );
+      assert.equal(result.stdout.trim(), 'rejected');
+    });
+  }
   it('reports a ledger evidence failure without falsifying an already committed runtime', async () => {
     const root = mkdtempSync(join(tmpdir(), 'cp-ledger-failure-'));
     try {
@@ -261,6 +344,9 @@ describe('shared deployment runtime executor', () => {
     assert.match(helper, /rollback_readiness_json_is_ready/u);
     assert.match(helper, /deployment_state_activate_v2_release/u);
     assert.match(helper, /deployment_ledger_append_terminal_from_env/u);
+    assert.match(helper, /deploy_runtime_compose_switch\(\)/u);
+    assert.match(helper, /docker compose down --remove-orphans/u);
+    assert.match(helper, /docker compose rm -f -s/u);
   });
 
   it('is invoked by both staging and production adapters', () => {

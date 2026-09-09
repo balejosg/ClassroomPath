@@ -650,8 +650,6 @@ run_production_database_migrations() {
   export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
   release_execution_mark_stage migrations || return 1
 
-  production_runtime_activate_prepared_files || return 1
-
   cleanup_production_disk_if_needed || return 1
   login_production_registry || return 1
 
@@ -659,10 +657,13 @@ run_production_database_migrations() {
   CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA="${CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA:-0}" \
     CP_EMAIL_PREFLIGHT_MODE="${CP_EMAIL_PREFLIGHT_MODE:-required}" \
     CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" \
-    bash scripts/check-email-delivery-docker.sh || return 1
+    bash scripts/check-email-delivery-docker.sh \
+      --env-file "$PRODUCTION_CANDIDATE_ENV_FILE" || return 1
 
   log_info "Running database migrations from the release candidate runner..."
-  bash scripts/run-migrations-docker.sh --cp --openpath --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
+  bash scripts/run-migrations-docker.sh --cp --openpath \
+    --env-file "$PRODUCTION_CANDIDATE_ENV_FILE" \
+    --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
 
   DB_MIGRATED=1
   release_execution_mark_stage startup || return 1
