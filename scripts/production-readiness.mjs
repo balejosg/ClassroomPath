@@ -310,11 +310,7 @@ export function runStagingCheck({
       classroomPathSha: identity.candidateSha,
       releaseId: identity.releaseId,
     });
-    const runtime = buildReleaseCandidateBundleRuntimeProjection({
-      bundle: verified.bundle,
-      contract: verified.contract,
-      releaseId: verified.releaseId,
-    });
+    const runtime = buildReleaseCandidateBundleRuntimeProjection(verified);
     const exactRuntimeEnv = {
       ...env,
       EXPECTED_APP_SHA: identity.candidateSha,
@@ -546,8 +542,10 @@ export async function runArtifactCheck({
     const imageRefs = Object.values(verified.bundle.images ?? {});
     const pullability = await preflightImages(imageRefs, { env });
     if (!pullability.ok) {
-      const kind = String(pullability.failure?.kind ?? 'unavailable');
-      const image = String(pullability.image ?? 'unknown image');
+      const kind = String(
+        'failure' in pullability ? (pullability.failure?.kind ?? 'unavailable') : 'unavailable'
+      );
+      const image = String('image' in pullability ? pullability.image : 'unknown image');
       return { ok: false, message: `immutable OCI artifact ${image} is not pullable (${kind})` };
     }
     const manifest = buildManifest({

@@ -171,12 +171,15 @@ export function readReleaseCandidateBundleFromFiles({
   });
 }
 
+/**
+ * @param {{bundle: any; contract: any; releaseId?: string; imageSource?: string}} input
+ */
 export function buildReleaseCandidateBundleRuntimeProjection({
   bundle,
   contract,
   releaseId,
   imageSource = 'release-candidate',
-} = {}) {
+}) {
   return projectReleaseBundleToRuntimeEnv({
     bundle,
     contract,

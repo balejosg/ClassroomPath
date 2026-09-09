@@ -69,11 +69,13 @@ test('production tag identity can carry the complete immutable RC projection', (
 
 test('production tag identity rejects missing or conflicting fields', () => {
   assert.throws(
+    // @ts-expect-error Intentionally exercises the runtime guard for an incomplete identity.
     () => buildProductionTagIdentity({ releaseId: 'a'.repeat(64), rcRunId: '' }),
     /rcRunId is required/
   );
   assert.throws(
     () =>
+      // @ts-expect-error Intentionally exercises mandatory OpenPath tag identity fields.
       buildProductionTagIdentity({
         releaseId: 'a'.repeat(64),
         rcRunId: '123',

@@ -41,7 +41,7 @@ function buildEnvironment(
     DEPLOYMENT_RESULT: 'COMMITTED',
     DEPLOYMENT_HEALTH_STATUS: '200',
     DEPLOYMENT_READY: 'true',
-    GITHUB_RUN_ID: '24680',
+    DEPLOYMENT_WORKFLOW_RUN_ID: '24680',
     DEPLOYMENT_CURRENT_SHA: 'a'.repeat(40),
     RC_RUN_ID: '34124312483',
     DEPLOYMENT_TAG: 'v1.2.380',
@@ -413,7 +413,7 @@ describe('deployment ledger', () => {
     appendRecord(ledgerPath);
 
     assert.throws(
-      () => appendRecord(ledgerPath, { GITHUB_RUN_ID: '99999' }),
+      () => appendRecord(ledgerPath, { DEPLOYMENT_WORKFLOW_RUN_ID: '99999' }),
       /different identity/u
     );
     assert.equal(existsSync(`${ledgerPath}.lock`), false);
@@ -475,17 +475,18 @@ describe('deployment ledger', () => {
 
   it('rejects incomplete or internally contradictory committed facts', () => {
     const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-committed-truth-'));
-    for (const overrides of [
+    const invalidOverrides: Array<Record<string, string>> = [
       { RELEASE_ID: '' },
       { RC_RUN_ID: '' },
-      { GITHUB_RUN_ID: '' },
+      { DEPLOYMENT_WORKFLOW_RUN_ID: '', GITHUB_RUN_ID: '' },
       { DEPLOYMENT_TAG: '' },
       { OPENPATH_SHA: '' },
       { OPENPATH_CONTRACT_SHA256: '' },
       { DEPLOYMENT_HEALTH_STATUS: '503' },
       { DEPLOYMENT_READY: 'false' },
       { ROLLBACK_ATTEMPTED: '1', ROLLBACK_RESULT: 'success' },
-    ]) {
+    ];
+    for (const overrides of invalidOverrides) {
       assert.equal(
         appendRecordStatus(join(root, `${Object.keys(overrides)[0]}.jsonl`), overrides),
         1
@@ -557,7 +558,7 @@ describe('deployment ledger', () => {
       appendRecord(ledgerPath, {
         DEPLOYMENT_LEDGER_MAX_RECORDS: '3',
         DEPLOYMENT_TRANSACTION_ID: `tx-retention-${index}`,
-        GITHUB_RUN_ID: String(24680 + index),
+        DEPLOYMENT_WORKFLOW_RUN_ID: String(24680 + index),
       });
     }
 
@@ -578,7 +579,7 @@ describe('deployment ledger', () => {
       'DEPLOYMENT_TRANSACTION_ID=tx-retention-1',
       'deployment_ledger_append_terminal_from_env',
       'DEPLOYMENT_TRANSACTION_ID=tx-retention-2',
-      'GITHUB_RUN_ID=24681',
+      'DEPLOYMENT_WORKFLOW_RUN_ID=24681',
       'mv() { return 1; }',
       'deployment_ledger_append_terminal_from_env; first=$?',
       'unset -f mv',

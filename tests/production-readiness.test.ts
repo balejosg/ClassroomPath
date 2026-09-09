@@ -107,15 +107,15 @@ describe('production readiness contract', () => {
         options: { bundleFile, contractFile },
         identity,
         env: { CLASSROOMPATH_CONTAINER_PLATFORM: 'linux/amd64' },
-        verifyBundle: () => ({
+        verifyBundle: (() => ({
           bundle: { openPath: { sourceSha: identity.openpathSha }, images },
           contract: { contractSha256: identity.contractSha256 },
-        }),
-        preflightImages: async (refs: string[]) => {
+        })) as any,
+        preflightImages: (async (refs: string[]) => {
           observed.push(refs);
           return { ok: true, imageCount: refs.length };
-        },
-        buildManifest: () => 'exact manifest fixture\n',
+        }) as any,
+        buildManifest: (() => 'exact manifest fixture\n') as any,
         verifyPlatforms: async ({ manifestText, targetPlatform }) => {
           assert.equal(manifestText, 'exact manifest fixture\n');
           platforms.push(targetPlatform);
@@ -142,15 +142,15 @@ describe('production readiness contract', () => {
         options: { bundleFile, contractFile },
         identity,
         env: { CLASSROOMPATH_PRODUCTION_CONTAINER_PLATFORM: 'linux/s390x' },
-        verifyBundle: () => ({
+        verifyBundle: (() => ({
           bundle: {
             openPath: { sourceSha: identity.openpathSha },
             images: { gateway: `ghcr.io/example/gateway@sha256:${'1'.repeat(64)}` },
           },
           contract: { contractSha256: identity.contractSha256 },
-        }),
-        preflightImages: async () => ({ ok: true, imageCount: 1 }),
-        buildManifest: () => 'exact manifest fixture\n',
+        })) as any,
+        preflightImages: (async () => ({ ok: true, imageCount: 1 })) as any,
+        buildManifest: (() => 'exact manifest fixture\n') as any,
         verifyPlatforms: async ({ targetPlatform }) => {
           observedPlatform = targetPlatform;
         },
@@ -201,7 +201,7 @@ describe('production readiness contract', () => {
         containerPlatform: 'linux/amd64',
       }),
       assertTargetReady: () => {},
-      execFile: (_command: string, args: string[]) => {
+      execFile: ((_command: string, args: string[]) => {
         calls.push(args);
         if (args[0] === 'secret') {
           return [
@@ -222,7 +222,7 @@ describe('production readiness contract', () => {
           'CLASSROOMPATH_PRODUCTION_GATEWAY_HEALTH_URL',
           'CLASSROOMPATH_PRODUCTION_READY_URL',
         ].join('\n');
-      },
+      }) as any,
     });
 
     assert.equal(result.ok, true);
@@ -236,7 +236,7 @@ describe('production readiness contract', () => {
     const result = runHostCheck({
       env: {},
       cwd: '/tmp',
-      execFile: (command: string, args: string[]) => calls.push({ command, args }),
+      execFile: ((command: string, args: string[]) => calls.push({ command, args })) as any,
     });
 
     assert.equal(result.ok, true);
