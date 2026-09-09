@@ -624,6 +624,186 @@ describe('deployment ledger', () => {
     assert.equal(JSON.parse(output).result, 'ROLLED_BACK');
   });
 
+  it('queries a canonical pre-boundary FAILED fact without OCI digests', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-query-failed-'));
+    const ledgerPath = join(root, 'deployment-ledger.jsonl');
+    appendRecord(ledgerPath, {
+      DEPLOYMENT_TRANSACTION_ID: 'tx-failed-without-digests',
+      DEPLOYMENT_RESULT: 'FAILED',
+      DEPLOYMENT_PHASE: 'FAILED',
+      DEPLOYMENT_HEALTH_STATUS: '',
+      DEPLOYMENT_READY: 'false',
+      DEPLOYMENT_CURRENT_SHA: 'c'.repeat(40),
+      MUTATION_BOUNDARY_REACHED: '0',
+      CLASSROOMPATH_GATEWAY_IMAGE: '',
+      CLASSROOMPATH_MIGRATIONS_IMAGE: '',
+      OPENPATH_FIREFOX_ASSETS_IMAGE: '',
+      OPENPATH_API_IMAGE: '',
+      CLASSROOMPATH_SPA_IMAGE: '',
+      CLASSROOMPATH_VERIFIER_IMAGE: '',
+    });
+
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        'source "$1"; deployment_ledger_query_transaction "$2" "$3"',
+        'ledger-query',
+        helperPath,
+        ledgerPath,
+        'tx-failed-without-digests',
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).result, 'FAILED');
+    assert.deepEqual(JSON.parse(result.stdout).imageDigests, {});
+  });
+
+  it('queries a canonical FAILED fact with partial OCI digests', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-query-failed-partial-'));
+    const ledgerPath = join(root, 'deployment-ledger.jsonl');
+    appendRecord(ledgerPath, {
+      DEPLOYMENT_TRANSACTION_ID: 'tx-failed-partial-digests',
+      DEPLOYMENT_RESULT: 'FAILED',
+      DEPLOYMENT_PHASE: 'FAILED',
+      DEPLOYMENT_HEALTH_STATUS: '503',
+      DEPLOYMENT_READY: 'false',
+      MUTATION_BOUNDARY_REACHED: '1',
+      CLASSROOMPATH_MIGRATIONS_IMAGE: '',
+      OPENPATH_FIREFOX_ASSETS_IMAGE: '',
+      CLASSROOMPATH_SPA_IMAGE: '',
+      CLASSROOMPATH_VERIFIER_IMAGE: '',
+    });
+
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        'source "$1"; deployment_ledger_query_transaction "$2" "$3"',
+        'ledger-query',
+        helperPath,
+        ledgerPath,
+        'tx-failed-partial-digests',
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).imageDigests, {
+      gateway: `sha256:${'1'.repeat(64)}`,
+      openpathApi: `sha256:${'4'.repeat(64)}`,
+    });
+  });
+
+  it('continues to query a canonical COMMITTED fact', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-query-committed-'));
+    const ledgerPath = join(root, 'deployment-ledger.jsonl');
+    appendRecord(ledgerPath, { DEPLOYMENT_TRANSACTION_ID: 'tx-query-committed' });
+
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        'source "$1"; deployment_ledger_query_transaction "$2" "$3"',
+        'ledger-query',
+        helperPath,
+        ledgerPath,
+        'tx-query-committed',
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).result, 'COMMITTED');
+  });
+
+  it('rejects syntactically invalid JSON even when the key patterns remain present', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-query-malformed-json-'));
+    const ledgerPath = join(root, 'deployment-ledger.jsonl');
+    appendRecord(ledgerPath, { DEPLOYMENT_TRANSACTION_ID: 'tx-malformed-json' });
+    const malformed = readFileSync(ledgerPath, 'utf8').replace('"health":200', '"health":NOT_JSON');
+    writeFileSync(ledgerPath, malformed, 'utf8');
+
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        'source "$1"; deployment_ledger_query_transaction "$2" "$3"',
+        'ledger-query',
+        helperPath,
+        ledgerPath,
+        'tx-malformed-json',
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout, '');
+  });
+
+  it('rejects syntactically valid records with types or values incompatible with the result', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-query-invalid-contract-'));
+    const canonicalPath = join(root, 'canonical.jsonl');
+    appendRecord(canonicalPath, { DEPLOYMENT_TRANSACTION_ID: 'tx-invalid-contract' });
+    const canonical = readFileSync(canonicalPath, 'utf8');
+    const corruptions = [
+      canonical.replace('"health":200', '"health":"200"'),
+      canonical.replace('"health":200', '"health":201'),
+      canonical.replace('"ready":true', '"ready":"true"'),
+      canonical.replace('"rollbackAttempted":false', '"rollbackAttempted":true'),
+      canonical.replace('"result":"COMMITTED"', '"result":"ROLLED_BACK"'),
+      canonical.replace('"result":"COMMITTED"', '"result":"FAILED"'),
+    ];
+
+    for (const [index, corrupted] of corruptions.entries()) {
+      const ledgerPath = join(root, `corrupted-${index}.jsonl`);
+      writeFileSync(ledgerPath, corrupted, 'utf8');
+      const result = spawnSync(
+        'bash',
+        [
+          '-c',
+          'source "$1"; deployment_ledger_query_transaction "$2" "$3"',
+          'ledger-query',
+          helperPath,
+          ledgerPath,
+          'tx-invalid-contract',
+        ],
+        { encoding: 'utf8' }
+      );
+      assert.notEqual(result.status, 0, `corruption ${index} was accepted`);
+      assert.equal(result.stdout, '');
+    }
+  });
+
+  it('rejects duplicate keys and content outside the canonical allowlist', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-query-noncanonical-'));
+    const canonicalPath = join(root, 'canonical.jsonl');
+    appendRecord(canonicalPath, { DEPLOYMENT_TRANSACTION_ID: 'tx-noncanonical' });
+    const canonical = readFileSync(canonicalPath, 'utf8');
+    const corruptions = [
+      canonical.replace('"health":200', '"health":200,"health":200'),
+      canonical.replace('"imageDigests":{', '"unexpected":"content","imageDigests":{'),
+      canonical.replace(`sha256:${'1'.repeat(64)}`, 'sha256:not-a-digest'),
+    ];
+
+    for (const [index, corrupted] of corruptions.entries()) {
+      const ledgerPath = join(root, `corrupted-${index}.jsonl`);
+      writeFileSync(ledgerPath, corrupted, 'utf8');
+      const result = spawnSync(
+        'bash',
+        [
+          '-c',
+          'source "$1"; deployment_ledger_query_transaction "$2" "$3"',
+          'ledger-query',
+          helperPath,
+          ledgerPath,
+          'tx-noncanonical',
+        ],
+        { encoding: 'utf8' }
+      );
+      assert.notEqual(result.status, 0, `noncanonical record ${index} was accepted`);
+      assert.equal(result.stdout, '');
+    }
+  });
+
   it('rejects malformed or unsupported records during query', () => {
     const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-query-invalid-'));
     const ledgerPath = join(root, 'deployment-ledger.jsonl');

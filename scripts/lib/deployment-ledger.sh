@@ -340,6 +340,19 @@ deployment_ledger_json_field() {
   printf '%s\n' "$record" | sed -n "s/.*\"$field\":\"\([^\"]*\)\".*/\1/p"
 }
 
+deployment_ledger_json_token_field() {
+  local record="$1"
+  local field="$2"
+  printf '%s\n' "$record" | sed -n "s/.*\"$field\":\([^,}]*\).*/\1/p"
+}
+
+deployment_ledger_image_digest_field() {
+  local record="$1"
+  local key="$2"
+  printf '%s\n' "$record" |
+    sed -n -E "s/.*\"imageDigests\":\{[^}]*\"${key}\":\"(sha256:[0-9a-f]{64})\"[^}]*\}.*/\1/p"
+}
+
 deployment_ledger_image_digests_field() {
   local record="$1"
   local first=1
@@ -350,7 +363,7 @@ deployment_ledger_image_digests_field() {
   # identity comparison is semantic rather than dependent on JSON key order.
   printf '{'
   for key in gateway migrations openpathFirefoxAssets openpathApi spa verifier; do
-    digest="$(printf '%s\n' "$record" | sed -n -E "s/.*\"imageDigests\":\{[^}]*\"${key}\":\"(sha256:[0-9a-f]{64})\"[^}]*\}.*/\1/p")"
+    digest="$(deployment_ledger_image_digest_field "$record" "$key")"
     [ -n "$digest" ] || continue
     [ "$first" -eq 1 ] || printf ','
     printf '"%s":"%s"' "$key" "$digest"
@@ -358,6 +371,78 @@ deployment_ledger_image_digests_field() {
   done
   printf '}'
 }
+
+deployment_ledger_validate_record() (
+  local record="$1"
+  local expected_transaction_id="$2"
+  local environment=""
+  local transaction_id=""
+  local candidate_sha=""
+  local release_id=""
+  local previous_sha=""
+  local recovery_sha=""
+  local result=""
+  local health=""
+  local ready=""
+  local workflow_run_id=""
+  local current_sha=""
+  local rc_run_id=""
+  local tag=""
+  local descriptor=""
+  local key=""
+  local variable_name=""
+  local digest=""
+
+  environment="$(deployment_ledger_json_field "$record" environment)"
+  transaction_id="$(deployment_ledger_json_field "$record" transactionId)"
+  candidate_sha="$(deployment_ledger_json_field "$record" candidateSha)"
+  release_id="$(deployment_ledger_json_field "$record" releaseId)"
+  previous_sha="$(deployment_ledger_json_field "$record" previous)"
+  recovery_sha="$(deployment_ledger_json_field "$record" recoverySha)"
+  result="$(deployment_ledger_json_field "$record" result)"
+  health="$(deployment_ledger_json_token_field "$record" health)"
+  ready="$(deployment_ledger_json_token_field "$record" ready)"
+  workflow_run_id="$(deployment_ledger_json_field "$record" workflowRunId)"
+  current_sha="$(deployment_ledger_json_field "$record" current)"
+  rc_run_id="$(deployment_ledger_json_field "$record" rcRunId)"
+  tag="$(deployment_ledger_json_field "$record" tag)"
+
+  [ "$transaction_id" = "$expected_transaction_id" ] || return 1
+  [ "$health" != null ] || health=""
+
+  DEPLOYMENT_LEDGER_TIMESTAMP="$(deployment_ledger_json_field "$record" timestamp)"
+  DEPLOYMENT_LEDGER_OPENPATH_SHA="$(deployment_ledger_json_field "$record" openPathSha)"
+  DEPLOYMENT_LEDGER_CONTRACT_SHA256="$(deployment_ledger_json_field "$record" contractSha256)"
+  DEPLOYMENT_LEDGER_PHASE="$(deployment_ledger_json_field "$record" phase)"
+  DEPLOYMENT_LEDGER_ROLLBACK_ATTEMPTED="$(deployment_ledger_json_token_field "$record" rollbackAttempted)"
+  DEPLOYMENT_LEDGER_ROLLBACK_RESULT="$(deployment_ledger_json_field "$record" rollbackResult)"
+
+  for descriptor in \
+    gateway:CLASSROOMPATH_GATEWAY_IMAGE \
+    migrations:CLASSROOMPATH_MIGRATIONS_IMAGE \
+    openpathFirefoxAssets:OPENPATH_FIREFOX_ASSETS_IMAGE \
+    openpathApi:OPENPATH_API_IMAGE \
+    spa:CLASSROOMPATH_SPA_IMAGE \
+    verifier:CLASSROOMPATH_VERIFIER_IMAGE; do
+    key="${descriptor%%:*}"
+    variable_name="${descriptor#*:}"
+    unset "$variable_name"
+    digest="$(deployment_ledger_image_digest_field "$record" "$key")"
+    [ -n "$digest" ] && printf -v "$variable_name" 'ledger-query@%s' "$digest"
+  done
+
+  # The v1 record does not persist the boundary marker. Every FAILED shape
+  # accepted here remains producer-reachable after the boundary; successful
+  # results still require the boundary through the real builder contract.
+  MUTATION_BOUNDARY_REACHED=1
+  DEPLOYMENT_LEDGER_RECORD_JSON=""
+  deployment_ledger_build_record \
+    "$environment" "$transaction_id" "$candidate_sha" "$release_id" "$previous_sha" \
+    "$recovery_sha" "$result" "$health" "$ready" "$workflow_run_id" "$current_sha" \
+    "$rc_run_id" "$tag" >/dev/null 2>&1 || return 1
+
+  [ "$DEPLOYMENT_LEDGER_RECORD_JSON" = "$record" ]
+)
 
 deployment_ledger_release_lock() {
   local lock_dir="$1"
@@ -454,43 +539,7 @@ deployment_ledger_query_transaction() {
   record="$(grep -F "\"transactionId\":\"$transaction_id\"" "$ledger_path" | tail -n 1)" || return 1
   [ -n "$record" ] || return 1
   [ "${#record}" -le "$DEPLOYMENT_LEDGER_MAX_RECORD_BYTES" ] || return 1
-  [[ "$record" == '{"schemaVersion":1,'* ]] || return 1
-  [[ "$record" == *'}}' ]] || return 1
-  local actual_keys=""
-  local expected_keys=""
-  actual_keys="$(printf '%s\n' "$record" | grep -oE '"[A-Za-z][A-Za-z0-9]*":' || true)"
-  expected_keys='"schemaVersion":
-"timestamp":
-"environment":
-"transactionId":
-"candidateSha":
-"releaseId":
-"previous":
-"recoverySha":
-"result":
-"health":
-"ready":
-"workflowRunId":
-"current":
-"rcRunId":
-"tag":
-"openPathSha":
-"contractSha256":
-"phase":
-"rollbackAttempted":
-"rollbackResult":
-"imageDigests":
-"gateway":
-"migrations":
-"openpathFirefoxAssets":
-"openpathApi":
-"spa":
-"verifier":'
-  [ "$actual_keys" = "$expected_keys" ] || return 1
-  case "$(deployment_ledger_json_field "$record" result)" in
-    COMMITTED|ROLLED_BACK|FAILED) ;;
-    *) return 1 ;;
-  esac
+  deployment_ledger_validate_record "$record" "$transaction_id" || return 1
   printf '%s\n' "$record"
 }
 
