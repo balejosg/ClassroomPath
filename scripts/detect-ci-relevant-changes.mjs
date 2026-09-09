@@ -35,12 +35,19 @@ function summarizeValidationScopes(changedFiles) {
   return {
     productValidation:
       matchedDomains.length > 0 &&
-      matchedDomains.some((domain) => !domain.capabilities.verificationScope),
+      matchedDomains.some(
+        (domain) =>
+          !domain.capabilities.verificationScope || domain.capabilities.verificationScope === 'full'
+      ),
     opsRegression: matchedDomains.some(
-      (domain) => domain.capabilities.verificationScope === 'ops-regression'
+      (domain) =>
+        domain.capabilities.verificationScope === 'ops-regression' ||
+        domain.capabilities.verificationScope === 'full'
     ),
     releaseAutomation: matchedDomains.some(
-      (domain) => domain.capabilities.verificationScope === 'release-automation'
+      (domain) =>
+        domain.capabilities.verificationScope === 'release-automation' ||
+        domain.capabilities.verificationScope === 'full'
     ),
   };
 }

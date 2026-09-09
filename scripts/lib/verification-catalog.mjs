@@ -41,8 +41,17 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
     ...releasePolicy(),
   },
   {
+    name: 'root-dependency-contract',
+    patterns: ['^package(?:-lock)?\\.json$'],
+    capabilities: {
+      ciRelevant: true,
+      verificationScope: 'full',
+    },
+    ...releasePolicy(),
+  },
+  {
     name: 'root-package-contract',
-    patterns: ['^package(?:-lock)?\\.json$', '^\\.gitmodules$'],
+    patterns: ['^\\.gitmodules$'],
     capabilities: {
       ciRelevant: true,
       releaseAutomationSafe: true,
@@ -164,6 +173,12 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
     patterns: ['^upstream/openpath$'],
     capabilities: { ciRelevant: true },
     ...releasePolicy(),
+  },
+  {
+    name: 'classroompath-workspace-manifest',
+    patterns: ['^(?!upstream/openpath(?:/|$)).+/package\\.json$'],
+    capabilities: { ciRelevant: true },
+    ...applicationPolicy(),
   },
   {
     name: 'api-source',
@@ -369,6 +384,7 @@ export const REGRESSION_PLAN_DEFINITIONS = {
     files: [
       'tests/ci-cache-measurement.test.ts',
       'tests/ci-routing-measurement.test.ts',
+      'tests/dependency-routing.test.ts',
       'tests/workflow-core.test.ts',
       'tests/workflow-deploy.test.ts',
       'tests/workflow-production-client-canary.test.ts',

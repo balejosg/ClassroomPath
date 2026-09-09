@@ -7,7 +7,7 @@ export type VerifyDomainCapabilities = {
   ciRelevant?: boolean;
   needsCoverage?: 'api' | 'spa';
   releaseAutomationSafe?: boolean;
-  verificationScope?: 'ops-regression' | 'release-automation';
+  verificationScope?: 'full' | 'ops-regression' | 'release-automation';
 };
 
 export type VerifyDomainPolicy = {
