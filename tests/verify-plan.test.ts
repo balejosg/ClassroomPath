@@ -15,6 +15,42 @@ import {
 } from '../scripts/lib/verify-plan.ts';
 
 describe('verify plan', () => {
+  test('routes exact release reader and SSH wrapper changes through release automation', () => {
+    for (const file of [
+      'scripts/lib/github-actions-remote.sh',
+      'scripts/lib/smoke-release-state-reader.sh',
+      'tests/github-actions-remote.test.ts',
+      'tests/smoke-release-state-workflow.test.ts',
+    ]) {
+      assert.equal(detectVerificationScope([file], 'commit'), 'release-automation', file);
+      assert.deepEqual(summarizeVerifyDomains([file]).owners, ['release-engineering'], file);
+    }
+  });
+
+  test('preserves stronger scopes when release reader changes mix with product or deploy code', () => {
+    assert.equal(
+      detectVerificationScope(
+        ['scripts/lib/github-actions-remote.sh', 'scripts/lib/smoke-release-state-reader.sh'],
+        'commit'
+      ),
+      'release-automation'
+    );
+    assert.equal(
+      detectVerificationScope(
+        ['scripts/lib/smoke-release-state-reader.sh', 'react-spa/src/App.tsx'],
+        'commit'
+      ),
+      'full'
+    );
+    assert.equal(
+      detectVerificationScope(
+        ['scripts/lib/github-actions-remote.sh', 'scripts/deploy-production-remote.sh'],
+        'commit'
+      ),
+      'ops-regression'
+    );
+  });
+
   test('routes release operations helpers and their tests to automatic verification', () => {
     for (const file of [
       'scripts/production-readiness.mjs',

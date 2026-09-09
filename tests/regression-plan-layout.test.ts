@@ -4,6 +4,24 @@ import { describe, test } from 'node:test';
 import { resolveRegressionPlan } from '../scripts/lib/regression-plan.mjs';
 
 describe('regression plan layout', () => {
+  test('canonical CI commands execute exact release reader and SSH wrapper suites once', () => {
+    const required = [
+      'tests/github-actions-remote.test.ts',
+      'tests/smoke-release-state-workflow.test.ts',
+    ];
+
+    for (const planName of ['ci', 'release-automation']) {
+      const plan = resolveRegressionPlan(planName);
+      for (const file of required) {
+        assert.equal(
+          plan.filter((entry) => entry === file).length,
+          1,
+          `${planName} should execute ${file} exactly once`
+        );
+      }
+    }
+  });
+
   test('CI and release automation retain the release operations acceptance suites', () => {
     const required = [
       'tests/production-readiness.test.ts',

@@ -554,6 +554,7 @@ describe('Workflow core contracts', () => {
 
   test('CI change detector exposes independent validation scopes', async () => {
     const { detectCiRelevantChanges } = await import('../scripts/detect-ci-relevant-changes.mjs');
+    const { resolveRegressionPlan } = await import('../scripts/lib/regression-plan.mjs');
 
     assert.deepEqual(detectCiRelevantChanges(['react-spa/src/ClassroomPathShell.tsx']), {
       ci_relevant: 'true',
@@ -571,6 +572,41 @@ describe('Workflow core contracts', () => {
       'true'
     );
     assert.equal(detectCiRelevantChanges(['.github/workflows/ci.yml']).release_automation, 'true');
+
+    const releaseAutomationPlan = resolveRegressionPlan('release-automation');
+    for (const file of [
+      'scripts/lib/github-actions-remote.sh',
+      'scripts/lib/smoke-release-state-reader.sh',
+      'tests/github-actions-remote.test.ts',
+      'tests/smoke-release-state-workflow.test.ts',
+    ]) {
+      const routing = detectCiRelevantChanges([file]);
+      assert.equal(routing.ci_relevant, 'true', file);
+      assert.equal(routing.release_automation, 'true', file);
+      assert.equal(
+        releaseAutomationPlan.filter(
+          (entry) =>
+            entry === 'tests/github-actions-remote.test.ts' ||
+            entry === 'tests/smoke-release-state-workflow.test.ts'
+        ).length,
+        2,
+        `${file} should route to a plan that executes both suites once`
+      );
+    }
+
+    const productMix = detectCiRelevantChanges([
+      'scripts/lib/smoke-release-state-reader.sh',
+      'react-spa/src/App.tsx',
+    ]);
+    assert.equal(productMix.release_automation, 'true');
+    assert.equal(productMix.product_validation, 'true');
+
+    const deployMix = detectCiRelevantChanges([
+      'scripts/lib/github-actions-remote.sh',
+      'scripts/deploy-production-remote.sh',
+    ]);
+    assert.equal(deployMix.release_automation, 'true');
+    assert.equal(deployMix.ops_regression, 'true');
   });
 
   test('CI and security workflows keep shared dependency and cache policy', () => {

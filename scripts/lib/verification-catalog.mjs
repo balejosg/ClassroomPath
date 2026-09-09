@@ -105,6 +105,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
   {
     name: 'release-library',
     patterns: [
+      '^scripts/lib/(?:github-actions-remote|smoke-release-state-reader)\\.sh$',
       '^scripts/lib/(?:production-readiness|release-candidate-resolution|release-orchestration|release-transcript|release-preflight|release-status-collector)\\.mjs$',
       '^scripts/lib/(?:ajax-auto-allow-canary-harness|ajax-auto-allow-canary-runtime|auto-allow-boundary-evidence|deployed-release-state|firefox-release-version|github-actions|github-actions-artifacts|github-actions-diagnostic-client|linux-auto-allow-canary-evidence|migration-risk-classifier|openpath-ci-checks|prepromotion-runner-rehearsal|production-executor-scenario|production-host-contract|promotion-eligibility|regression-plan|release-candidate|release-candidate-components|release-cli|release-evidence|release-images|release-risk|release-risk-policy|release-state-contract|release-verifier-contract|resolve-latest-verifier-image|rollback-executor|runner-diagnostic-execution|verification-catalog|verification-report-contract|verify-report-consumer|windows-ajax-auto-allow-runtime|windows-auto-allow-canary-evidence)\\.mjs$',
     ],
@@ -129,7 +130,7 @@ export const VERIFY_DOMAIN_POLICY_DEFINITIONS = [
     name: 'release-contract-test',
     patterns: [
       '^tests/(?:production-readiness|release-candidate-resolution|release-orchestration|release-promote-rc-first|release-promote-resume|release-preflight|release-status|candidate-tooling-provenance|check-scripts-typecheck|regression-plan-layout)\\.test\\.ts$',
-      '^tests/(?:ajax-auto-allow-canary-harness|ci-cache-measurement|ci-routing-measurement|deploy-intent|deployed-release-state|deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-assets-cache|firefox-release-version|github-actions-artifacts|linux-auto-allow-canary|linux-ajax-auto-allow-canary|npm-audit-critical|openpath-required-checks|prepromotion-runner-rehearsal|production-enrollment-download-canary|production-executor-fault-injection|production-executor-hermetic|production-executor-state|production-executor-workflow|production-remote-regressions|promotion-eligibility|release-candidate-components|release-candidate-timings|release-cli|release-evidence|release-images|release-manifest-platforms|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|rollback-executor|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|windows-ajax-auto-allow-runtime|workflow(?:-core|-deploy|-production-client-canary|-release-candidate|-config|-production-executor)?)\\.test\\.ts$',
+      '^tests/(?:ajax-auto-allow-canary-harness|ci-cache-measurement|ci-routing-measurement|deploy-intent|deployed-release-state|deployment(?:-foundation|-staging-release|-runtime-contracts)?|firefox-release-assets-cache|firefox-release-version|github-actions-artifacts|github-actions-remote|linux-auto-allow-canary|linux-ajax-auto-allow-canary|npm-audit-critical|openpath-required-checks|prepromotion-runner-rehearsal|production-enrollment-download-canary|production-executor-fault-injection|production-executor-hermetic|production-executor-state|production-executor-workflow|production-remote-regressions|promotion-eligibility|release-candidate-components|release-candidate-timings|release-cli|release-evidence|release-images|release-manifest-platforms|release-risk|release-risk-policy|release-state-cli|resolve-latest-verifier-image|rollback-executor|smoke-release-state-workflow|staging-gates|verification-pipeline|verify-cache|verify-plan|verify-report|verify-runtime|wait-for-release-candidate|windows-ajax-auto-allow-runtime|workflow(?:-core|-deploy|-production-client-canary|-release-candidate|-config|-production-executor)?)\\.test\\.ts$',
     ],
     capabilities: {
       ciRelevant: true,
@@ -342,6 +343,8 @@ export const REGRESSION_PLAN_DEFINITIONS = {
       'tests/rollback-executor.test.ts',
       'tests/firefox-release-version.test.ts',
       'tests/firefox-release-metadata.test.ts',
+      'tests/github-actions-remote.test.ts',
+      'tests/smoke-release-state-workflow.test.ts',
       'tests/staging-gates.test.ts',
       'api/tests/openpath-proxy-policy.test.ts',
       'tests/openpath-required-checks.test.ts',
