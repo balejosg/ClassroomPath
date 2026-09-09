@@ -393,6 +393,17 @@ deployment_ledger_validate_record() (
   local variable_name=""
   local digest=""
 
+  # Validation must reconstruct only from the stored record. Keep producer
+  # fallbacks intact for deployments, but prevent another execution's ambient
+  # identity or state from filling legitimate empty fields during a query.
+  unset \
+    DEPLOYMENT_PHASE_UPDATED_AT \
+    OPENPATH_SHA \
+    OPENPATH_CONTRACT_SHA256 \
+    DEPLOYMENT_PHASE \
+    ROLLBACK_ATTEMPTED \
+    ROLLBACK_RESULT
+
   environment="$(deployment_ledger_json_field "$record" environment)"
   transaction_id="$(deployment_ledger_json_field "$record" transactionId)"
   candidate_sha="$(deployment_ledger_json_field "$record" candidateSha)"

@@ -695,6 +695,171 @@ describe('deployment ledger', () => {
     });
   });
 
+  it('queries canonical FAILED facts independently of inherited OpenPath identity', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-query-environment-'));
+    const digestModes: Array<{ name: string; images: Record<string, string> }> = [
+      {
+        name: 'none',
+        images: {
+          CLASSROOMPATH_GATEWAY_IMAGE: '',
+          CLASSROOMPATH_MIGRATIONS_IMAGE: '',
+          OPENPATH_FIREFOX_ASSETS_IMAGE: '',
+          OPENPATH_API_IMAGE: '',
+          CLASSROOMPATH_SPA_IMAGE: '',
+          CLASSROOMPATH_VERIFIER_IMAGE: '',
+        },
+      },
+      {
+        name: 'partial',
+        images: {
+          CLASSROOMPATH_MIGRATIONS_IMAGE: '',
+          OPENPATH_FIREFOX_ASSETS_IMAGE: '',
+          CLASSROOMPATH_SPA_IMAGE: '',
+          CLASSROOMPATH_VERIFIER_IMAGE: '',
+        },
+      },
+      { name: 'complete', images: {} },
+    ];
+    const queryEnvironments = [
+      { name: 'clean', values: {} },
+      { name: 'openpath-sha', values: { OPENPATH_SHA: '7'.repeat(40) } },
+      {
+        name: 'contract-sha',
+        values: { OPENPATH_CONTRACT_SHA256: '8'.repeat(64) },
+      },
+      {
+        name: 'both',
+        values: {
+          OPENPATH_SHA: '7'.repeat(40),
+          OPENPATH_CONTRACT_SHA256: '8'.repeat(64),
+        },
+      },
+    ];
+
+    for (const digestMode of digestModes) {
+      const transactionId = `tx-failed-environment-${digestMode.name}`;
+      const ledgerPath = join(root, `${digestMode.name}.jsonl`);
+      appendRecord(ledgerPath, {
+        DEPLOYMENT_TRANSACTION_ID: transactionId,
+        DEPLOYMENT_RESULT: 'FAILED',
+        DEPLOYMENT_PHASE: 'FAILED',
+        DEPLOYMENT_HEALTH_STATUS: '',
+        DEPLOYMENT_READY: 'false',
+        DEPLOYMENT_CURRENT_SHA: 'c'.repeat(40),
+        MUTATION_BOUNDARY_REACHED: '0',
+        DEPLOYMENT_LEDGER_OPENPATH_SHA: '',
+        OPENPATH_SHA: '',
+        DEPLOYMENT_LEDGER_CONTRACT_SHA256: '',
+        OPENPATH_CONTRACT_SHA256: '',
+        ...digestMode.images,
+      });
+      const storedRecord = readFileSync(ledgerPath, 'utf8').trim();
+      assert.equal(JSON.parse(storedRecord).openPathSha, '');
+      assert.equal(JSON.parse(storedRecord).contractSha256, '');
+
+      for (const queryEnvironment of queryEnvironments) {
+        const childEnvironment = { ...process.env };
+        delete childEnvironment.OPENPATH_SHA;
+        delete childEnvironment.OPENPATH_CONTRACT_SHA256;
+        Object.assign(childEnvironment, queryEnvironment.values);
+        const result = spawnSync(
+          'bash',
+          [
+            '-c',
+            'source "$1"; deployment_ledger_query_transaction "$2" "$3"',
+            'ledger-query',
+            helperPath,
+            ledgerPath,
+            transactionId,
+          ],
+          { encoding: 'utf8', env: childEnvironment }
+        );
+        assert.equal(
+          result.status,
+          0,
+          `${digestMode.name}/${queryEnvironment.name}: ${result.stderr}`
+        );
+        assert.equal(result.stdout.trim(), storedRecord);
+      }
+    }
+  });
+
+  it('does not modify ledger state or inherited caller variables while querying', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-query-caller-environment-'));
+    const ledgerPath = join(root, 'deployment-ledger.jsonl');
+    appendRecord(ledgerPath, {
+      DEPLOYMENT_TRANSACTION_ID: 'tx-caller-environment',
+      DEPLOYMENT_RESULT: 'FAILED',
+      DEPLOYMENT_PHASE: '',
+      DEPLOYMENT_HEALTH_STATUS: '503',
+      DEPLOYMENT_READY: 'false',
+      MUTATION_BOUNDARY_REACHED: '1',
+      DEPLOYMENT_LEDGER_OPENPATH_SHA: '',
+      OPENPATH_SHA: '',
+      DEPLOYMENT_LEDGER_CONTRACT_SHA256: '',
+      OPENPATH_CONTRACT_SHA256: '',
+    });
+    const before = readFileSync(ledgerPath, 'utf8');
+    const queryOutputPath = join(root, 'query-output.json');
+    const callerEnvironment = {
+      DEPLOYMENT_LEDGER_TIMESTAMP: 'poisoned-ledger-timestamp',
+      DEPLOYMENT_LEDGER_OPENPATH_SHA: '9'.repeat(40),
+      DEPLOYMENT_LEDGER_CONTRACT_SHA256: 'a'.repeat(64),
+      DEPLOYMENT_LEDGER_PHASE: 'ROLLED_BACK',
+      DEPLOYMENT_LEDGER_ROLLBACK_ATTEMPTED: 'true',
+      DEPLOYMENT_LEDGER_ROLLBACK_RESULT: 'failed',
+      OPENPATH_SHA: '7'.repeat(40),
+      OPENPATH_CONTRACT_SHA256: '8'.repeat(64),
+      DEPLOYMENT_PHASE_UPDATED_AT: 'poisoned-timestamp',
+      DEPLOYMENT_PHASE: 'COMMITTED',
+      ROLLBACK_ATTEMPTED: 'true',
+      ROLLBACK_RESULT: 'success',
+      MUTATION_BOUNDARY_REACHED: 'poisoned-boundary',
+      CLASSROOMPATH_GATEWAY_IMAGE: 'poisoned-gateway',
+      CLASSROOMPATH_MIGRATIONS_IMAGE: 'poisoned-migrations',
+      OPENPATH_FIREFOX_ASSETS_IMAGE: 'poisoned-firefox',
+      OPENPATH_API_IMAGE: 'poisoned-api',
+      CLASSROOMPATH_SPA_IMAGE: 'poisoned-spa',
+      CLASSROOMPATH_VERIFIER_IMAGE: 'poisoned-verifier',
+    };
+    const script = [
+      'set -euo pipefail',
+      'source "$1"',
+      'variables=(',
+      '  DEPLOYMENT_LEDGER_TIMESTAMP DEPLOYMENT_LEDGER_OPENPATH_SHA',
+      '  DEPLOYMENT_LEDGER_CONTRACT_SHA256 DEPLOYMENT_LEDGER_PHASE',
+      '  DEPLOYMENT_LEDGER_ROLLBACK_ATTEMPTED DEPLOYMENT_LEDGER_ROLLBACK_RESULT',
+      '  DEPLOYMENT_PHASE_UPDATED_AT OPENPATH_SHA OPENPATH_CONTRACT_SHA256',
+      '  DEPLOYMENT_PHASE ROLLBACK_ATTEMPTED ROLLBACK_RESULT MUTATION_BOUNDARY_REACHED',
+      '  CLASSROOMPATH_GATEWAY_IMAGE CLASSROOMPATH_MIGRATIONS_IMAGE',
+      '  OPENPATH_FIREFOX_ASSETS_IMAGE OPENPATH_API_IMAGE',
+      '  CLASSROOMPATH_SPA_IMAGE CLASSROOMPATH_VERIFIER_IMAGE',
+      ')',
+      'caller_before="$(declare -p "${variables[@]}")"',
+      'deployment_ledger_query_transaction "$2" "$3" > "$4"',
+      'caller_after="$(declare -p "${variables[@]}")"',
+      '[ "$caller_after" = "$caller_before" ]',
+      'cat "$4"',
+    ].join('\n');
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        script,
+        'ledger-query',
+        helperPath,
+        ledgerPath,
+        'tx-caller-environment',
+        queryOutputPath,
+      ],
+      { encoding: 'utf8', env: { ...process.env, ...callerEnvironment } }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, before);
+    assert.equal(readFileSync(ledgerPath, 'utf8'), before);
+  });
+
   it('continues to query a canonical COMMITTED fact', () => {
     const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-query-committed-'));
     const ledgerPath = join(root, 'deployment-ledger.jsonl');
