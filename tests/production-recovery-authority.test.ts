@@ -186,6 +186,9 @@ function createRecoverySourceFixture(
   }
   writeFileSync(contractPath, contract, 'utf8');
   execFileSync('git', ['init', '--quiet', sourceRoot]);
+  // Prevent detached Git housekeeping from racing with temporary fixture cleanup.
+  execFileSync('git', ['-C', sourceRoot, 'config', 'gc.auto', '0']);
+  execFileSync('git', ['-C', sourceRoot, 'config', 'maintenance.auto', 'false']);
   execFileSync('git', ['-C', sourceRoot, 'config', 'user.email', 'fixture@example.invalid']);
   execFileSync('git', ['-C', sourceRoot, 'config', 'user.name', 'Recovery Fixture']);
   execFileSync('git', ['-C', sourceRoot, 'add', 'scripts']);
