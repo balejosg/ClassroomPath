@@ -479,7 +479,7 @@ describe('deployment ledger', () => {
       { RELEASE_ID: '' },
       { RC_RUN_ID: '' },
       { DEPLOYMENT_WORKFLOW_RUN_ID: '', GITHUB_RUN_ID: '' },
-      { DEPLOYMENT_TAG: '' },
+      { DEPLOYMENT_TAG: '', GITHUB_REF_NAME: '' },
       { OPENPATH_SHA: '' },
       { OPENPATH_CONTRACT_SHA256: '' },
       { DEPLOYMENT_HEALTH_STATUS: '503' },
