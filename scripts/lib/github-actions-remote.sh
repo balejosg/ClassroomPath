@@ -3,7 +3,7 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034
 
-GITHUB_ACTIONS_REMOTE_HELPER_CONTRACT_VERSION=1
+GITHUB_ACTIONS_REMOTE_HELPER_CONTRACT_VERSION=2
 GITHUB_ACTIONS_REMOTE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GITHUB_ACTIONS_RESOLVE_HOST_SCRIPT_PATH="$GITHUB_ACTIONS_REMOTE_SCRIPT_DIR/resolve-ssh-host.sh"
 
@@ -71,9 +71,37 @@ github_actions_remote_classify_ssh_error() {
     printf 'ssh-dns'
   elif printf '%s' "$stderr_text" | grep -Eiq 'Connection refused'; then
     printf 'ssh-refused'
+  elif printf '%s' "$stderr_text" | grep -Eiq 'Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED'; then
+    printf 'ssh-host-key'
   else
     printf 'ssh-unknown'
   fi
+}
+
+github_actions_remote_classify_result() {
+  local exit_code="$1"
+  local stderr_text="$2"
+
+  if [ "$exit_code" -ne 255 ]; then
+    printf 'remote-command-exit-%s' "$exit_code"
+  else
+    github_actions_remote_classify_ssh_error "$stderr_text"
+  fi
+}
+
+github_actions_remote_should_retry() {
+  case "$1" in
+    ssh-timeout | ssh-dns | ssh-refused) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+github_actions_remote_safe_diagnostic() {
+  local stderr_text="$1"
+
+  printf '%s\n' "$stderr_text" |
+    grep -E '^SMOKE_RELEASE_STATE_ERROR=(current-missing-or-empty|current-unreadable|pointer-invalid|runtime-state-missing|runtime-state-unreadable)$' |
+    head -n 1 || true
 }
 
 github_actions_remote_ssh_once() {
@@ -106,44 +134,54 @@ github_actions_remote_ssh() {
   local delay_seconds="${GITHUB_ACTIONS_REMOTE_SSH_RETRY_DELAY_SECONDS:-5}"
   local attempt=1
   local status=0
+  local stdout_file=""
   local stderr_file=""
   local stderr_text=""
   local classification=""
+  local safe_diagnostic=""
 
+  stdout_file="$(mktemp)"
   stderr_file="$(mktemp)"
 
   while [ "$attempt" -le "$attempts" ]; do
-    if github_actions_remote_ssh_once "$key_path" "$port" "$user" "$ip" "$@" 2>"$stderr_file"; then
-      rm -f "$stderr_file"
+    : > "$stdout_file"
+    : > "$stderr_file"
+    if github_actions_remote_ssh_once "$key_path" "$port" "$user" "$ip" "$@" >"$stdout_file" 2>"$stderr_file"; then
+      cat "$stdout_file"
+      status="$?"
+      rm -f "$stdout_file" "$stderr_file"
+      [ "$status" -eq 0 ] || return "$status"
       return 0
     else
       status="$?"
     fi
 
     stderr_text="$(cat "$stderr_file")"
-    classification="$(github_actions_remote_classify_ssh_error "$stderr_text")"
-    printf '::warning::SSH attempt %s/%s to %s@%s:%s failed (%s): %s\n' \
+    classification="$(github_actions_remote_classify_result "$status" "$stderr_text")"
+    safe_diagnostic="$(github_actions_remote_safe_diagnostic "$stderr_text")"
+    printf '::warning::SSH attempt %s/%s failed (%s, exit %s)%s%s\n' \
       "$attempt" \
       "$attempts" \
-      "$user" \
-      "$ip" \
-      "$port" \
       "$classification" \
-      "$stderr_text" >&2
+      "$status" \
+      "${safe_diagnostic:+: }" \
+      "$safe_diagnostic" >&2
 
-    if [ "$attempt" -lt "$attempts" ]; then
-      sleep "$delay_seconds"
+    if ! github_actions_remote_should_retry "$classification"; then
+      break
     fi
+    [ "$attempt" -lt "$attempts" ] || break
+    sleep "$delay_seconds"
     attempt=$((attempt + 1))
   done
 
-  printf '::error::SSH to %s@%s:%s failed after %s attempts (%s)\n' \
-    "$user" \
-    "$ip" \
-    "$port" \
-    "$attempts" \
-    "$classification" >&2
-  rm -f "$stderr_file"
+  printf '::error::SSH failed after %s attempts (%s, exit %s)%s%s\n' \
+    "$attempt" \
+    "$classification" \
+    "$status" \
+    "${safe_diagnostic:+: }" \
+    "$safe_diagnostic" >&2
+  rm -f "$stdout_file" "$stderr_file"
   return "$status"
 }
 

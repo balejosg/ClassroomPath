@@ -72,18 +72,102 @@ describe('github-actions remote helper', () => {
     ]);
 
     assert.equal(result.status, 255);
-    assert.match(
-      result.stderr,
-      /SSH attempt 1\/2 to deploy@192\.0\.2\.10:22 failed \(ssh-timeout\)/
-    );
-    assert.match(
-      result.stderr,
-      /SSH attempt 2\/2 to deploy@192\.0\.2\.10:22 failed \(ssh-timeout\)/
-    );
-    assert.match(
-      result.stderr,
-      /SSH to deploy@192\.0\.2\.10:22 failed after 2 attempts \(ssh-timeout\)/
-    );
+    assert.match(result.stderr, /SSH attempt 1\/2 failed \(ssh-timeout, exit 255\)/);
+    assert.match(result.stderr, /SSH attempt 2\/2 failed \(ssh-timeout, exit 255\)/);
+    assert.match(result.stderr, /SSH failed after 2 attempts \(ssh-timeout, exit 255\)/);
+    assert.doesNotMatch(result.stderr, /192\.0\.2\.10|deploy@/);
+  });
+
+  test('does not retry or misclassify a remote command exit', () => {
+    const result = runProjectCommand('bash', [
+      '-lc',
+      [
+        'source scripts/lib/github-actions-remote.sh',
+        'github_actions_remote_ssh_once() { return 1; }',
+        'GITHUB_ACTIONS_REMOTE_SSH_ATTEMPTS=3 GITHUB_ACTIONS_REMOTE_SSH_RETRY_DELAY_SECONDS=0 github_actions_remote_ssh /tmp/key 22 deploy example.invalid true',
+        'exit_code=$?',
+        'printf "exit=%s\\n" "$exit_code"',
+        'exit "$exit_code"',
+      ].join('; '),
+    ]);
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, 'exit=1\n');
+    assert.match(result.stderr, /remote-command-exit-1, exit 1/);
+    assert.equal(result.stderr.match(/SSH attempt/g)?.length, 1);
+    assert.doesNotMatch(result.stderr, /ssh-(?:auth|timeout|dns|refused)/);
+  });
+
+  test('does not let stderr text override a remote command exit classification', () => {
+    const result = runProjectCommand('bash', [
+      '-lc',
+      [
+        'source scripts/lib/github-actions-remote.sh',
+        'github_actions_remote_ssh_once() { printf "%s\\n" "Permission denied" >&2; return 42; }',
+        'GITHUB_ACTIONS_REMOTE_SSH_ATTEMPTS=3 GITHUB_ACTIONS_REMOTE_SSH_RETRY_DELAY_SECONDS=0 github_actions_remote_ssh /tmp/key 22 deploy example.invalid true',
+      ].join('; '),
+    ]);
+
+    assert.equal(result.status, 42);
+    assert.match(result.stderr, /remote-command-exit-42, exit 42/);
+    assert.doesNotMatch(result.stderr, /ssh-auth/);
+  });
+
+  test('surfaces only an allowlisted reader marker for a remote reader failure', () => {
+    const result = runProjectCommand('bash', [
+      '-lc',
+      [
+        'source scripts/lib/github-actions-remote.sh',
+        'github_actions_remote_ssh_once() { printf "%s\\n" "SMOKE_RELEASE_STATE_ERROR=pointer-invalid" "private-path.invalid" >&2; return 42; }',
+        'github_actions_remote_ssh /tmp/key 22 deploy example.invalid true',
+      ].join('; '),
+    ]);
+
+    assert.equal(result.status, 42);
+    assert.match(result.stderr, /remote-command-exit-42, exit 42/);
+    assert.match(result.stderr, /SMOKE_RELEASE_STATE_ERROR=pointer-invalid/);
+    assert.doesNotMatch(result.stderr, /private-path|example\.invalid|deploy/);
+  });
+
+  test('does not retry deterministic authentication or host-key failures', () => {
+    for (const [message, classification] of [
+      ['Permission denied (publickey).', 'ssh-auth'],
+      ['Host key verification failed.', 'ssh-host-key'],
+      ['Unexpected SSH failure.', 'ssh-unknown'],
+    ]) {
+      const result = runProjectCommand('bash', [
+        '-lc',
+        [
+          'source scripts/lib/github-actions-remote.sh',
+          `github_actions_remote_ssh_once() { printf '%s\\n' '${message}' >&2; return 255; }`,
+          'GITHUB_ACTIONS_REMOTE_SSH_ATTEMPTS=3 GITHUB_ACTIONS_REMOTE_SSH_RETRY_DELAY_SECONDS=0 github_actions_remote_ssh /tmp/key 22 deploy example.invalid true',
+          'exit_code=$?',
+          'printf "exit=%s\\n" "$exit_code"',
+          'exit "$exit_code"',
+        ].join('; '),
+      ]);
+
+      assert.equal(result.status, 255);
+      assert.equal(result.stdout, 'exit=255\n');
+      assert.equal(result.stderr.match(/SSH attempt/g)?.length, 1);
+      assert.match(result.stderr, new RegExp(`${classification}, exit 255`));
+    }
+  });
+
+  test('publishes only stdout from the successful attempt', () => {
+    const result = runProjectCommand('bash', [
+      '-lc',
+      [
+        'source scripts/lib/github-actions-remote.sh',
+        'attempts=0',
+        'github_actions_remote_ssh_once() { attempts=$((attempts + 1)); if [ "$attempts" -eq 1 ]; then printf "partial\\n"; printf "Connection timed out\\n" >&2; return 255; fi; printf "valid-state\\n"; }',
+        'GITHUB_ACTIONS_REMOTE_SSH_ATTEMPTS=2 GITHUB_ACTIONS_REMOTE_SSH_RETRY_DELAY_SECONDS=0 github_actions_remote_ssh /tmp/key 22 deploy example.invalid true',
+      ].join('; '),
+    ]);
+
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, 'valid-state\n');
+    assert.doesNotMatch(result.stdout, /partial|SSH attempt/);
   });
 
   test('resolves remote env files from the explicit target context', () => {

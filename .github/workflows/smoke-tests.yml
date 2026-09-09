@@ -75,12 +75,15 @@ jobs:
         run: |
           set -euo pipefail
           source scripts/lib/github-actions-remote.sh
+          state_command="$(bash scripts/lib/smoke-release-state-reader.sh \
+            render \
+            /srv/classroompath/release-state)"
           github_actions_remote_ssh \
             ~/.ssh/classroompath-staging-smoke \
             "${{ steps.resolve.outputs.port }}" \
             "${{ steps.resolve.outputs.user }}" \
             "${{ steps.resolve.outputs.ip }}" \
-            'set -eu; state_root="/srv/classroompath/release-state"; test -s "$state_root/current"; pointer="$(tr -d "\r\n" < "$state_root/current")"; case "$pointer" in *[!0-9a-f]*|????????????????????????????????????????????????????????????????) ;; *) exit 1 ;; esac; test -f "$state_root/releases/$pointer/runtime.env"; printf "POINTER_RELEASE_ID=%s\n" "$pointer"; cat "$state_root/releases/$pointer/runtime.env"' \
+            "$state_command" \
             > deployed-release-state.env
           pointer_release_id="$(sed -n 's/^POINTER_RELEASE_ID=//p' deployed-release-state.env | head -n 1)"
           test -n "$pointer_release_id"
@@ -145,7 +148,7 @@ jobs:
           test -n "$CLASSROOMPATH_DEPLOY_ROOT"
           state_root="${CLASSROOMPATH_DEPLOY_ROOT%/}/release-state"
           source scripts/lib/github-actions-remote.sh
-          state_command="$(printf 'set -eu; state_root=%q; test -s "\$state_root/current"; pointer="\$(tr -d "\\r\\n" < "\$state_root/current")"; case "\$pointer" in *[!0-9a-f]*|????????????????????????????????????????????????????????????????) ;; *) exit 1 ;; esac; test -f "\$state_root/releases/\$pointer/runtime.env"; printf "POINTER_RELEASE_ID=%%s\\n" "\$pointer"; cat "\$state_root/releases/\$pointer/runtime.env"' "$state_root")"
+          state_command="$(bash scripts/lib/smoke-release-state-reader.sh render "$state_root")"
           github_actions_remote_ssh \
             ~/.ssh/classroompath-production-smoke \
             "${{ steps.resolve.outputs.port }}" \

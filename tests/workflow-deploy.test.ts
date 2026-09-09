@@ -410,6 +410,7 @@ describe('Deploy workflow contracts', () => {
     const deployProductionJob = findWorkflowJob(deployWorkflow, 'deploy-production');
     const resolveReleaseImagesJob = findWorkflowJob(deployWorkflow, 'resolve-release-images');
     const smokeWorkflowText = readText('.github/workflows/smoke-tests.yml');
+    const smokeReleaseStateReader = readText('scripts/lib/smoke-release-state-reader.sh');
     const smokeWorkflow = readWorkflow('.github/workflows/smoke-tests.yml');
     const reusableSmokeWorkflowText = readText('.github/workflows/reusable-smoke-test.yml');
     const reusableSmokeWorkflow = readWorkflow('.github/workflows/reusable-smoke-test.yml');
@@ -447,7 +448,8 @@ describe('Deploy workflow contracts', () => {
     assert.doesNotMatch(smokeWorkflowText, /resolve-latest-verifier-image\.mjs/);
     assert.match(smokeWorkflowText, /release_id:/);
     assert.match(smokeWorkflowText, /openpath_contract_sha256:/);
-    assert.match(smokeWorkflowText, /releases\/\$pointer\/runtime\.env/);
+    assert.match(smokeWorkflowText, /smoke-release-state-reader\.sh/);
+    assert.match(smokeReleaseStateReader, /releases\/\$pointer\/runtime\.env/);
     assert.match(
       deployWorkflowText,
       /Annotated production tag identity ClassroomPath SHA .*does not match tag target/,
