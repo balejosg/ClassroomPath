@@ -75,6 +75,20 @@ and recovery outcome. A valid committed runtime with a failed secondary ledger
 append remains committed; the command failure indicates incomplete evidence and
 must not be interpreted as proof that the previous runtime is serving.
 
+The terminal ledger is JSONL schema version `1` at
+`<state-root>/deployment-ledger.jsonl`. It retains the newest 512 records by
+default (override only with the bounded `DEPLOYMENT_LEDGER_MAX_RECORDS` host
+policy), compacts under the same writer lock, and never rewrites an identity in
+place. Reusing a transaction ID is limited to an exact idempotent fact or the
+truthful `COMMITTED` to `ROLLED_BACK` progression. Successful terminal facts
+require all six immutable OCI digests. Operators can source
+`scripts/lib/deployment-ledger.sh` and call
+`deployment_ledger_query_transaction <ledger> <transaction-id>` to retrieve the
+newest fact for one exact transaction. The production workflow transmits its
+immutable tag and GitHub run ID explicitly; neither is inferred from host state.
+Each append flushes both the private ledger file and its parent directory before
+success; an idempotent retry repeats both durability checks.
+
 ## Migration compatibility and evidence limits
 
 Application recovery does not restore the database. The existing migration-risk

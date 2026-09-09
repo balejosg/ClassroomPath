@@ -36,6 +36,10 @@ operator vars in one pass, before starting a promotion attempt.
   - `STAGING_HOST`, `STAGING_USER`, `STAGING_SSH_KEY` — staging SSH access for promotion evidence
   - `DEPLOY_HOST`, `DEPLOY_USER` — production target (optional; auto-derived from
     `config/deploy-targets.local.json` when omitted)
+  - `PRODUCTION_RECOVERY_SHA` — explicit full lowercase recovery-authority SHA; it must differ
+    from the selected candidate SHA
+  - `PRODUCTION_RECOVERY_SOURCE_ROOT` — independent local checkout at that exact recovery SHA,
+    used by the canonical recovery package and no-mutation preflight
   - `WINDOWS_RUNNER_VMID`, `PROXMOX_SSH_ALIAS` — required for Windows pre-promotion evidence
 - `config/deploy-targets.local.json` — private deploy targets. Create from
   `config/deploy-targets.example.json` (`.invalid` placeholders) and fill in real values. This file
@@ -69,6 +73,9 @@ update flow.
    The explicit RC run is the authority for the pre-tag state. The plan resolves its exact
    ClassroomPath/OpenPath/bundle/contract identity, verifies that same candidate in staging, and
    runs the read-only production readiness checks for recovery, configuration, host, and artifacts.
+   Readiness checks repository/environment secret names by presence only, uses the configured
+   production container platform, executes the recovery helper from the exact candidate commit,
+   and applies the same high-risk staging evidence policy selected by the promotion plan.
    The state directory is keyed by `rc-<RC_RUN_ID>`; resume fails closed if any identity changes.
 
 3. **Approve and execute the exact plan:**
@@ -96,6 +103,14 @@ reporting production resolution.
 
 The retired aliases `promote:production`, `promote:production:full`, and `release:production` are
 no-op deprecation shims: they print this canonical pair and exit 2 without tagging or deploying.
+
+The release-candidate staging path and production path share the same runtime executor for the
+mutation boundary, migration, switch, health, readiness, live identity, state activation, terminal
+commit, recovery, and ledger semantics. Their adapters keep separate hosts, credentials,
+deploy/state roots, URLs, and Compose projects. Live identity validation also verifies the
+environment's Compose project label. The legacy staging `source-build` path is a development
+compatibility path only; it is not promotion evidence and cannot satisfy the production-readiness
+contract.
 
 ### Related runbooks
 
