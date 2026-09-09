@@ -1107,8 +1107,42 @@ test('promotion evidence CLI embeds and extracts staging evidence from annotated
     { ...process.env }
   );
 
-  assert.equal(readFileSync(extractedCurrentPath, 'utf-8'), currentStateText);
-  assert.equal(readFileSync(extractedVerificationPath, 'utf-8'), verificationStateText);
+  assert.match(readFileSync(extractedCurrentPath, 'utf-8'), /^APP_SHA=abc123$/mu);
+  assert.match(
+    readFileSync(extractedVerificationPath, 'utf-8'),
+    /^STAGING_VERIFIED_APP_SHA=abc123$/mu
+  );
+  assert.doesNotMatch(readFileSync(extractedCurrentPath, 'utf-8'), /SECRET/u);
+});
+
+test('promotion evidence CLI rejects non-schema fields before they can enter an annotated tag', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'promotion-evidence-secret-'));
+  const currentStatePath = join(tempDir, 'current-images.env');
+  const verificationStatePath = join(tempDir, 'staging-verification.env');
+  writeFileSync(currentStatePath, 'APP_SHA=abc123\nAUTHORIZATION=secret-value\n', 'utf8');
+  writeFileSync(verificationStatePath, 'STAGING_VERIFIED_APP_SHA=abc123\n', 'utf8');
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      promotionEvidenceCliPath,
+      'write-tag-message',
+      '--tag',
+      'v1.2.132',
+      '--commit',
+      'abc123',
+      '--staging-current',
+      currentStatePath,
+      '--staging-verification',
+      verificationStatePath,
+      '--output',
+      join(tempDir, 'tag-message.txt'),
+    ],
+    { encoding: 'utf8' }
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unsafe or duplicate field/u);
 });
 
 test('promotion evidence CLI rejects unknown options through the shared parser', () => {

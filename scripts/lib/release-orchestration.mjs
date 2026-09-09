@@ -231,7 +231,7 @@ function buildRcFirstPromotionPlan({
         '-lc',
         [
           `set -a && . ${quoteShellArg(releaseBundleStateFile)} && set +a`,
-          `npm run verify:production-readiness -- --rc-run-id "$STAGING_RELEASE_RUN_ID" --candidate-sha "$STAGING_CLASSROOMPATH_SHA" --release-id "$STAGING_RELEASE_ID" --openpath-sha "$STAGING_OPENPATH_SHA" --contract-sha256 "$STAGING_OPENPATH_CONTRACT_SHA256" --bundle-file ${quoteShellArg(join(releaseBundleDir, 'classroompath-release-bundle.json'))} --contract-file ${quoteShellArg(join(releaseBundleDir, 'openpath-promotion-contract.json'))}`,
+          `npm run verify:production-readiness -- --rc-run-id "$STAGING_RELEASE_RUN_ID" --candidate-sha "$STAGING_CLASSROOMPATH_SHA" --release-id "$STAGING_RELEASE_ID" --openpath-sha "$STAGING_OPENPATH_SHA" --contract-sha256 "$STAGING_OPENPATH_CONTRACT_SHA256" --bundle-file ${quoteShellArg(join(releaseBundleDir, 'classroompath-release-bundle.json'))} --contract-file ${quoteShellArg(join(releaseBundleDir, 'openpath-promotion-contract.json'))} --high-risk ${highRiskWindows ? 'true' : 'false'}`,
         ].join('\n'),
       ],
       'Run canonical read-only production readiness: recovery authority, config, host, and exact artifacts.'
@@ -267,7 +267,7 @@ function buildRcFirstPromotionPlan({
         [
           'set -euo pipefail',
           `set -a && . ${quoteShellArg(releaseBundleStateFile)} && set +a`,
-          `bash scripts/tag-production-release.sh ${quoteShellArg(tag)} --rc-run-id "$STAGING_RELEASE_RUN_ID" --candidate-sha "$STAGING_CLASSROOMPATH_SHA" --release-id "$STAGING_RELEASE_ID" --openpath-sha "$STAGING_OPENPATH_SHA" --contract-sha256 "$STAGING_OPENPATH_CONTRACT_SHA256" --bundle-file ${quoteShellArg(join(releaseBundleDir, 'classroompath-release-bundle.json'))} --contract-file ${quoteShellArg(join(releaseBundleDir, 'openpath-promotion-contract.json'))} --staging-current ${quoteShellArg(join(identityRoot, 'staging-current-images.env'))} --staging-verification ${quoteShellArg(join(identityRoot, 'staging-verification.env'))}${localOnly ? ' --local-only' : ''}`,
+          `bash scripts/tag-production-release.sh ${quoteShellArg(tag)} --rc-run-id "$STAGING_RELEASE_RUN_ID" --candidate-sha "$STAGING_CLASSROOMPATH_SHA" --release-id "$STAGING_RELEASE_ID" --openpath-sha "$STAGING_OPENPATH_SHA" --contract-sha256 "$STAGING_OPENPATH_CONTRACT_SHA256" --bundle-file ${quoteShellArg(join(releaseBundleDir, 'classroompath-release-bundle.json'))} --contract-file ${quoteShellArg(join(releaseBundleDir, 'openpath-promotion-contract.json'))} --staging-current ${quoteShellArg(join(identityRoot, 'staging-current-images.env'))} --staging-verification ${quoteShellArg(join(identityRoot, 'staging-verification.env'))} --high-risk ${highRiskWindows ? 'true' : 'false'}${localOnly ? ' --local-only' : ''}`,
         ].join('\n'),
       ],
       localOnly

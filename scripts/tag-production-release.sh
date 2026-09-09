@@ -44,6 +44,7 @@ BUNDLE_FILE=""
 CONTRACT_FILE=""
 STAGING_CURRENT_FILE=""
 STAGING_VERIFICATION_FILE=""
+HIGH_RISK="false"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -86,6 +87,11 @@ while [ "$#" -gt 0 ]; do
       CONTRACT_FILE="$2"
       shift 2
       ;;
+    --high-risk)
+      [ "$#" -ge 2 ] || die "--high-risk requires true or false" 1
+      HIGH_RISK="$2"
+      shift 2
+      ;;
     --staging-current)
       [ "$#" -ge 2 ] || die "--staging-current requires a value" 1
       STAGING_CURRENT_FILE="$2"
@@ -102,6 +108,8 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+case "$HIGH_RISK" in true|false) ;; *) die "--high-risk requires true or false" 1 ;; esac
 
 if [ -z "$TAG_NAME" ]; then
   usage
@@ -161,6 +169,10 @@ fi
 current_sha="$(git rev-parse HEAD)"
 if ! git cat-file -e "${EXPECTED_CANDIDATE_SHA}^{commit}"; then
   die "Exact candidate commit $EXPECTED_CANDIDATE_SHA is not available in the operator repository" 1
+fi
+candidate_openpath_sha="$(git rev-parse "${EXPECTED_CANDIDATE_SHA}:upstream/openpath" 2>/dev/null || true)"
+if [ "$candidate_openpath_sha" != "$EXPECTED_OPENPATH_SHA" ]; then
+  die "Candidate gitlink OpenPath SHA does not match the exact Release Bundle identity" 1
 fi
 if [ "$current_sha" != "$EXPECTED_CANDIDATE_SHA" ]; then
   log_info "Operator HEAD $current_sha differs from selected RC $EXPECTED_CANDIDATE_SHA; tagging the explicit RC commit"
@@ -272,6 +284,7 @@ if ! node scripts/production-readiness.mjs \
   --contract-sha256 "$EXPECTED_CONTRACT_SHA256" \
   --bundle-file "$BUNDLE_FILE" \
   --contract-file "$CONTRACT_FILE" \
+  --high-risk "$HIGH_RISK" \
   --json >/dev/null; then
   die "Canonical production readiness no longer passes for the exact RC identity" 1
 fi
@@ -327,7 +340,9 @@ mark_release_fence_tagged() {
 
 if [ "$PRODUCTION_TAG_EXISTING_STATE" = "local-and-remote" ]; then
   log_info "Production tag $TAG_NAME is already present on origin; skipping push"
-  mark_release_fence_tagged
+  if ! mark_release_fence_tagged; then
+    log_warn "Remote production tag is exact, but local release-fence bookkeeping could not be updated"
+  fi
   exit 0
 fi
 
@@ -342,5 +357,7 @@ if [ -n "${PROMOTION_TAG_PUSH_TOKEN:-}" ]; then
 else
   git push origin "$TAG_NAME"
 fi
-mark_release_fence_tagged
 log_success "Pushed production tag $TAG_NAME to origin"
+if ! mark_release_fence_tagged; then
+  log_warn "Production tag was pushed successfully, but local release-fence bookkeeping could not be updated"
+fi

@@ -13,6 +13,11 @@ import process from 'node:process';
 
 import { isDirectExecution } from './lib/github-actions.mjs';
 import { parseCommandLine, requireCliOption, runCli } from './lib/release-cli.mjs';
+import {
+  getReleaseStateSnapshotFields,
+  parseReleaseStateText,
+  serializeReleaseStateSnapshot,
+} from './lib/release-state-contract.mjs';
 
 const BEGIN_MARKER = 'CLASSROOMPATH_PROMOTION_EVIDENCE_V1_BEGIN';
 const END_MARKER = 'CLASSROOMPATH_PROMOTION_EVIDENCE_V1_END';
@@ -40,7 +45,7 @@ const OPENPATH_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const CONTRACT_SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 /**
- * @typedef {{openpathSha: string; contractSha256: string}|{openpathSha?: undefined; contractSha256?: undefined}} OpenPathTagIdentity
+ * @typedef {{openpathSha: string; contractSha256: string}} OpenPathTagIdentity
  * @typedef {{releaseId: string; rcRunId: string; classroomPathSha: string} & OpenPathTagIdentity} ProductionTagIdentity
  */
 
@@ -52,11 +57,8 @@ const CONTRACT_SHA256_PATTERN = /^[0-9a-f]{64}$/;
 function normalizeOpenPathTagIdentity(openpathSha, contractSha256) {
   const normalizedOpenpathSha = String(openpathSha ?? '').trim();
   const normalizedContractSha256 = String(contractSha256 ?? '').trim();
-  if (Boolean(normalizedOpenpathSha) !== Boolean(normalizedContractSha256)) {
-    throw new Error('openpathSha and contractSha256 must be provided together');
-  }
-  if (!normalizedOpenpathSha) {
-    return {};
+  if (!normalizedOpenpathSha || !normalizedContractSha256) {
+    throw new Error('openpathSha and contractSha256 are required together');
   }
   if (!OPENPATH_SHA_PATTERN.test(normalizedOpenpathSha)) {
     throw new Error('openpathSha must be a 40-character lowercase SHA');
@@ -111,33 +113,20 @@ export function buildProductionTagIdentity({
   };
 }
 
-function extractOptionalUniqueMarker(messageText, markerName) {
-  const values = [
-    ...String(messageText ?? '').matchAll(new RegExp(`^${markerName}:\\s*(\\S+)\\s*$`, 'gmu')),
-  ].map((match) => match[1]);
-  if (values.length > 1) {
-    throw new Error(`Promotion tag identity contains duplicate ${markerName}`);
-  }
-  return values[0] ?? '';
-}
-
 export function extractProductionTagIdentity(messageText) {
   return buildProductionTagIdentity({
     releaseId: extractUniqueMarker(messageText, 'ClassroomPath-Release-Id'),
     rcRunId: extractUniqueMarker(messageText, 'ClassroomPath-RC-Run-Id'),
     classroomPathSha: extractUniqueMarker(messageText, 'ClassroomPath-SHA'),
-    openpathSha: extractOptionalUniqueMarker(messageText, 'OpenPath-SHA'),
-    contractSha256: extractOptionalUniqueMarker(messageText, 'OpenPath-Contract-SHA256'),
+    openpathSha: extractUniqueMarker(messageText, 'OpenPath-SHA'),
+    contractSha256: extractUniqueMarker(messageText, 'OpenPath-Contract-SHA256'),
   });
 }
 
 export function compareProductionTagIdentity(actual, expected) {
   const actualIdentity = buildProductionTagIdentity(actual);
   const expectedIdentity = buildProductionTagIdentity(expected);
-  const fields = ['releaseId', 'rcRunId', 'classroomPathSha'];
-  if (actualIdentity.openpathSha || expectedIdentity.openpathSha) fields.push('openpathSha');
-  if (actualIdentity.contractSha256 || expectedIdentity.contractSha256)
-    fields.push('contractSha256');
+  const fields = ['releaseId', 'rcRunId', 'classroomPathSha', 'openpathSha', 'contractSha256'];
   const mismatches = fields.filter((field) => actualIdentity[field] !== expectedIdentity[field]);
   return {
     matches: mismatches.length === 0,
@@ -151,12 +140,8 @@ export function serializeProductionTagIdentity(identity) {
     `RELEASE_ID=${validated.releaseId}`,
     `RC_RUN_ID=${validated.rcRunId}`,
     `CLASSROOMPATH_SHA=${validated.classroomPathSha}`,
-    ...(validated.openpathSha
-      ? [
-          `OPENPATH_SHA=${validated.openpathSha}`,
-          `OPENPATH_CONTRACT_SHA256=${validated.contractSha256}`,
-        ]
-      : []),
+    `OPENPATH_SHA=${validated.openpathSha}`,
+    `OPENPATH_CONTRACT_SHA256=${validated.contractSha256}`,
     '',
   ].join('\n');
 }
@@ -170,8 +155,27 @@ function requireOption(options, name) {
   return requireCliOption(options, name, `Missing required option --${name}`);
 }
 
-function encodeFile(path) {
-  return Buffer.from(readFileSync(path, 'utf-8'), 'utf-8').toString('base64');
+function encodeSnapshot(path, snapshotType) {
+  const text = readFileSync(path, 'utf-8');
+  if (Buffer.byteLength(text, 'utf8') > 65536) {
+    throw new Error(`Promotion ${snapshotType} evidence exceeds the bounded size limit`);
+  }
+  const allowed = new Set(getReleaseStateSnapshotFields(snapshotType));
+  const seen = new Set();
+  for (const line of text.split(/\r?\n/u)) {
+    if (!line || line.startsWith('#')) continue;
+    const separatorIndex = line.indexOf('=');
+    if (separatorIndex <= 0) {
+      throw new Error(`Promotion ${snapshotType} evidence contains a malformed line`);
+    }
+    const key = line.slice(0, separatorIndex);
+    if (!allowed.has(key) || seen.has(key)) {
+      throw new Error(`Promotion ${snapshotType} evidence contains an unsafe or duplicate field`);
+    }
+    seen.add(key);
+  }
+  const canonical = serializeReleaseStateSnapshot(snapshotType, parseReleaseStateText(text));
+  return Buffer.from(canonical, 'utf-8').toString('base64');
 }
 
 function decodeField(fields, name) {
@@ -202,7 +206,11 @@ function extractEvidenceFields(messageText) {
     if (separatorIndex === -1) {
       throw new Error(`Invalid promotion evidence line: ${line}`);
     }
-    fields.set(line.slice(0, separatorIndex), line.slice(separatorIndex + 1));
+    const name = line.slice(0, separatorIndex);
+    if (fields.has(name)) {
+      throw new Error(`Duplicate promotion evidence field: ${name}`);
+    }
+    fields.set(name, line.slice(separatorIndex + 1));
   }
 
   return fields;
@@ -251,8 +259,8 @@ function writeTagMessage(options) {
       : []),
     'Promotion evidence: staging release state was verified locally before tag creation.',
     BEGIN_MARKER,
-    `staging-current-images.env.base64=${encodeFile(stagingCurrentPath)}`,
-    `staging-verification.env.base64=${encodeFile(stagingVerificationPath)}`,
+    `staging-current-images.env.base64=${encodeSnapshot(stagingCurrentPath, 'current-runtime')}`,
+    `staging-verification.env.base64=${encodeSnapshot(stagingVerificationPath, 'staging-verification')}`,
     END_MARKER,
     '',
   ].join('\n');

@@ -107,6 +107,18 @@ export const OPERATOR_CONFIG_VARS = [
     purpose: 'SSH port for production (default: 22).',
   },
   {
+    name: 'PRODUCTION_RECOVERY_SHA',
+    stage: 'production',
+    required: true,
+    purpose: 'Explicit independently validated recovery authority SHA for production.',
+  },
+  {
+    name: 'PRODUCTION_RECOVERY_SOURCE_ROOT',
+    stage: 'production',
+    required: true,
+    purpose: 'Independent checkout used to package and preflight the exact recovery authority.',
+  },
+  {
     name: 'PROXMOX_SSH_ALIAS',
     stage: 'windows-evidence',
     required: true,

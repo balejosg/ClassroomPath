@@ -14,6 +14,8 @@ const COMPLETE_ENV = {
   STAGING_USER: 'deploy',
   STAGING_SSH_KEY: '~/.ssh/classroompath_staging',
   DEPLOY_USER: 'deploy',
+  PRODUCTION_RECOVERY_SHA: 'a'.repeat(40),
+  PRODUCTION_RECOVERY_SOURCE_ROOT: '/srv/classroompath-recovery-source',
   PROXMOX_SSH_ALIAS: 'proxmox-alias',
   PROXMOX_HOST: 'proxmox.internal',
   WINDOWS_RUNNER_VMID: '121',
@@ -76,6 +78,13 @@ test('OPERATOR_CONFIG_VARS declares a non-empty required-var set grouped by stag
   assert.ok(stages.has('staging'));
   assert.ok(stages.has('production'));
   assert.ok(stages.has('windows-evidence'));
+  for (const name of ['PRODUCTION_RECOVERY_SHA', 'PRODUCTION_RECOVERY_SOURCE_ROOT']) {
+    assert.equal(
+      OPERATOR_CONFIG_VARS.find((entry) => entry.name === name)?.required,
+      true,
+      `${name} must be checked before promotion`
+    );
+  }
 });
 
 test('package.json exposes verify:operator-config script', () => {

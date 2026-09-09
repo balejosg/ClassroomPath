@@ -29,6 +29,7 @@ EXPECTED_OPENPATH_SHA="${EXPECTED_OPENPATH_SHA:-}"
 EXPECTED_CONTRACT_SHA256="${EXPECTED_CONTRACT_SHA256:-}"
 STAGING_CURRENT_OUTPUT="${STAGING_CURRENT_OUTPUT:-}"
 STAGING_VERIFICATION_OUTPUT="${STAGING_VERIFICATION_OUTPUT:-}"
+HIGH_RISK="${PRODUCTION_READINESS_HIGH_RISK:-false}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -61,6 +62,11 @@ while [ "$#" -gt 0 ]; do
       EXPECTED_CONTRACT_SHA256="$2"
       shift 2
       ;;
+    --high-risk)
+      [ "$#" -ge 2 ] || die "--high-risk requires true or false" 2
+      HIGH_RISK="$2"
+      shift 2
+      ;;
     --current-output)
       [ "$#" -ge 2 ] || die "--current-output requires a value" 2
       STAGING_CURRENT_OUTPUT="$2"
@@ -80,6 +86,8 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+case "$HIGH_RISK" in true|false) ;; *) die "--high-risk requires true or false" 2 ;; esac
 
 resolve_default_deploy_host() {
   local public_url
@@ -219,6 +227,14 @@ fi
 if [ -n "$EXPECTED_CONTRACT_SHA256" ] &&
   { [ "$current_contract_sha256" != "$EXPECTED_CONTRACT_SHA256" ] || [ "$verified_contract_sha256" != "$EXPECTED_CONTRACT_SHA256" ]; }; then
   die "Preflight failed: staging OpenPath contract hash does not match the exact Release Bundle" 1
+fi
+
+if [ -n "${EXPECTED_GATEWAY_IMAGE:-}" ]; then
+  node "$SCRIPT_DIR/release-state-cli.mjs" verify-promotion-ready \
+    --current "$current_state_file" \
+    --verification "$verification_state_file" \
+    --deployment-mode promotion-eligible \
+    --high-risk "$HIGH_RISK" >/dev/null
 fi
 
 if [ -n "$STAGING_CURRENT_OUTPUT" ]; then

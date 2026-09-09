@@ -33,12 +33,16 @@ test('production tag identity round-trips the exact release and RC locator', () 
     releaseId,
     rcRunId: '123456789',
     classroomPathSha: 'b'.repeat(40),
+    openpathSha: 'c'.repeat(40),
+    contractSha256: 'd'.repeat(64),
   });
   const message = [
     'ClassroomPath production release v1.2.3',
     `ClassroomPath-Release-Id: ${identity.releaseId}`,
     `ClassroomPath-RC-Run-Id: ${identity.rcRunId}`,
     `ClassroomPath-SHA: ${identity.classroomPathSha}`,
+    `OpenPath-SHA: ${identity.openpathSha}`,
+    `OpenPath-Contract-SHA256: ${identity.contractSha256}`,
   ].join('\n');
 
   assert.deepEqual(extractProductionTagIdentity(message), identity);
@@ -69,6 +73,15 @@ test('production tag identity rejects missing or conflicting fields', () => {
     /rcRunId is required/
   );
   assert.throws(
+    () =>
+      buildProductionTagIdentity({
+        releaseId: 'a'.repeat(64),
+        rcRunId: '123',
+        classroomPathSha: 'b'.repeat(40),
+      }),
+    /openpathSha/u
+  );
+  assert.throws(
     () => extractProductionTagIdentity('ClassroomPath-Release-Id: ' + 'a'.repeat(64)),
     /ClassroomPath-RC-Run-Id/
   );
@@ -96,10 +109,12 @@ test('writes the exact tag identity as shell-safe promotion inputs', () => {
       releaseId: 'a'.repeat(64),
       rcRunId: '123456789',
       classroomPathSha: 'b'.repeat(40),
+      openpathSha: 'c'.repeat(40),
+      contractSha256: 'd'.repeat(64),
     });
     assert.equal(
       readFileSync(outputPath, 'utf8'),
-      `RELEASE_ID=${'a'.repeat(64)}\nRC_RUN_ID=123456789\nCLASSROOMPATH_SHA=${'b'.repeat(40)}\n`
+      `RELEASE_ID=${'a'.repeat(64)}\nRC_RUN_ID=123456789\nCLASSROOMPATH_SHA=${'b'.repeat(40)}\nOPENPATH_SHA=${'c'.repeat(40)}\nOPENPATH_CONTRACT_SHA256=${'d'.repeat(64)}\n`
     );
   } finally {
     rmSync(outputPath, { force: true });
@@ -111,6 +126,8 @@ test('classifies an existing annotated tag as idempotent only for the exact iden
     releaseId: 'a'.repeat(64),
     rcRunId: '123456789',
     classroomPathSha: 'b'.repeat(40),
+    openpathSha: 'c'.repeat(40),
+    contractSha256: 'd'.repeat(64),
   };
 
   assert.deepEqual(compareProductionTagIdentity(expected, expected), {
@@ -155,16 +172,21 @@ production_tag_reconcile_existing
   assert.match(`${result.stdout}\n${result.stderr}`, /Unable to inspect origin tag v1\.2\.3/);
 });
 
-function createTagProductionFixture({ tagName = 'v9.9.9', nonCanonicalOperator = false } = {}) {
+function createTagProductionFixture({
+  tagName = 'v9.9.9',
+  nonCanonicalOperator = false,
+  rejectPush = true,
+  guardMarkFails = false,
+} = {}) {
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'classroompath-tag-local-only-'));
   const bareRepository = join(fixtureRoot, 'origin.git');
   const worktree = join(fixtureRoot, 'a', 'b', 'worktree');
   const fakeBin = join(fixtureRoot, 'bin');
-  const guardDirectory = join(fixtureRoot, 'a', 'scripts');
+  const guardDirectory = resolve(worktree, '..', 'scripts');
   const guardLog = join(fixtureRoot, 'guard.log');
   const pushLog = join(fixtureRoot, 'push.log');
   const releaseId = 'a'.repeat(64);
-  const openpathSha = 'b'.repeat(40);
+  let openpathSha = '';
   const contractFile = join(fixtureRoot, 'openpath-contract.json');
   const bundleFile = join(fixtureRoot, 'release-bundle.json');
   const stagingCurrentFile = join(fixtureRoot, 'staging-current.env');
@@ -181,6 +203,11 @@ function createTagProductionFixture({ tagName = 'v9.9.9', nonCanonicalOperator =
     const candidateSha = execFileSync('git', ['-C', worktree, 'rev-parse', 'HEAD'], {
       encoding: 'utf8',
     }).trim();
+    openpathSha = execFileSync(
+      'git',
+      ['-C', worktree, 'rev-parse', `${candidateSha}:upstream/openpath`],
+      { encoding: 'utf8' }
+    ).trim();
 
     for (const relativePath of [
       'scripts/tag-production-release.sh',
@@ -235,6 +262,8 @@ if command == 'release-status':
 elif command == 'release-mark-tagged':
     with open(os.environ['TEST_GUARD_LOG'], 'a', encoding='utf-8') as handle:
         handle.write('release-mark-tagged\\n')
+    if os.environ.get('TEST_GUARD_MARK_FAIL') == '1':
+        raise SystemExit(1)
 else:
     raise SystemExit(2)
 `,
@@ -296,12 +325,14 @@ esac
     );
     chmodSync(fakeNodePath, 0o755);
 
-    writeFileSync(
-      join(bareRepository, 'hooks', 'pre-receive'),
-      '#!/usr/bin/env bash\nprintf \'push-attempted\\n\' >>"$TEST_PUSH_LOG"\nexit 1\n',
-      'utf8'
-    );
-    chmodSync(join(bareRepository, 'hooks', 'pre-receive'), 0o755);
+    if (rejectPush) {
+      writeFileSync(
+        join(bareRepository, 'hooks', 'pre-receive'),
+        '#!/usr/bin/env bash\nprintf \'push-attempted\\n\' >>"$TEST_PUSH_LOG"\nexit 1\n',
+        'utf8'
+      );
+      chmodSync(join(bareRepository, 'hooks', 'pre-receive'), 0o755);
+    }
 
     writeFileSync(contractFile, '{"fixture":true}\n', 'utf8');
     writeFileSync(bundleFile, '{}\n', 'utf8');
@@ -366,6 +397,7 @@ esac
       TEST_CANDIDATE_SHA: candidateSha,
       TEST_GUARD_LOG: guardLog,
       TEST_PUSH_LOG: pushLog,
+      TEST_GUARD_MARK_FAIL: guardMarkFails ? '1' : '0',
     };
 
     return {
@@ -374,6 +406,7 @@ esac
       worktree,
       tagName,
       candidateSha,
+      openpathSha,
       operatorHeadB,
       operatorHead,
       args,
@@ -432,6 +465,57 @@ test('tag-production-release local-only accepts canonical B while tagging explic
     assert.equal(remoteTag, '');
     assert.equal(existsSync(fixture.guardLog) ? readFileSync(fixture.guardLog, 'utf8') : '', '');
     assert.equal(existsSync(fixture.pushLog) ? readFileSync(fixture.pushLog, 'utf8') : '', '');
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('tag-production-release rejects a candidate whose OpenPath gitlink differs from the RC identity', () => {
+  const fixture = createTagProductionFixture({ tagName: 'v9.9.11' });
+  try {
+    const args = [...fixture.args];
+    const openpathIndex = args.indexOf('--openpath-sha');
+    args[openpathIndex + 1] = 'f'.repeat(40);
+    const result = spawnSync('bash', args, {
+      cwd: fixture.worktree,
+      env: fixture.environment,
+      encoding: 'utf8',
+    });
+
+    assert.notEqual(result.status, 0);
+    assert.match(`${result.stdout}\n${result.stderr}`, /gitlink OpenPath SHA/u);
+    assert.equal(
+      execFileSync('git', ['-C', fixture.worktree, 'tag', '--list', fixture.tagName], {
+        encoding: 'utf8',
+      }).trim(),
+      ''
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a post-push fence bookkeeping failure cannot turn a successful immutable push into a failed promotion', () => {
+  const fixture = createTagProductionFixture({
+    tagName: 'v9.9.12',
+    rejectPush: false,
+    guardMarkFails: true,
+  });
+  try {
+    const result = spawnSync('bash', fixture.args.slice(0, -1), {
+      cwd: fixture.worktree,
+      env: fixture.environment,
+      encoding: 'utf8',
+    });
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(`${result.stdout}\n${result.stderr}`, /bookkeeping could not be updated/u);
+    assert.notEqual(
+      execFileSync('git', ['ls-remote', fixture.bareRepository, `refs/tags/${fixture.tagName}`], {
+        encoding: 'utf8',
+      }).trim(),
+      ''
+    );
   } finally {
     fixture.cleanup();
   }
