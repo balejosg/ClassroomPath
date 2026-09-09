@@ -5,6 +5,7 @@
 # shellcheck disable=SC2034 # sourced helper contract is consumed by callers.
 DEPLOYMENT_LEDGER_CONTRACT_VERSION=1
 DEPLOYMENT_LEDGER_MAX_RECORD_BYTES=8192
+DEPLOYMENT_LEDGER_DEFAULT_MAX_RECORDS=512
 DEPLOYMENT_LEDGER_MAX_TRANSACTION_ID_LENGTH=128
 DEPLOYMENT_LEDGER_MAX_TAG_LENGTH=128
 DEPLOYMENT_LEDGER_MAX_NUMERIC_ID_LENGTH=20
@@ -136,6 +137,25 @@ deployment_ledger_image_digests_json() {
   printf '}'
 }
 
+deployment_ledger_require_complete_image_digests() {
+  local variable_name=""
+  local image_ref=""
+
+  for variable_name in \
+    CLASSROOMPATH_GATEWAY_IMAGE \
+    CLASSROOMPATH_MIGRATIONS_IMAGE \
+    OPENPATH_FIREFOX_ASSETS_IMAGE \
+    OPENPATH_API_IMAGE \
+    CLASSROOMPATH_SPA_IMAGE \
+    CLASSROOMPATH_VERIFIER_IMAGE; do
+    image_ref="${!variable_name:-}"
+    [[ "$image_ref" =~ @sha256:[0-9a-f]{64}$ ]] || {
+      printf '[ERROR] successful deployment ledger fact requires every immutable OCI digest\n' >&2
+      return 1
+    }
+  done
+}
+
 deployment_ledger_build_record() {
   local environment="$1"
   local transaction_id="$2"
@@ -189,6 +209,19 @@ deployment_ledger_build_record() {
 
   case "$result" in
     COMMITTED)
+      deployment_ledger_require_complete_image_digests || return 1
+      if [ "$health" != 200 ] || [ "$ready" != true ] ||
+        [ "$rollback_attempted" != false ] || [ "$rollback_result" != not_attempted ]; then
+        printf '[ERROR] committed deployment requires healthy non-rollback terminal evidence\n' >&2
+        return 1
+      fi
+      if [ "$environment" = production ] &&
+        { [ -z "$release_id" ] || [ -z "$previous_sha" ] || [ -z "$recovery_sha" ] ||
+          [ -z "$workflow_run_id" ] || [ -z "$rc_run_id" ] || [ -z "$tag" ] ||
+          [ -z "$openpath_sha" ] || [ -z "$contract_sha256" ]; }; then
+        printf '[ERROR] committed production deployment requires complete immutable identity\n' >&2
+        return 1
+      fi
       if [ "$mutation_boundary" != 1 ] || [ "$phase" != COMMITTED ]; then
         printf '[ERROR] committed deployment requires mutation boundary and COMMITTED phase\n' >&2
         return 1
@@ -200,8 +233,17 @@ deployment_ledger_build_record() {
       }
       ;;
     ROLLED_BACK)
+      deployment_ledger_require_complete_image_digests || return 1
+      if [ "$health" != 200 ] || [ "$ready" != true ]; then
+        printf '[ERROR] rolled back deployment requires healthy ready evidence\n' >&2
+        return 1
+      fi
       [ -n "$previous_sha" ] || {
         printf '[ERROR] rolled back deployment requires previous identity\n' >&2
+        return 1
+      }
+      [ "$previous_sha" != "$candidate_sha" ] || {
+        printf '[ERROR] rolled back deployment requires a previous identity distinct from candidate\n' >&2
         return 1
       }
       if [ "$mutation_boundary" != 1 ] || [ "$phase" != ROLLED_BACK ]; then
@@ -209,10 +251,12 @@ deployment_ledger_build_record() {
         return 1
       fi
       if [ "$environment" = production ]; then
-        [ -n "$recovery_sha" ] || {
-          printf '[ERROR] production rollback requires recovery identity\n' >&2
+        if [ -z "$release_id" ] || [ -z "$recovery_sha" ] ||
+          [ -z "$workflow_run_id" ] || [ -z "$rc_run_id" ] || [ -z "$tag" ] ||
+          [ -z "$openpath_sha" ] || [ -z "$contract_sha256" ]; then
+          printf '[ERROR] production rollback requires complete immutable identity\n' >&2
           return 1
-        }
+        fi
       fi
       if [ -n "$recovery_sha" ] && [ "$recovery_sha" = "$candidate_sha" ]; then
         printf '[ERROR] recovery identity must differ from candidate\n' >&2
@@ -278,7 +322,7 @@ deployment_ledger_build_record() {
   escaped_rollback_result="$(deployment_ledger_json_escape "$rollback_result")"
   image_digests_json="$(deployment_ledger_image_digests_json)"
 
-  DEPLOYMENT_LEDGER_RECORD_JSON="$(printf '{"timestamp":"%s","environment":"%s","transactionId":"%s","candidateSha":"%s","releaseId":"%s","previous":"%s","recoverySha":"%s","result":"%s","health":%s,"ready":%s,"workflowRunId":"%s","current":"%s","rcRunId":"%s","tag":"%s","openPathSha":"%s","contractSha256":"%s","phase":"%s","rollbackAttempted":%s,"rollbackResult":"%s","imageDigests":%s}' \
+  DEPLOYMENT_LEDGER_RECORD_JSON="$(printf '{"schemaVersion":1,"timestamp":"%s","environment":"%s","transactionId":"%s","candidateSha":"%s","releaseId":"%s","previous":"%s","recoverySha":"%s","result":"%s","health":%s,"ready":%s,"workflowRunId":"%s","current":"%s","rcRunId":"%s","tag":"%s","openPathSha":"%s","contractSha256":"%s","phase":"%s","rollbackAttempted":%s,"rollbackResult":"%s","imageDigests":%s}' \
     "$escaped_timestamp" "$escaped_environment" "$escaped_transaction_id" "$escaped_candidate_sha" "$escaped_release_id" "$escaped_previous_sha" "$escaped_recovery_sha" "$escaped_result" \
     "${escaped_health:-null}" "$escaped_ready" "$escaped_workflow_run_id" "$escaped_current_sha" \
     "$escaped_rc_run_id" "$escaped_tag" "$escaped_openpath_sha" "$escaped_contract_sha256" \
@@ -345,17 +389,109 @@ deployment_ledger_sync_file() {
   fi
 }
 
+deployment_ledger_sync_directory() {
+  local ledger_path="$1"
+
+  command -v sync >/dev/null 2>&1 || {
+    printf '[ERROR] sync command is unavailable for deployment ledger\n' >&2
+    return 1
+  }
+  if ! sync -d "$(dirname "$ledger_path")" >/dev/null 2>&1; then
+    printf '[ERROR] deployment ledger directory flush failed\n' >&2
+    return 1
+  fi
+}
+
 deployment_ledger_mark_idempotent() {
   local ledger_path="$1"
   local lock_dir="$2"
 
-  if ! deployment_ledger_sync_file "$ledger_path"; then
+  if ! deployment_ledger_enforce_retention "$ledger_path" ||
+    ! deployment_ledger_sync_file "$ledger_path" ||
+    ! deployment_ledger_sync_directory "$ledger_path"; then
     deployment_ledger_release_lock_with_warning "$lock_dir"
     return 1
   fi
   LEDGER_APPEND_RESULT="idempotent"
   export LEDGER_APPEND_RESULT
   deployment_ledger_release_lock "$lock_dir"
+}
+
+deployment_ledger_enforce_retention() {
+  local ledger_path="$1"
+  local max_records="${DEPLOYMENT_LEDGER_MAX_RECORDS:-$DEPLOYMENT_LEDGER_DEFAULT_MAX_RECORDS}"
+  local record_count=""
+  local compact_path=""
+
+  [[ "$max_records" =~ ^[1-9][0-9]*$ ]] && [ "$max_records" -le 100000 ] || {
+    printf '[ERROR] invalid deployment ledger retention limit\n' >&2
+    return 1
+  }
+  record_count="$(wc -l < "$ledger_path")" || return 1
+  [ "$record_count" -le "$max_records" ] && return 0
+
+  compact_path="$(mktemp "${ledger_path}.compact.XXXXXX")" || return 1
+  if ! tail -n "$max_records" "$ledger_path" > "$compact_path" ||
+    ! chmod 0600 "$compact_path" ||
+    ! deployment_ledger_sync_file "$compact_path" ||
+    ! mv -f "$compact_path" "$ledger_path" ||
+    ! sync -d "$(dirname "$ledger_path")" >/dev/null 2>&1; then
+    rm -f "$compact_path" 2>/dev/null || true
+    printf '[ERROR] deployment ledger retention compaction failed\n' >&2
+    return 1
+  fi
+}
+
+deployment_ledger_query_transaction() {
+  local ledger_path="$1"
+  local transaction_id="$2"
+  local record=""
+
+  [ -f "$ledger_path" ] && [ ! -L "$ledger_path" ] || return 1
+  [ -n "$transaction_id" ] &&
+    [ "${#transaction_id}" -le "$DEPLOYMENT_LEDGER_MAX_TRANSACTION_ID_LENGTH" ] &&
+    [[ "$transaction_id" =~ ^[A-Za-z0-9._:-]+$ ]] || return 1
+  record="$(grep -F "\"transactionId\":\"$transaction_id\"" "$ledger_path" | tail -n 1)" || return 1
+  [ -n "$record" ] || return 1
+  [ "${#record}" -le "$DEPLOYMENT_LEDGER_MAX_RECORD_BYTES" ] || return 1
+  [[ "$record" == '{"schemaVersion":1,'* ]] || return 1
+  [[ "$record" == *'}}' ]] || return 1
+  local actual_keys=""
+  local expected_keys=""
+  actual_keys="$(printf '%s\n' "$record" | grep -oE '"[A-Za-z][A-Za-z0-9]*":' || true)"
+  expected_keys='"schemaVersion":
+"timestamp":
+"environment":
+"transactionId":
+"candidateSha":
+"releaseId":
+"previous":
+"recoverySha":
+"result":
+"health":
+"ready":
+"workflowRunId":
+"current":
+"rcRunId":
+"tag":
+"openPathSha":
+"contractSha256":
+"phase":
+"rollbackAttempted":
+"rollbackResult":
+"imageDigests":
+"gateway":
+"migrations":
+"openpathFirefoxAssets":
+"openpathApi":
+"spa":
+"verifier":'
+  [ "$actual_keys" = "$expected_keys" ] || return 1
+  case "$(deployment_ledger_json_field "$record" result)" in
+    COMMITTED|ROLLED_BACK|FAILED) ;;
+    *) return 1 ;;
+  esac
+  printf '%s\n' "$record"
 }
 
 deployment_ledger_without_timestamp() {
@@ -376,6 +512,8 @@ deployment_ledger_lock_and_append() {
   local identity_field=""
   local existing_identity_value=""
   local record_identity_value=""
+  local existing_result=""
+  local record_result=""
 
   [ -n "$record" ] || {
     printf '[ERROR] empty deployment ledger record\n' >&2
@@ -386,6 +524,10 @@ deployment_ledger_lock_and_append() {
 
   if ! mkdir -p "$(dirname "$ledger_path")"; then
     printf '[ERROR] deployment ledger directory creation failed\n' >&2
+    return 1
+  fi
+  if [ -L "$ledger_path" ]; then
+    printf '[ERROR] deployment ledger path must not be a symbolic link\n' >&2
     return 1
   fi
   while ! mkdir "$lock_dir" 2>/dev/null; do
@@ -430,6 +572,13 @@ deployment_ledger_lock_and_append() {
           return 1
         fi
       done
+      existing_result="$(deployment_ledger_json_field "$existing" result)"
+      record_result="$(deployment_ledger_json_field "$record" result)"
+      if [ "$existing_result" != COMMITTED ] || [ "$record_result" != ROLLED_BACK ]; then
+        deployment_ledger_release_lock_with_warning "$lock_dir"
+        printf '[ERROR] deployment transaction already has an incompatible terminal fact\n' >&2
+        return 1
+      fi
     fi
   fi
 
@@ -438,7 +587,20 @@ deployment_ledger_lock_and_append() {
     printf '[ERROR] deployment ledger append failed\n' >&2
     return 1
   fi
+  if ! chmod 0600 "$ledger_path"; then
+    deployment_ledger_release_lock_with_warning "$lock_dir"
+    printf '[ERROR] deployment ledger permissions could not be restricted\n' >&2
+    return 1
+  fi
+  if ! deployment_ledger_enforce_retention "$ledger_path"; then
+    deployment_ledger_release_lock_with_warning "$lock_dir"
+    return 1
+  fi
   if ! deployment_ledger_sync_file "$ledger_path"; then
+    deployment_ledger_release_lock_with_warning "$lock_dir"
+    return 1
+  fi
+  if ! deployment_ledger_sync_directory "$ledger_path"; then
     deployment_ledger_release_lock_with_warning "$lock_dir"
     return 1
   fi
@@ -473,7 +635,7 @@ deployment_ledger_append_terminal_from_env() {
     "${DEPLOYMENT_RESULT:-}" \
     "${DEPLOYMENT_HEALTH_STATUS:-}" \
     "${DEPLOYMENT_READY:-false}" \
-    "${GITHUB_RUN_ID:-}" \
+    "${DEPLOYMENT_WORKFLOW_RUN_ID:-${GITHUB_RUN_ID:-}}" \
     "${DEPLOYMENT_CURRENT_SHA:-${APP_SHA:-}}" \
     "${RC_RUN_ID:-${STAGING_RELEASE_RUN_ID:-}}" \
     "${DEPLOYMENT_TAG:-${GITHUB_REF_NAME:-}}"

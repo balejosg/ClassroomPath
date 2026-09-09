@@ -1,12 +1,30 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const helperPath = resolve(projectRoot, 'scripts/lib/deployment-ledger.sh');
+
+it('transmits immutable workflow and tag locators to the production ledger', () => {
+  const workflow = readFileSync(resolve(projectRoot, '.github/workflows/deploy.yml'), 'utf8');
+  const deployJob = workflow.match(/  deploy-production:[\s\S]*?(?=\n  [a-z0-9-]+:|$)/u)?.[0];
+
+  assert.ok(deployJob, 'production deploy job should be present');
+  assert.match(deployJob, /DEPLOYMENT_WORKFLOW_RUN_ID: \$\{\{ github\.run_id \}\}/u);
+  assert.match(deployJob, /DEPLOYMENT_TAG: \$\{\{ github\.ref_name \}\}/u);
+  assert.match(deployJob, /envs:.*DEPLOYMENT_WORKFLOW_RUN_ID.*DEPLOYMENT_TAG/u);
+});
 
 function buildEnvironment(
   ledgerPath: string,
@@ -34,6 +52,11 @@ function buildEnvironment(
     OPENPATH_CONTRACT_SHA256: 'f'.repeat(64),
     DEPLOYMENT_PHASE: 'COMMITTED',
     CLASSROOMPATH_GATEWAY_IMAGE: 'ghcr.io/example/gateway@sha256:' + '1'.repeat(64),
+    CLASSROOMPATH_MIGRATIONS_IMAGE: 'ghcr.io/example/migrations@sha256:' + '2'.repeat(64),
+    OPENPATH_FIREFOX_ASSETS_IMAGE: 'ghcr.io/example/firefox@sha256:' + '3'.repeat(64),
+    OPENPATH_API_IMAGE: 'ghcr.io/example/api@sha256:' + '4'.repeat(64),
+    CLASSROOMPATH_SPA_IMAGE: 'ghcr.io/example/spa@sha256:' + '5'.repeat(64),
+    CLASSROOMPATH_VERIFIER_IMAGE: 'ghcr.io/example/verifier@sha256:' + '6'.repeat(64),
   };
   if (includeProductionRecovery) {
     environment.PRODUCTION_RECOVERY_SHA = 'd'.repeat(40);
@@ -100,6 +123,7 @@ describe('deployment ledger', () => {
 
     assert.equal(readFileSync(ledgerPath, 'utf8'), first);
     const record = JSON.parse(first.trim());
+    assert.equal(record.schemaVersion, 1);
     assert.equal(record.result, 'COMMITTED');
     assert.match(record.timestamp, /^\d{4}-\d{2}-\d{2}T/u);
     assert.equal(record.environment, 'production');
@@ -141,6 +165,29 @@ describe('deployment ledger', () => {
     assert.equal(record.recoverySha, 'd'.repeat(40));
     assert.equal(record.rollbackAttempted, true);
     assert.equal(record.rollbackResult, 'success');
+  });
+
+  it('rejects production rollback facts with incomplete or non-distinct identity', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-rollback-invalid-'));
+    const ledgerPath = join(root, 'deployment-ledger.jsonl');
+    const rolledBack = {
+      DEPLOYMENT_TRANSACTION_ID: 'tx-rollback-invalid',
+      DEPLOYMENT_RESULT: 'ROLLED_BACK',
+      DEPLOYMENT_PHASE: 'ROLLED_BACK',
+      MUTATION_BOUNDARY_REACHED: '1',
+      ROLLBACK_ATTEMPTED: '1',
+      ROLLBACK_RESULT: 'success',
+    };
+
+    assert.equal(appendRecordStatus(ledgerPath, { ...rolledBack, RC_RUN_ID: '' }), 1);
+    assert.equal(
+      appendRecordStatus(ledgerPath, {
+        ...rolledBack,
+        PREVIOUS_APP_SHA: 'a'.repeat(40),
+      }),
+      1
+    );
+    assert.equal(existsSync(ledgerPath), false);
   });
 
   it('records a pre-boundary failure on the previous current without claiming rollback', () => {
@@ -307,6 +354,25 @@ describe('deployment ledger', () => {
     }
   });
 
+  it('rejects a later FAILED fact for an already committed transaction', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-terminal-conflict-'));
+    const ledgerPath = join(root, 'deployment-ledger.jsonl');
+    appendRecord(ledgerPath);
+
+    assert.equal(
+      appendRecordStatus(ledgerPath, {
+        DEPLOYMENT_RESULT: 'FAILED',
+        DEPLOYMENT_PHASE: 'FAILED',
+        DEPLOYMENT_READY: 'false',
+        DEPLOYMENT_HEALTH_STATUS: '',
+        DEPLOYMENT_CURRENT_SHA: 'a'.repeat(40),
+        MUTATION_BOUNDARY_REACHED: '1',
+      }),
+      1
+    );
+    assert.equal(readRecords(ledgerPath).length, 1);
+  });
+
   it('keeps prior terminal facts append-only when a later rollback fact is recorded', () => {
     const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-history-'));
     const ledgerPath = join(root, 'deployment-ledger.jsonl');
@@ -358,16 +424,26 @@ describe('deployment ledger', () => {
 
     assert.throws(
       () => appendRecord(join(root, 'leading-zero.jsonl'), { DEPLOYMENT_HEALTH_STATUS: '001' }),
-      /invalid deployment ledger/u
+      /invalid deployment ledger|healthy non-rollback/u
     );
 
     const zeroLedgerPath = join(root, 'zero.jsonl');
-    appendRecord(zeroLedgerPath, { DEPLOYMENT_HEALTH_STATUS: '0' });
+    appendRecord(zeroLedgerPath, {
+      DEPLOYMENT_RESULT: 'FAILED',
+      DEPLOYMENT_PHASE: 'FAILED',
+      DEPLOYMENT_HEALTH_STATUS: '0',
+      DEPLOYMENT_READY: 'false',
+    });
     const [record] = readRecords(zeroLedgerPath);
     assert.equal(record.health, 0);
 
     const curlZeroLedgerPath = join(root, 'curl-zero.jsonl');
-    appendRecord(curlZeroLedgerPath, { DEPLOYMENT_HEALTH_STATUS: '000' });
+    appendRecord(curlZeroLedgerPath, {
+      DEPLOYMENT_RESULT: 'FAILED',
+      DEPLOYMENT_PHASE: 'FAILED',
+      DEPLOYMENT_HEALTH_STATUS: '000',
+      DEPLOYMENT_READY: 'false',
+    });
     const [curlZeroRecord] = readRecords(curlZeroLedgerPath);
     assert.equal(curlZeroRecord.health, 0);
   });
@@ -385,6 +461,36 @@ describe('deployment ledger', () => {
       /different identity/u
     );
     assert.equal(existsSync(`${ledgerPath}.lock`), false);
+  });
+
+  it('rejects a successful terminal fact with an incomplete OCI digest identity', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-image-incomplete-'));
+    assert.equal(
+      appendRecordStatus(join(root, 'deployment-ledger.jsonl'), {
+        CLASSROOMPATH_VERIFIER_IMAGE: 'ghcr.io/example/verifier:mutable',
+      }),
+      1
+    );
+  });
+
+  it('rejects incomplete or internally contradictory committed facts', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-committed-truth-'));
+    for (const overrides of [
+      { RELEASE_ID: '' },
+      { RC_RUN_ID: '' },
+      { GITHUB_RUN_ID: '' },
+      { DEPLOYMENT_TAG: '' },
+      { OPENPATH_SHA: '' },
+      { OPENPATH_CONTRACT_SHA256: '' },
+      { DEPLOYMENT_HEALTH_STATUS: '503' },
+      { DEPLOYMENT_READY: 'false' },
+      { ROLLBACK_ATTEMPTED: '1', ROLLBACK_RESULT: 'success' },
+    ]) {
+      assert.equal(
+        appendRecordStatus(join(root, `${Object.keys(overrides)[0]}.jsonl`), overrides),
+        1
+      );
+    }
   });
 
   it('writes only the bounded allowlisted schema and ignores arbitrary environment payloads', () => {
@@ -417,6 +523,7 @@ describe('deployment ledger', () => {
       'result',
       'rollbackAttempted',
       'rollbackResult',
+      'schemaVersion',
       'tag',
       'timestamp',
       'transactionId',
@@ -438,8 +545,155 @@ describe('deployment ledger', () => {
     );
     assert.throws(
       () => appendRecord(join(root, 'health.jsonl'), { DEPLOYMENT_HEALTH_STATUS: '1000' }),
-      /invalid deployment ledger/u
+      /invalid deployment ledger|healthy non-rollback/u
     );
+  });
+
+  it('retains only the configured bounded number of newest terminal facts', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-retention-'));
+    const ledgerPath = join(root, 'deployment-ledger.jsonl');
+
+    for (let index = 1; index <= 5; index += 1) {
+      appendRecord(ledgerPath, {
+        DEPLOYMENT_LEDGER_MAX_RECORDS: '3',
+        DEPLOYMENT_TRANSACTION_ID: `tx-retention-${index}`,
+        GITHUB_RUN_ID: String(24680 + index),
+      });
+    }
+
+    const records = readRecords(ledgerPath);
+    assert.equal(records.length, 3);
+    assert.deepEqual(
+      records.map((record) => record.transactionId),
+      ['tx-retention-3', 'tx-retention-4', 'tx-retention-5']
+    );
+  });
+
+  it('retries retention after a post-append compaction failure', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-retention-retry-'));
+    const ledgerPath = join(root, 'deployment-ledger.jsonl');
+    const script = [
+      'source "$1"',
+      'DEPLOYMENT_LEDGER_MAX_RECORDS=1',
+      'DEPLOYMENT_TRANSACTION_ID=tx-retention-1',
+      'deployment_ledger_append_terminal_from_env',
+      'DEPLOYMENT_TRANSACTION_ID=tx-retention-2',
+      'GITHUB_RUN_ID=24681',
+      'mv() { return 1; }',
+      'deployment_ledger_append_terminal_from_env; first=$?',
+      'unset -f mv',
+      'deployment_ledger_append_terminal_from_env; second=$?',
+      'printf "%s %s" "$first" "$second"',
+    ].join('\n');
+    const result = spawnSync('bash', ['-c', script, 'ledger-retention-retry', helperPath], {
+      env: { ...process.env, ...buildEnvironment(ledgerPath) },
+      encoding: 'utf8',
+    });
+    assert.equal(result.stdout.trim(), '1 0');
+    assert.equal(readRecords(ledgerPath).length, 1);
+    assert.equal(readRecords(ledgerPath)[0].transactionId, 'tx-retention-2');
+  });
+
+  it('queries the newest immutable fact for an exact transaction id', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-query-'));
+    const ledgerPath = join(root, 'deployment-ledger.jsonl');
+    appendRecord(ledgerPath, { DEPLOYMENT_TRANSACTION_ID: 'tx-query' });
+    appendRecord(ledgerPath, {
+      DEPLOYMENT_TRANSACTION_ID: 'tx-query',
+      DEPLOYMENT_RESULT: 'ROLLED_BACK',
+      DEPLOYMENT_PHASE: 'ROLLED_BACK',
+      DEPLOYMENT_CURRENT_SHA: 'c'.repeat(40),
+      MUTATION_BOUNDARY_REACHED: '1',
+      ROLLBACK_ATTEMPTED: '1',
+      ROLLBACK_RESULT: 'success',
+    });
+
+    const output = execFileSync(
+      'bash',
+      [
+        '-c',
+        'source "$1"; deployment_ledger_query_transaction "$2" "$3"',
+        'ledger-query',
+        helperPath,
+        ledgerPath,
+        'tx-query',
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.equal(JSON.parse(output).result, 'ROLLED_BACK');
+  });
+
+  it('rejects malformed or unsupported records during query', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-query-invalid-'));
+    const ledgerPath = join(root, 'deployment-ledger.jsonl');
+    writeFileSync(
+      ledgerPath,
+      '{"schemaVersion":999,"transactionId":"tx-query","result":"BOGUS"}\n',
+      'utf8'
+    );
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        'source "$1"; deployment_ledger_query_transaction "$2" "$3"',
+        'ledger-query',
+        helperPath,
+        ledgerPath,
+        'tx-query',
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.notEqual(result.status, 0);
+
+    writeFileSync(
+      ledgerPath,
+      '{"schemaVersion":1,"transactionId":"tx-query","result":"COMMITTED"\n',
+      'utf8'
+    );
+    const truncated = spawnSync(
+      'bash',
+      [
+        '-c',
+        'source "$1"; deployment_ledger_query_transaction "$2" "$3"',
+        'ledger-query',
+        helperPath,
+        ledgerPath,
+        'tx-query',
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.notEqual(truncated.status, 0);
+
+    appendRecord(ledgerPath, { DEPLOYMENT_TRANSACTION_ID: 'tx-valid-shape' });
+    const validRecord = readFileSync(ledgerPath, 'utf8').trim().split('\n').at(-1) ?? '';
+    writeFileSync(ledgerPath, `${validRecord.slice(0, -1)}\n`, 'utf8');
+    const missingRootBrace = spawnSync(
+      'bash',
+      [
+        '-c',
+        'source "$1"; deployment_ledger_query_transaction "$2" "$3"',
+        'ledger-query',
+        helperPath,
+        ledgerPath,
+        'tx-valid-shape',
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.notEqual(missingRootBrace.status, 0);
+  });
+
+  it('creates a private ledger and rejects a symbolic-link destination', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-storage-'));
+    const ledgerPath = join(root, 'deployment-ledger.jsonl');
+    appendRecord(ledgerPath);
+    assert.equal((statSync(ledgerPath).mode & 0o777).toString(8), '600');
+
+    const target = join(root, 'target.jsonl');
+    const link = join(root, 'link.jsonl');
+    writeFileSync(target, '', 'utf8');
+    symlinkSync(target, link);
+    assert.equal(appendRecordStatus(link), 1);
+    assert.equal(readFileSync(target, 'utf8'), '');
   });
 
   it('does not append blank or stale records after build or append failure', () => {
@@ -521,6 +775,41 @@ describe('deployment ledger', () => {
     assert.equal(existsSync(`${ledgerPath}.lock`), false);
   });
 
+  it('retries a failed parent-directory flush before accepting an idempotent record', () => {
+    const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-directory-sync-retry-'));
+    const ledgerPath = join(root, 'directory-sync-retry.jsonl');
+    const script = [
+      'source "$1"',
+      'directory_sync_calls=0',
+      'sync() {',
+      '  if [ -d "${2:-}" ]; then',
+      '    directory_sync_calls=$((directory_sync_calls + 1))',
+      '    [ "$directory_sync_calls" -ge 2 ]',
+      '    return',
+      '  fi',
+      '  return 0',
+      '}',
+      'set +e',
+      'deployment_ledger_append_terminal_from_env; first=$?',
+      'deployment_ledger_append_terminal_from_env; second=$?',
+      'printf "%s %s" "$first" "$second"',
+    ].join('\n');
+
+    const statuses = execFileSync(
+      'bash',
+      ['-c', script, 'ledger-directory-sync-retry', helperPath],
+      {
+        env: { ...process.env, ...buildEnvironment(ledgerPath) },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }
+    )
+      .toString()
+      .trim();
+
+    assert.equal(statuses, '1 0');
+    assert.equal(readRecords(ledgerPath).length, 1);
+  });
+
   it('fails fast when the ledger parent cannot be created', () => {
     const root = mkdtempSync(join(tmpdir(), 'deployment-ledger-parent-failure-'));
     const parentFile = join(root, 'parent-file');
@@ -584,6 +873,12 @@ describe('deployment ledger', () => {
         OPENPATH_SHA: 'e'.repeat(40),
         OPENPATH_CONTRACT_SHA256: 'f'.repeat(64),
         DEPLOYMENT_PHASE: 'COMMITTED',
+        CLASSROOMPATH_GATEWAY_IMAGE: 'gateway@sha256:' + '1'.repeat(64),
+        CLASSROOMPATH_MIGRATIONS_IMAGE: 'migrations@sha256:' + '2'.repeat(64),
+        OPENPATH_FIREFOX_ASSETS_IMAGE: 'firefox@sha256:' + '3'.repeat(64),
+        OPENPATH_API_IMAGE: 'api@sha256:' + '4'.repeat(64),
+        CLASSROOMPATH_SPA_IMAGE: 'spa@sha256:' + '5'.repeat(64),
+        CLASSROOMPATH_VERIFIER_IMAGE: 'verifier@sha256:' + '6'.repeat(64),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
