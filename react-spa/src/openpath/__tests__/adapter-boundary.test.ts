@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import type { Classrooms } from '@openpath/public-shell';
 
 const reactSpaRoot = path.resolve(__dirname, '../../..');
 const srcRoot = path.join(reactSpaRoot, 'src');
@@ -117,9 +118,11 @@ describe('OpenPath SPA adapter boundary', () => {
 // Windows offline installer: the generic callback seam must stay exposed
 // through the public shell so ClassroomPath can inject classroom actions
 // without importing internal OpenPath modules.
-test('public-shell Classrooms surface exposes renderWindowsInstallAction', async () => {
-  const { Classrooms } = await import('@openpath/public-shell');
+test('public-shell Classrooms surface exposes renderWindowsInstallAction', () => {
   type ClassroomsProps = React.ComponentProps<typeof Classrooms>;
-  const props: ClassroomsProps = { renderWindowsInstallAction: () => null };
+  const props = {
+    renderWindowsInstallAction: () => null,
+  } satisfies Pick<ClassroomsProps, 'renderWindowsInstallAction'>;
+
   expect('renderWindowsInstallAction' in props).toBe(true);
 });
