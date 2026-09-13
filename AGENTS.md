@@ -9,6 +9,16 @@ ClassroomPath is the source-available managed service layer built on OpenPath. K
 focused on transparency, auditability, security review, interoperability assessment, and local
 private evaluation.
 
+## Workflow Proportionality
+
+Use direct work for bounded changes; delegate only when isolation, specialist work
+or independent judgment adds value. Keep one writer. Use skills when explicitly
+requested or clearly applicable; generic workflow guidelines do not require extra
+design documents, commits or repeat approval for an already-approved narrow change.
+Use fuller design work when requirements, architecture or material risks remain
+unresolved. Read applicable instructions fully when required and reuse unchanged
+context. None of this waives safety checks, required review or final acceptance.
+
 ## Public Repository Posture
 
 - ClassroomPath is source-available, not open source.
@@ -21,10 +31,11 @@ private evaluation.
 
 ## Trunk-Based Workflow
 
-`main` is the only allowed working branch. (canonical: root AGENTS.md "Workspace Rules > Trunk-Based Only")
+`main` is the only allowed branch for writes/commits; detached checkouts are read-only. (canonical: root AGENTS.md "Workspace Rules > Trunk-Based Only")
 
 - Do not create feature branches, PR branches, or integration branches.
-- Do not commit from detached HEAD.
+- Do not commit or push from detached HEAD; isolate concurrent writers on `main`.
+- Never stash, discard changes or switch a user's checkout automatically; preserve unexpected state and resolve ownership/authority first.
 - Never push from the workspace root. (canonical: root AGENTS.md "Workspace Rules > Root Pushes Are Forbidden")
 - Push only from `ClassroomPath/` when explicitly asked.
 
@@ -115,7 +126,8 @@ This project has a knowledge graph at graphify-out/ with god nodes, community st
 
 Rules:
 
-- For codebase questions, first run `graphify query "<identifiers>" --graph graphify-out/graph.json` (from this repo's root) when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- For an exact file or known symbol, read it directly or use targeted `rg`. For unknown relationships or broad navigation, use `graphify query "<identifiers>" --graph graphify-out/graph.json`, `graphify path` or `graphify explain` from this repo's root.
+- A missing or irrelevant graph is not a blocker and does not authorize rebuilding it during read-only work.
 - Query with code identifiers (function/file/symbol names), not prose questions -- start-node matching is literal substring matching on node labels. If results look irrelevant, grep graph.json node labels for your term first, then re-query with the labels you find.
 - Always pass `--graph` explicitly; the default depends on the current working directory.
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
