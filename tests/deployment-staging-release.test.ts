@@ -1428,7 +1428,10 @@ warn_if_other_release_candidate_run_in_progress target-sha
         productionTargetPreflightScript.includes(
           'grep -q \'require_cmd node\' "$SCRIPT_DIR/deploy-production-remote.sh"'
         ) &&
-        productionTargetPreflightScript.includes('classify_migration_risk_without_node()'),
+        productionTargetPreflightScript.includes('classify_migration_risk_without_node()') &&
+        productionTargetPreflightScript.includes(
+          'grep -q \'classify_migration_risk_without_node || return 1\' "$SCRIPT_DIR/deploy-production-remote.sh"'
+        ),
       'production target preflight should verify SSH, release-state, URLs, platform, and no-host-node deploy contract'
     );
     assert.ok(

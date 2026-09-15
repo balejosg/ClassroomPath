@@ -109,7 +109,8 @@ describe('production readiness contract', () => {
         env: { CLASSROOMPATH_CONTAINER_PLATFORM: 'linux/amd64' },
         verifyBundle: (() => ({
           bundle: { openPath: { sourceSha: identity.openpathSha }, images },
-          contract: { contractSha256: identity.contractSha256 },
+          contract: { schemaVersion: 2 },
+          contractSha256: identity.contractSha256,
         })) as any,
         preflightImages: (async (refs: string[]) => {
           observed.push(refs);
@@ -147,7 +148,8 @@ describe('production readiness contract', () => {
             openPath: { sourceSha: identity.openpathSha },
             images: { gateway: `ghcr.io/example/gateway@sha256:${'1'.repeat(64)}` },
           },
-          contract: { contractSha256: identity.contractSha256 },
+          contract: { schemaVersion: 2 },
+          contractSha256: identity.contractSha256,
         })) as any,
         preflightImages: (async () => ({ ok: true, imageCount: 1 })) as any,
         buildManifest: (() => 'exact manifest fixture\n') as any,

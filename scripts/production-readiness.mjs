@@ -536,7 +536,7 @@ export async function runArtifactCheck({
         message: 'Release Bundle OpenPath SHA does not match readiness identity',
       };
     }
-    if (verified.contract.contractSha256 !== identity.contractSha256) {
+    if (verified.contractSha256 !== identity.contractSha256) {
       return { ok: false, message: 'OpenPath contract SHA-256 does not match readiness identity' };
     }
     const imageRefs = Object.values(verified.bundle.images ?? {});

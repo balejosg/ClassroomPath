@@ -118,7 +118,7 @@ if grep -q 'require_cmd node' "$SCRIPT_DIR/deploy-production-remote.sh"; then
 fi
 
 if ! grep -q 'classify_migration_risk_without_node()' "$SCRIPT_DIR/deploy-production-remote.sh" \
-  || ! grep -q 'if command -v node >/dev/null 2>&1; then' "$SCRIPT_DIR/deploy-production-remote.sh"; then
+  || ! grep -q 'classify_migration_risk_without_node || return 1' "$SCRIPT_DIR/deploy-production-remote.sh"; then
   die "Production target preflight failed: remote production deploy lacks the no-host-node fallback" 1
 fi
 
