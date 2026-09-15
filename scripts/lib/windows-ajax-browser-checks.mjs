@@ -440,8 +440,8 @@ export async function runBlockedPageUnblockRequestCheck({
         await reasonInput.sendKeys(unblockReason);
         const button = await driver.findElement(By.id('submit-unblock-request'));
         const reasonValue =
-          typeof reasonInput.getDomProperty === 'function'
-            ? await reasonInput.getDomProperty('value')
+          typeof reasonInput.getProperty === 'function'
+            ? await reasonInput.getProperty('value')
             : null;
         return reasonValue === unblockReason ? button : false;
       }

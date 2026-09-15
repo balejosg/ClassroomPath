@@ -63,7 +63,7 @@ function createDriver({
         reasonValue += value;
         calls.push('send-reason');
       },
-      getDomProperty: async (name: string) => (name === 'value' ? reasonValue : null),
+      getProperty: async (name: string) => (name === 'value' ? reasonValue : null),
     },
     'submit-unblock-request': {
       click: async () => {
