@@ -20,13 +20,21 @@ function createDriver({
   navigationError = null,
   privilegedScriptsUnsupported = false,
   delayedBlockedPageInitialization = false,
+  staleBlockedDomainReadOnce = false,
+  staleReasonInputClearOnce = false,
+  staleSubmitClickOnce = false,
 } = {}) {
   const calls: string[] = [];
   const scriptCalls: string[] = [];
   let blockedDomainReads = 0;
+  let staleBlockedDomain = staleBlockedDomainReadOnce;
+  let staleReasonInput = staleReasonInputClearOnce;
+  let staleSubmitClick = staleSubmitClickOnce;
+  let submitStarted = false;
+  const currentStatusText = () => (submitStarted ? statusText : '');
   const statusElement = {
-    getText: async () => statusText,
-    getDomProperty: async (name: string) => (name === 'textContent' ? statusText : null),
+    getText: async () => currentStatusText(),
+    getDomProperty: async (name: string) => (name === 'textContent' ? currentStatusText() : null),
     getAttribute: async (name: string) => {
       if (privilegedScriptsUnsupported) {
         throw new Error(
@@ -38,7 +46,15 @@ function createDriver({
   };
   const elements = {
     'request-reason': {
-      clear: async () => calls.push('clear-reason'),
+      clear: async () => {
+        if (staleReasonInput) {
+          staleReasonInput = false;
+          throw new Error(
+            'The element with the reference fake-reason is stale; either its node document is not the active document, or it is no longer connected to the DOM'
+          );
+        }
+        calls.push('clear-reason');
+      },
       sendKeys: async () => calls.push('send-reason'),
     },
     'submit-unblock-request': {
@@ -46,14 +62,34 @@ function createDriver({
         if (delayedBlockedPageInitialization && blockedDomainReads < 2) {
           throw new Error('blocked page handler is not initialized');
         }
+        if (staleSubmitClick) {
+          staleSubmitClick = false;
+          submitStarted = true;
+          calls.push('submit-stale');
+          throw new Error(
+            'The element with the reference fake-submit is stale; either its node document is not the active document, or it is no longer connected to the DOM'
+          );
+        }
+        submitStarted = true;
         calls.push('submit');
       },
     },
     'request-status': statusElement,
     'blocked-domain': {
-      getText: async () => 'blocked.example.test',
+      getText: async () => {
+        if (staleBlockedDomain) {
+          staleBlockedDomain = false;
+          throw new Error(
+            'The element with the reference fake-domain is stale; either its node document is not the active document, or it is no longer connected to the DOM'
+          );
+        }
+        return 'blocked.example.test';
+      },
       getDomProperty: async () => {
         blockedDomainReads += 1;
+        if (staleBlockedDomain) {
+          return null;
+        }
         return delayedBlockedPageInitialization && blockedDomainReads === 1
           ? '-'
           : 'blocked.example.test';
@@ -276,6 +312,90 @@ describe('Windows AJAX browser checks', () => {
 
       assert.equal(evidence.success, true);
       assert.ok(driver.calls.includes('submit'));
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('reacquires blocked-page elements replaced before a user click', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'windows-ajax-browser-checks-'));
+    try {
+      await writeFile(
+        join(tempDir, 'extensions.json'),
+        JSON.stringify({
+          addons: [{ id: 'monitor-bloqueos@openpath', rootURI: 'moz-extension://uuid/' }],
+        }),
+        'utf8'
+      );
+      const driver = createDriver({
+        statusText: 'Request sent. It remains pending.',
+        staleBlockedDomainReadOnce: true,
+        staleReasonInputClearOnce: true,
+      });
+
+      const evidence = await runBlockedPageUnblockRequestCheck({
+        driver,
+        profileDir: tempDir,
+        firefoxExtensionWarmup: { mode: 'selenium-managed' },
+        config: {
+          expectedExtensionId: 'monitor-bloqueos@openpath',
+          blockedPageUnblockRequestDomain: 'blocked.example.test',
+          blockedPageUnblockRequestTimeoutMs: 100,
+          useLocalFirefoxAddon: false,
+          useSeleniumFirefox: true,
+        },
+      });
+
+      assert.equal(evidence.success, true);
+      assert.equal(evidence.submitClicked, true);
+      assert.deepEqual(
+        driver.calls.filter((call: string) => call === 'clear-reason'),
+        ['clear-reason']
+      );
+      assert.deepEqual(
+        driver.calls.filter((call: string) => call === 'submit'),
+        ['submit']
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('accepts submitted status after a stale user click without retrying the request', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'windows-ajax-browser-checks-'));
+    try {
+      await writeFile(
+        join(tempDir, 'extensions.json'),
+        JSON.stringify({
+          addons: [{ id: 'monitor-bloqueos@openpath', rootURI: 'moz-extension://uuid/' }],
+        }),
+        'utf8'
+      );
+      const driver = createDriver({
+        statusText: 'Request sent. It remains pending.',
+        staleSubmitClickOnce: true,
+      });
+
+      const evidence = await runBlockedPageUnblockRequestCheck({
+        driver,
+        profileDir: tempDir,
+        firefoxExtensionWarmup: { mode: 'selenium-managed' },
+        config: {
+          expectedExtensionId: 'monitor-bloqueos@openpath',
+          blockedPageUnblockRequestDomain: 'blocked.example.test',
+          blockedPageUnblockRequestTimeoutMs: 100,
+          useLocalFirefoxAddon: false,
+          useSeleniumFirefox: true,
+        },
+      });
+
+      assert.equal(evidence.success, true);
+      assert.equal(evidence.submitClicked, true);
+      assert.equal(evidence.submitClickStale, true);
+      assert.deepEqual(
+        driver.calls.filter((call: string) => call.startsWith('submit')),
+        ['submit-stale']
+      );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

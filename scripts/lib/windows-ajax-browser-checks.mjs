@@ -321,6 +321,26 @@ async function readElementText(element) {
   return String(await element.getText()).trim();
 }
 
+function isStaleElementReferenceError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /stale element(?: reference)?|node document is not the active document|no longer connected to the DOM/i.test(
+    message
+  );
+}
+
+async function waitForStableBlockedPageDom(driver, timeoutMs, condition) {
+  return driver.wait(async () => {
+    try {
+      return await condition();
+    } catch (error) {
+      if (isStaleElementReferenceError(error)) {
+        return false;
+      }
+      throw error;
+    }
+  }, timeoutMs);
+}
+
 export async function runBlockedPageUnblockRequestCheck({
   driver,
   profileDir,
@@ -362,6 +382,7 @@ export async function runBlockedPageUnblockRequestCheck({
   let errorText = '';
   let pageSnapshot = null;
   let submitClicked = false;
+  let submitClickStale = false;
   let extensionDiagnosticsBeforeSubmit = null;
   let extensionDiagnosticsAfterSubmit = null;
 
@@ -378,28 +399,83 @@ export async function runBlockedPageUnblockRequestCheck({
         throw error;
       }
     });
-    await driver.wait(async () => {
-      const currentUrl = String(await driver.getCurrentUrl());
-      return currentUrl.startsWith(discovery.baseUrl);
-    }, config.blockedPageUnblockRequestTimeoutMs);
-    const blockedDomainElement = await driver.findElement(By.id('blocked-domain'));
-    await driver.wait(
-      async () => (await readElementText(blockedDomainElement)) === blockedPageDomain,
-      config.blockedPageUnblockRequestTimeoutMs
+    await waitForStableBlockedPageDom(
+      driver,
+      config.blockedPageUnblockRequestTimeoutMs,
+      async () => {
+        const currentUrl = String(await driver.getCurrentUrl());
+        return currentUrl.startsWith(discovery.baseUrl);
+      }
+    );
+    await waitForStableBlockedPageDom(
+      driver,
+      config.blockedPageUnblockRequestTimeoutMs,
+      async () => {
+        const currentUrl = String(await driver.getCurrentUrl());
+        if (!currentUrl.startsWith(discovery.baseUrl)) {
+          return false;
+        }
+        const blockedDomainElement = await driver.findElement(By.id('blocked-domain'));
+        return (await readElementText(blockedDomainElement)) === blockedPageDomain;
+      }
     );
     extensionDiagnosticsBeforeSubmit = await collectExtensionRuntimeDiagnostics(driver, [
       blockedPageDomain,
     ]);
-    const reasonInput = await driver.findElement(By.id('request-reason'));
-    await reasonInput.clear();
-    await reasonInput.sendKeys('Windows direct canary blocked-page unblock request');
-    const submitButton = await driver.findElement(By.id('submit-unblock-request'));
-    await submitButton.click();
-    submitClicked = true;
-    const statusElement = await driver.findElement(By.id('request-status'));
-    await driver
-      .wait(async () => {
-        const text = await readElementText(statusElement);
+    await waitForStableBlockedPageDom(
+      driver,
+      config.blockedPageUnblockRequestTimeoutMs,
+      async () => {
+        const currentUrl = String(await driver.getCurrentUrl());
+        if (!currentUrl.startsWith(discovery.baseUrl)) {
+          return false;
+        }
+        const blockedDomainElement = await driver.findElement(By.id('blocked-domain'));
+        if ((await readElementText(blockedDomainElement)) !== blockedPageDomain) {
+          return false;
+        }
+        const reasonInput = await driver.findElement(By.id('request-reason'));
+        await reasonInput.clear();
+        await reasonInput.sendKeys('Windows direct canary blocked-page unblock request');
+        return true;
+      }
+    );
+    const submitButton = await waitForStableBlockedPageDom(
+      driver,
+      config.blockedPageUnblockRequestTimeoutMs,
+      async () => {
+        const currentUrl = String(await driver.getCurrentUrl());
+        if (!currentUrl.startsWith(discovery.baseUrl)) {
+          return false;
+        }
+        const blockedDomainElement = await driver.findElement(By.id('blocked-domain'));
+        if ((await readElementText(blockedDomainElement)) !== blockedPageDomain) {
+          return false;
+        }
+        return driver.findElement(By.id('submit-unblock-request'));
+      }
+    );
+    try {
+      await submitButton.click();
+      submitClicked = true;
+    } catch (error) {
+      if (!isStaleElementReferenceError(error)) {
+        throw error;
+      }
+      submitClickStale = true;
+    }
+    const readRequestStatus = async () => {
+      const statusElement = await driver.findElement(By.id('request-status'));
+      return {
+        statusElement,
+        text: await readElementText(statusElement),
+      };
+    };
+    await waitForStableBlockedPageDom(
+      driver,
+      config.blockedPageUnblockRequestTimeoutMs,
+      async () => {
+        const { text } = await readRequestStatus();
         if (isBlockedPageUnblockRequestSuccessText(text)) {
           return text;
         }
@@ -411,9 +487,17 @@ export async function runBlockedPageUnblockRequestCheck({
           return text;
         }
         return false;
-      }, config.blockedPageUnblockRequestTimeoutMs)
-      .catch(() => null);
-    statusText = await readElementText(statusElement);
+      }
+    ).catch(() => null);
+    const status = await waitForStableBlockedPageDom(
+      driver,
+      config.blockedPageUnblockRequestTimeoutMs,
+      readRequestStatus
+    );
+    statusText = status.text;
+    if (submitClickStale && statusText.length > 0) {
+      submitClicked = true;
+    }
     extensionDiagnosticsAfterSubmit = await collectExtensionRuntimeDiagnostics(driver, [
       blockedPageDomain,
     ]);
@@ -423,8 +507,8 @@ export async function runBlockedPageUnblockRequestCheck({
       readyState: null,
       statusText,
       statusClass:
-        typeof statusElement.getAttribute === 'function'
-          ? String((await statusElement.getAttribute('class').catch(() => '')) ?? '')
+        typeof status.statusElement.getAttribute === 'function'
+          ? String((await status.statusElement.getAttribute('class').catch(() => '')) ?? '')
           : '',
       bodyText: '',
     };
@@ -469,6 +553,7 @@ export async function runBlockedPageUnblockRequestCheck({
     errorText,
     userInputHandlerError,
     submitClicked,
+    submitClickStale,
     elapsedMs: Date.now() - startedAt,
     discovery,
     extensionDiagnosticsBeforeSubmit,
