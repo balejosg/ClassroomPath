@@ -171,6 +171,66 @@ function parseJsonOrEmpty(text, fallback) {
   return JSON.parse(text);
 }
 
+function parsePaginatedJsonDocuments(text) {
+  const source = String(text ?? '');
+  const documents = [];
+  let index = 0;
+
+  while (index < source.length) {
+    while (index < source.length && /\s/.test(source[index])) {
+      index += 1;
+    }
+    if (index >= source.length) {
+      break;
+    }
+
+    const start = index;
+    const opening = source[index];
+    if (opening !== '{' && opening !== '[') {
+      throw new Error(`Expected JSON object or array at position ${index}`);
+    }
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let completed = false;
+
+    for (; index < source.length; index += 1) {
+      const character = source[index];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (character === '\\') {
+          escaped = true;
+        } else if (character === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (character === '"') {
+        inString = true;
+      } else if (character === '{' || character === '[') {
+        depth += 1;
+      } else if (character === '}' || character === ']') {
+        depth -= 1;
+        if (depth === 0) {
+          documents.push(JSON.parse(source.slice(start, index + 1)));
+          index += 1;
+          completed = true;
+          break;
+        }
+      }
+    }
+
+    if (!completed) {
+      throw new Error(`Incomplete paginated JSON document at position ${start}`);
+    }
+  }
+
+  return documents;
+}
+
 function shortSha(value) {
   const text = String(value ?? '').trim();
   return text ? text.slice(0, 12) : 'n/a';
@@ -714,16 +774,13 @@ export async function collectReleaseStatusEvidence({
   );
 
   const checkRuns = tryRead('OpenPath check runs', () =>
-    parseCheckRuns(
-      parseJsonOrEmpty(
-        runGh(
-          runCommand,
-          ['api', `repos/${DEFAULT_OPENPATH_REPO}/commits/${openpathSha}/check-runs`, '--paginate'],
-          mergedEnv
-        ),
-        {}
+    parsePaginatedJsonDocuments(
+      runGh(
+        runCommand,
+        ['api', `repos/${DEFAULT_OPENPATH_REPO}/commits/${openpathSha}/check-runs`, '--paginate'],
+        mergedEnv
       )
-    )
+    ).flatMap((page) => parseCheckRuns(page))
   );
   const openPathBaseSha = tryRead('previous release OpenPath SHA', () =>
     resolvePreviousReleaseOpenPathSha(runCommand, mergedEnv)

@@ -66,6 +66,7 @@ function createCommandHarness(
     openpathCheckStatus?: string;
     openpathChangedFiles?: string[];
     includeOlderFailedE2eCheck?: boolean;
+    paginateOpenpathCheckRuns?: boolean;
     releaseCandidateRuns?: Array<Record<string, unknown>>;
   } = {}
 ) {
@@ -148,6 +149,11 @@ function createCommandHarness(
           status: 'completed',
           conclusion: openpathCheckStatus,
         },
+        {
+          name: 'WEDU captive portal lab',
+          status: 'completed',
+          conclusion: openpathCheckStatus,
+        },
       ];
       if (options.includeOlderFailedE2eCheck) {
         checkRuns.push({
@@ -157,9 +163,13 @@ function createCommandHarness(
           completed_at: '2026-05-21T05:45:12Z',
         });
       }
-      return JSON.stringify({
-        check_runs: checkRuns,
-      });
+      if (options.paginateOpenpathCheckRuns) {
+        return [
+          JSON.stringify({ check_runs: checkRuns.slice(0, 2) }),
+          JSON.stringify({ check_runs: checkRuns.slice(2) }),
+        ].join('\n');
+      }
+      return JSON.stringify({ check_runs: checkRuns });
     }
 
     if (command === 'gh' && args[0] === 'run' && args[1] === 'list') {
@@ -512,6 +522,42 @@ test('release status uses the latest OpenPath check-run when a retry replaces a 
     status.openPath.requiredChecks.find((check) => check.name === 'E2E Summary')?.status,
     'success'
   );
+  assert.deepEqual(status.blockers, []);
+});
+
+test('release status combines paginated OpenPath check-run documents', async () => {
+  const harness = createCommandHarness({
+    originSha: CLASSROOM_SHA,
+    openpathChangedFiles: [
+      'windows/OpenPath.psm1',
+      '.github/workflows/release.yml',
+      'windows/lib/internal/NativeHost.Actions.ps1',
+    ],
+    paginateOpenpathCheckRuns: true,
+  });
+  const status = await buildReleaseStatus({
+    argv: ['--sha', CLASSROOM_SHA],
+    env: {
+      ...process.env,
+      RELEASE_STATUS_TEST_MODE: '1',
+      RELEASE_STATUS_STAGING_SSH_KEY: '/tmp/classroompath_staging_key',
+      RELEASE_STATUS_PRODUCTION_SSH_KEY: '/tmp/classroompath_production_key',
+      ...realOperationalTargetEnv(),
+    },
+    runCommand: harness.runCommand,
+  });
+
+  assert.deepEqual(
+    status.openPath.requiredChecks.map((check) => [check.name, check.status]),
+    [
+      ['CI Success', 'success'],
+      ['E2E Summary', 'success'],
+      ['Installer Contracts Success', 'success'],
+      ['Publish Prerelease to APT Repository / Publish to APT Repository (unstable)', 'success'],
+      ['WEDU captive portal lab', 'success'],
+    ]
+  );
+  assert.equal(status.openPath.requiredChecksError, '');
   assert.deepEqual(status.blockers, []);
 });
 
