@@ -23,6 +23,7 @@ function createDriver({
   staleBlockedDomainReadOnce = false,
   staleReasonInputClearOnce = false,
   staleSubmitClickOnce = false,
+  resetReasonBeforeFirstSubmitLookup = false,
 } = {}) {
   const calls: string[] = [];
   const scriptCalls: string[] = [];
@@ -30,6 +31,8 @@ function createDriver({
   let staleBlockedDomain = staleBlockedDomainReadOnce;
   let staleReasonInput = staleReasonInputClearOnce;
   let staleSubmitClick = staleSubmitClickOnce;
+  let resetReasonBeforeSubmitLookup = resetReasonBeforeFirstSubmitLookup;
+  let reasonValue = '';
   let submitStarted = false;
   const currentStatusText = () => (submitStarted ? statusText : '');
   const statusElement = {
@@ -53,9 +56,14 @@ function createDriver({
             'The element with the reference fake-reason is stale; either its node document is not the active document, or it is no longer connected to the DOM'
           );
         }
+        reasonValue = '';
         calls.push('clear-reason');
       },
-      sendKeys: async () => calls.push('send-reason'),
+      sendKeys: async (value: string) => {
+        reasonValue += value;
+        calls.push('send-reason');
+      },
+      getDomProperty: async (name: string) => (name === 'value' ? reasonValue : null),
     },
     'submit-unblock-request': {
       click: async () => {
@@ -69,6 +77,10 @@ function createDriver({
           throw new Error(
             'The element with the reference fake-submit is stale; either its node document is not the active document, or it is no longer connected to the DOM'
           );
+        }
+        if (!reasonValue) {
+          calls.push('submit-empty');
+          return;
         }
         submitStarted = true;
         calls.push('submit');
@@ -141,6 +153,10 @@ function createDriver({
     findElement: async (locator: { value?: string }) => {
       const rawValue = String(locator.value ?? '');
       const id = rawValue.match(/\[id="([^"]+)"\]/)?.[1] ?? rawValue;
+      if (id === 'submit-unblock-request' && resetReasonBeforeSubmitLookup) {
+        resetReasonBeforeSubmitLookup = false;
+        reasonValue = '';
+      }
       return elements[id];
     },
     wait: async (predicate: () => Promise<unknown>) => {
@@ -355,6 +371,52 @@ describe('Windows AJAX browser checks', () => {
       assert.deepEqual(
         driver.calls.filter((call: string) => call === 'submit'),
         ['submit']
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('refills a reset blocked-page reason before the single submit click', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'windows-ajax-browser-checks-'));
+    try {
+      await writeFile(
+        join(tempDir, 'extensions.json'),
+        JSON.stringify({
+          addons: [{ id: 'monitor-bloqueos@openpath', rootURI: 'moz-extension://uuid/' }],
+        }),
+        'utf8'
+      );
+      const driver = createDriver({
+        statusText: 'Request sent. It remains pending.',
+        resetReasonBeforeFirstSubmitLookup: true,
+      });
+
+      const evidence = await runBlockedPageUnblockRequestCheck({
+        driver,
+        profileDir: tempDir,
+        firefoxExtensionWarmup: { mode: 'selenium-managed' },
+        config: {
+          expectedExtensionId: 'monitor-bloqueos@openpath',
+          blockedPageUnblockRequestDomain: 'blocked.example.test',
+          blockedPageUnblockRequestTimeoutMs: 100,
+          useLocalFirefoxAddon: false,
+          useSeleniumFirefox: true,
+        },
+      });
+
+      assert.equal(evidence.success, true);
+      assert.deepEqual(
+        driver.calls.filter((call: string) => call === 'clear-reason'),
+        ['clear-reason', 'clear-reason']
+      );
+      assert.deepEqual(
+        driver.calls.filter((call: string) => call === 'submit'),
+        ['submit']
+      );
+      assert.deepEqual(
+        driver.calls.filter((call: string) => call === 'submit-empty'),
+        []
       );
     } finally {
       await rm(tempDir, { recursive: true, force: true });

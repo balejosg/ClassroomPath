@@ -422,7 +422,8 @@ export async function runBlockedPageUnblockRequestCheck({
     extensionDiagnosticsBeforeSubmit = await collectExtensionRuntimeDiagnostics(driver, [
       blockedPageDomain,
     ]);
-    await waitForStableBlockedPageDom(
+    const unblockReason = 'Windows direct canary blocked-page unblock request';
+    const submitButton = await waitForStableBlockedPageDom(
       driver,
       config.blockedPageUnblockRequestTimeoutMs,
       async () => {
@@ -436,23 +437,13 @@ export async function runBlockedPageUnblockRequestCheck({
         }
         const reasonInput = await driver.findElement(By.id('request-reason'));
         await reasonInput.clear();
-        await reasonInput.sendKeys('Windows direct canary blocked-page unblock request');
-        return true;
-      }
-    );
-    const submitButton = await waitForStableBlockedPageDom(
-      driver,
-      config.blockedPageUnblockRequestTimeoutMs,
-      async () => {
-        const currentUrl = String(await driver.getCurrentUrl());
-        if (!currentUrl.startsWith(discovery.baseUrl)) {
-          return false;
-        }
-        const blockedDomainElement = await driver.findElement(By.id('blocked-domain'));
-        if ((await readElementText(blockedDomainElement)) !== blockedPageDomain) {
-          return false;
-        }
-        return driver.findElement(By.id('submit-unblock-request'));
+        await reasonInput.sendKeys(unblockReason);
+        const button = await driver.findElement(By.id('submit-unblock-request'));
+        const reasonValue =
+          typeof reasonInput.getDomProperty === 'function'
+            ? await reasonInput.getDomProperty('value')
+            : null;
+        return reasonValue === unblockReason ? button : false;
       }
     );
     try {
