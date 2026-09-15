@@ -311,6 +311,16 @@ try {
   }
 }
 
+async function readElementText(element) {
+  if (typeof element.getDomProperty === 'function') {
+    const textContent = await element.getDomProperty('textContent').catch(() => null);
+    if (textContent !== null && textContent !== undefined) {
+      return String(textContent).trim();
+    }
+  }
+  return String(await element.getText()).trim();
+}
+
 export async function runBlockedPageUnblockRequestCheck({
   driver,
   profileDir,
@@ -384,7 +394,7 @@ export async function runBlockedPageUnblockRequestCheck({
     const statusElement = await driver.findElement(By.id('request-status'));
     await driver
       .wait(async () => {
-        const text = String(await statusElement.getText()).trim();
+        const text = await readElementText(statusElement);
         if (isBlockedPageUnblockRequestSuccessText(text)) {
           return text;
         }
@@ -398,22 +408,21 @@ export async function runBlockedPageUnblockRequestCheck({
         return false;
       }, config.blockedPageUnblockRequestTimeoutMs)
       .catch(() => null);
-    statusText = String(await statusElement.getText()).trim();
+    statusText = await readElementText(statusElement);
     extensionDiagnosticsAfterSubmit = await collectExtensionRuntimeDiagnostics(driver, [
       blockedPageDomain,
     ]);
-    pageSnapshot = await driver.executeScript(`
-const status = document.getElementById('request-status');
-const bodyText = document.body ? document.body.innerText : '';
-return {
-  href: location.href,
-  title: document.title,
-  readyState: document.readyState,
-  statusText: status ? (status.textContent || '') : '',
-  statusClass: status ? (status.className || '') : '',
-  bodyText: bodyText.slice(0, 4000)
-};
-`);
+    pageSnapshot = {
+      href: String(await driver.getCurrentUrl()),
+      title: typeof driver.getTitle === 'function' ? String(await driver.getTitle()) : '',
+      readyState: null,
+      statusText,
+      statusClass:
+        typeof statusElement.getAttribute === 'function'
+          ? String((await statusElement.getAttribute('class')) ?? '')
+          : '',
+      bodyText: '',
+    };
   } catch (error) {
     navigationError = error instanceof Error ? error.message : String(error);
   }

@@ -13,11 +13,19 @@ import {
   runBlockedPageUnblockRequestCheck,
 } from '../scripts/lib/windows-ajax-browser-checks.mjs';
 
-function createDriver({ page, statusText = '', browserLogs = [], navigationError = null } = {}) {
+function createDriver({
+  page,
+  statusText = '',
+  browserLogs = [],
+  navigationError = null,
+  privilegedScriptsUnsupported = false,
+} = {}) {
   const calls: string[] = [];
   const scriptCalls: string[] = [];
   const statusElement = {
     getText: async () => statusText,
+    getDomProperty: async (name: string) => (name === 'textContent' ? statusText : null),
+    getAttribute: async (name: string) => (name === 'class' ? 'success' : null),
   };
   const elements = {
     'request-reason': {
@@ -43,8 +51,14 @@ function createDriver({ page, statusText = '', browserLogs = [], navigationError
       if (navigationError) throw new Error(navigationError);
     },
     getCurrentUrl: async () => 'moz-extension://uuid/blocked/blocked.html',
+    getTitle: async () => 'Blocked',
     scriptCalls,
     executeScript: async (script: string) => {
+      if (privilegedScriptsUnsupported) {
+        throw new Error(
+          'ExecuteScript and ExecuteAsyncScript are not supported for privileged browsing contexts: 13'
+        );
+      }
       scriptCalls.push(script);
       return script.includes('document.getElementById')
         ? ({
@@ -57,7 +71,14 @@ function createDriver({ page, statusText = '', browserLogs = [], navigationError
           } as const)
         : page;
     },
-    executeAsyncScript: async () => ({ success: true }),
+    executeAsyncScript: async () => {
+      if (privilegedScriptsUnsupported) {
+        throw new Error(
+          'ExecuteScript and ExecuteAsyncScript are not supported for privileged browsing contexts: 13'
+        );
+      }
+      return { success: true };
+    },
     findElement: async (locator: { value?: string }) => {
       const rawValue = String(locator.value ?? '');
       const id = rawValue.match(/\[id="([^"]+)"\]/)?.[1] ?? rawValue;
@@ -152,8 +173,45 @@ describe('Windows AJAX browser checks', () => {
       assert.equal(evidence.blockedPageNavigationUrl, 'http://blocked.example.test/');
       assert.ok(driver.calls.includes('get:http://blocked.example.test/'));
       assert.ok(driver.calls.includes('submit'));
-      assert.match(driver.scriptCalls.join('\n'), /status \? \(status\.textContent \|\| ''\) : ''/);
-      assert.match(driver.scriptCalls.join('\n'), /status \? \(status\.className \|\| ''\) : ''/);
+      assert.equal(driver.scriptCalls.length, 0);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('uses WebDriver element commands when privileged extension scripts are unsupported', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'windows-ajax-browser-checks-'));
+    try {
+      await writeFile(
+        join(tempDir, 'extensions.json'),
+        JSON.stringify({
+          addons: [{ id: 'monitor-bloqueos@openpath', rootURI: 'moz-extension://uuid/' }],
+        }),
+        'utf8'
+      );
+      const driver = createDriver({
+        statusText: 'Request sent. It remains pending.',
+        privilegedScriptsUnsupported: true,
+      });
+
+      const evidence = await runBlockedPageUnblockRequestCheck({
+        driver,
+        profileDir: tempDir,
+        firefoxExtensionWarmup: { mode: 'selenium-managed' },
+        config: {
+          expectedExtensionId: 'monitor-bloqueos@openpath',
+          blockedPageUnblockRequestDomain: 'blocked.example.test',
+          blockedPageUnblockRequestTimeoutMs: 100,
+          useLocalFirefoxAddon: false,
+          useSeleniumFirefox: true,
+        },
+      });
+
+      assert.equal(evidence.success, true);
+      assert.equal(evidence.statusText, 'Request sent. It remains pending.');
+      assert.equal(evidence.page.href, 'moz-extension://uuid/blocked/blocked.html');
+      assert.equal(evidence.page.statusClass, 'success');
+      assert.equal(evidence.extensionDiagnosticsBeforeSubmit.success, false);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
