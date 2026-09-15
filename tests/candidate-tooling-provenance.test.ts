@@ -45,7 +45,7 @@ function buildContract(openpathSha) {
         sourceSha: openpathSha,
         inputsSha256: contractShaPlaceholder,
         version: '4.1.0',
-        releaseTag: 'scripts-v4.1.0-a3846d6',
+        releaseTag: `scripts-v4.1.0-${openpathSha.slice(0, 8)}`,
         templateAsset: 'OpenPath-Windows-Setup-Template.exe',
         templateSha256: contractShaPlaceholder,
         payloadManifestAsset: 'payload-manifest.json',
