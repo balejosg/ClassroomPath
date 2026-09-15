@@ -19,7 +19,10 @@ export function classifyWorkflowRunHealth(run = {}) {
     return Number.isFinite(startedAtMs) && nowMs - startedAtMs > staleAfterMs;
   });
 
-  if (queuedWithStart.length > 0) {
+  // GitHub records startedAt when a queued reusable-workflow job enters its
+  // concurrency queue. That is valid while the enclosing workflow is active;
+  // it is contradictory only after GitHub reports the workflow terminal.
+  if (run.status === 'completed' && queuedWithStart.length > 0) {
     return {
       state: 'corrupt',
       recommendedAction: 'rerun-workflow',

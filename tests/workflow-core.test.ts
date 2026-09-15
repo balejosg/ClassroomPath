@@ -915,6 +915,16 @@ describe('Workflow core contracts', () => {
       productionBootstrapWorkflowText.includes('create-production-windows-bootstrap-canary.mjs')
     );
     assert.ok(
+      productionBootstrapWorkflowText.includes('id: blocked-page-domain') &&
+        productionBootstrapWorkflowText.includes(
+          'buildWindowsBlockedPageUnblockRequestDomain({ classroomId: process.env.CLASSROOM_ID })'
+        ) &&
+        productionBootstrapWorkflowText.includes(
+          'WINDOWS_BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN: ${{ steps.blocked-page-domain.outputs.domain }}'
+        ),
+      'Windows bootstrap canary must derive an isolated blocked-page request domain from its provisioned classroom'
+    );
+    assert.ok(
       bootstrapCanaryScriptText.includes("'billing.createCheckout'") &&
         bootstrapCanaryScriptText.includes('/cp/stripe/webhook')
     );

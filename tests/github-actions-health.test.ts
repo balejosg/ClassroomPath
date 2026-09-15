@@ -5,7 +5,7 @@ import { runActionsHealthCommand } from '../scripts/actions-health.mjs';
 import { classifyWorkflowRunHealth } from '../scripts/lib/github-actions-health.mjs';
 
 describe('classifyWorkflowRunHealth', () => {
-  it('classifies queued job with startedAt as corrupt queued state', () => {
+  it('classifies a terminal workflow with a queued started job as corrupt', () => {
     const result = classifyWorkflowRunHealth({
       status: 'completed',
       conclusion: 'failure',
@@ -18,6 +18,32 @@ describe('classifyWorkflowRunHealth', () => {
     assert.equal(result.recommendedAction, 'rerun-workflow');
     assert.equal(result.cancelable, false);
     assert.deepEqual(result.jobs, ['CI Success']);
+  });
+
+  it('waits when an active workflow queues a follow-up job with startedAt', () => {
+    const result = classifyWorkflowRunHealth({
+      status: 'queued',
+      conclusion: '',
+      nowMs: Date.parse('2026-05-15T07:45:30Z'),
+      jobs: [
+        {
+          name: 'Windows Firefox Canary',
+          status: 'in_progress',
+          conclusion: '',
+          startedAt: '2026-05-15T07:45:01Z',
+        },
+        {
+          name: 'Windows Bootstrap Canary',
+          status: 'queued',
+          conclusion: '',
+          startedAt: '2026-05-15T07:45:00Z',
+        },
+      ],
+    });
+
+    assert.equal(result.state, 'queued');
+    assert.equal(result.recommendedAction, 'wait');
+    assert.equal(result.cancelable, true);
   });
 
   it('classifies long-running in-progress job as wait when below threshold', () => {

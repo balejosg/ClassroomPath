@@ -413,6 +413,21 @@ jobs:
           PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_BILLING_MODE: ${{ steps.read-billing-mode.outputs.billing_mode }}
         run: node scripts/create-production-windows-bootstrap-canary.mjs
 
+      - name: Derive isolated blocked-page request domain
+        id: blocked-page-domain
+        shell: bash
+        env:
+          CLASSROOM_ID: ${{ steps.provision.outputs.classroom_id }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import { buildWindowsBlockedPageUnblockRequestDomain } from './scripts/lib/runner-diagnostic-execution.mjs';
+
+          console.log(
+            `domain=${buildWindowsBlockedPageUnblockRequestDomain({ classroomId: process.env.CLASSROOM_ID })}`
+          );
+          NODE
+
       - name: Download and run live windows.ps1 enrollment script
         shell: pwsh
         env:
@@ -577,6 +592,7 @@ jobs:
           WINDOWS_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: ${{ steps.provision.outputs.group_id }}
           WINDOWS_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: ${{ env.PRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ADMIN_TOKEN }}
           WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_MODE: selenium
+          WINDOWS_BLOCKED_PAGE_UNBLOCK_REQUEST_DOMAIN: ${{ steps.blocked-page-domain.outputs.domain }}
           EXPECTED_EXTENSION_ID: ${{ steps.provision.outputs.extension_id }}
         run: |
           $ErrorActionPreference = 'Stop'
