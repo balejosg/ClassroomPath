@@ -16,6 +16,44 @@ write_install_failure_artifact() {
   FAILURE_MESSAGE="$message" node -e 'const fs = require("node:fs"); const message = process.env.FAILURE_MESSAGE; fs.writeFileSync("production-linux-ajax-auto-allow-canary.json", JSON.stringify({ success: false, boundarySource: "infrastructure", error: message, failureBoundary: { id: "linux-install-openpath", message }, diagnosticPhases: [{ id: "linux-install-openpath", status: "failed", message, evidence: { artifactWritten: true } }], artifactWritten: true }, null, 2));'
 }
 
+write_runtime_failure_artifact() {
+  local boundary_id="$1"
+  local message="$2"
+
+  FAILURE_BOUNDARY_ID="$boundary_id" FAILURE_MESSAGE="$message" node -e 'const fs = require("node:fs"); const id = process.env.FAILURE_BOUNDARY_ID; const message = process.env.FAILURE_MESSAGE; fs.writeFileSync("production-linux-ajax-auto-allow-canary.json", JSON.stringify({ success: false, boundarySource: "infrastructure", error: message, failureBoundary: { id, message }, diagnosticPhases: [{ id, status: "failed", message, evidence: { artifactWritten: true } }], artifactWritten: true }, null, 2));'
+}
+
+preserve_signed_firefox_extension() {
+  local artifact_dir="$1"
+  local extension_url="${LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_URL:-}"
+  local explicit_extension_path="${LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_PATH:-}"
+
+  if [ -n "$explicit_extension_path" ]; then
+    if [ ! -s "$explicit_extension_path" ]; then
+      echo "Explicit Firefox extension path is empty or missing: $explicit_extension_path" >&2
+      return 1
+    fi
+    printf '%s\n' "$explicit_extension_path"
+    return 0
+  fi
+
+  if [ -z "$extension_url" ]; then
+    echo 'Linux bootstrap canary has no served Firefox extension URL to preserve.' >&2
+    return 1
+  fi
+
+  local extension_path="$artifact_dir/openpath-firefox-extension.xpi"
+  rm -f "$extension_path"
+  if ! curl -fsSL --connect-timeout 10 --max-time 30 "$extension_url" -o "$extension_path"; then
+    return 1
+  fi
+  if [ ! -s "$extension_path" ]; then
+    echo "Downloaded Firefox extension is empty: $extension_url" >&2
+    return 1
+  fi
+  printf '%s\n' "$extension_path"
+}
+
 pin_linux_bootstrap_canary_api_host() {
   local api_url="${LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL:-}"
   if [ -z "$api_url" ]; then
@@ -128,6 +166,16 @@ main() {
     exit 1
   fi
 
+  local firefox_extension_path=""
+  if ! firefox_extension_path="$(preserve_signed_firefox_extension "$artifact_dir")"; then
+    local message='Could not download the served signed Firefox extension before OpenPath changed networking.'
+    write_github_output canary_result failure
+    write_github_output failure_boundary_id firefox-extension-download
+    write_github_output failure_boundary_message "$message"
+    write_runtime_failure_artifact firefox-extension-download "$message"
+    exit 1
+  fi
+
   set +e
   sudo env OPENPATH_ALLOW_DEFERRED_FIREFOX_REGISTRATION=1 bash "$installer_path" 2>&1 | tee linux-install-openpath.log
   local install_status="${PIPESTATUS[0]}"
@@ -145,7 +193,9 @@ main() {
   unpin_linux_bootstrap_canary_api_host
 
   set +e
-  LINUX_AJAX_AUTO_ALLOW_CANARY_PORT=80 timeout --kill-after=30s 10m node scripts/linux-ajax-auto-allow-canary.mjs 2>&1 | tee linux-ajax-auto-allow-canary.log
+  LINUX_AJAX_AUTO_ALLOW_CANARY_PORT=80 \
+    LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_PATH="$firefox_extension_path" \
+    timeout --kill-after=30s 10m node scripts/linux-ajax-auto-allow-canary.mjs 2>&1 | tee linux-ajax-auto-allow-canary.log
   local ajax_status="${PIPESTATUS[0]}"
   set -e
 

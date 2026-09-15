@@ -93,11 +93,11 @@ const FIREFOX_EXTENSION_URL_CANDIDATES = [
   process.env.LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_URL ?? '',
   CANARY_API_URL ? `${CANARY_API_URL}/api/extensions/firefox/openpath.xpi` : '',
 ].filter(Boolean);
+const EXPLICIT_FIREFOX_EXTENSION_PATH =
+  process.env.LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_PATH ?? '';
 const FIREFOX_EXTENSION_PATH_CANDIDATES = [
-  process.env.LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_PATH ?? '',
   '/usr/share/openpath/firefox-release/openpath-firefox-extension.xpi',
   '/usr/share/openpath/firefox-extension/openpath-firefox-extension.xpi',
-  '/usr/share/openpath/firefox-extension',
 ].filter(Boolean);
 const execFileAsync = promisify(execFile);
 
@@ -202,11 +202,25 @@ async function waitForFirefoxExtensionRuntimeReady({
 }
 
 async function resolveFirefoxCanaryExtensionPath() {
+  // The production bootstrap runtime downloads the served, signed XPI before
+  // OpenPath applies its network controls and hands that exact file to us here.
+  // Do not silently substitute a locally re-zipped unpacked extension: permanent
+  // WebDriver installation rightly rejects it as unsigned/corrupt.
+  if (EXPLICIT_FIREFOX_EXTENSION_PATH) {
+    const explicitStat = await stat(EXPLICIT_FIREFOX_EXTENSION_PATH);
+    if (!explicitStat.isFile()) {
+      throw new Error(
+        `Explicit Firefox extension path is not a signed XPI file: ${EXPLICIT_FIREFOX_EXTENSION_PATH}`
+      );
+    }
+    return EXPLICIT_FIREFOX_EXTENSION_PATH;
+  }
+
   // Prefer downloading the served XPI (the artifact under test), but a download must NOT be able
   // to wedge the whole canary: the fetch's AbortSignal.timeout does not reliably interrupt a stalled
   // body read, so a transient network blip on the runner used to hang until the 90s top-level abort
-  // (firefox-extension-ready failure with no evidence). On any download failure, fall through to the
-  // locally-installed agent XPI candidates instead of throwing.
+  // (firefox-extension-ready failure with no evidence). On any download failure, fall through only
+  // to already-materialized XPI candidates, never an unpacked directory that loses its signature.
   for (const extensionUrl of FIREFOX_EXTENSION_URL_CANDIDATES) {
     try {
       return await materializeFirefoxCanaryExtensionDownload(extensionUrl);
@@ -222,9 +236,6 @@ async function resolveFirefoxCanaryExtensionPath() {
       const candidateStat = await stat(candidate);
       if (candidateStat.isFile()) {
         return candidate;
-      }
-      if (candidateStat.isDirectory()) {
-        return await materializeFirefoxCanaryExtensionArchive(candidate);
       }
     } catch (error) {
       if (error?.code !== 'ENOENT') {
@@ -275,23 +286,6 @@ async function materializeFirefoxCanaryExtensionDownload(extensionUrl) {
   }
 
   await writeFile(archivePath, extensionBytes);
-  return archivePath;
-}
-
-async function materializeFirefoxCanaryExtensionArchive(extensionDir) {
-  const manifestPath = join(extensionDir, 'manifest.json');
-  const manifestStat = await stat(manifestPath);
-  if (!manifestStat.isFile()) {
-    throw new Error(`Firefox extension directory is missing manifest.json: ${extensionDir}`);
-  }
-
-  const archiveDir = await mkdtemp(join(tmpdir(), 'openpath-firefox-canary-extension-'));
-  const archivePath = join(archiveDir, 'openpath-firefox-extension.xpi');
-  await execFileAsync('zip', ['-qr', archivePath, '.'], {
-    cwd: extensionDir,
-    timeout: 10000,
-    maxBuffer: 1024 * 1024,
-  });
   return archivePath;
 }
 

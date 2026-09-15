@@ -24,6 +24,7 @@ function createLinuxCanaryRuntimeHarness(
   options: {
     installer?: 'missing' | 'success' | 'failure';
     nodeCanaryExitCode?: number;
+    extensionDownload?: 'success' | 'failure';
   } = {}
 ) {
   const tempDir = mkdtempSync(join(tmpdir(), 'linux-bootstrap-ajax-runtime-'));
@@ -66,7 +67,11 @@ function createLinuxCanaryRuntimeHarness(
   shim('tee', `cat > "$1"`);
   shim(
     'node',
-    `echo "node $*" >> "${nodeCallsPath}"; if [ "$1" = "-e" ]; then exec /usr/bin/node "$@"; fi; echo '{"ok":false,"failureBoundary":{"id":"node-rich","message":"rich artifact"}}' > production-linux-ajax-auto-allow-canary.json; exit ${options.nodeCanaryExitCode ?? 0}`
+    `echo "node $* firefox-extension-path=\${LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_PATH:-}" >> "${nodeCallsPath}"; if [ "$1" = "-e" ]; then exec /usr/bin/node "$@"; fi; echo '{"ok":false,"failureBoundary":{"id":"node-rich","message":"rich artifact"}}' > production-linux-ajax-auto-allow-canary.json; exit ${options.nodeCanaryExitCode ?? 0}`
+  );
+  shim(
+    'curl',
+    `echo "curl $*" >> "${callsPath}"; if [ "${options.extensionDownload ?? 'success'}" = "failure" ]; then exit 22; fi; output=""; while [ "$#" -gt 0 ]; do if [ "$1" = "-o" ]; then output="$2"; shift 2; else shift; fi; done; if [ -n "$output" ]; then printf 'signed-test-xpi' > "$output"; fi`
   );
 
   if (options.installer !== 'missing') {
@@ -92,6 +97,8 @@ function createLinuxCanaryRuntimeHarness(
       LINUX_AJAX_AUTO_ALLOW_CANARY_API_URL: 'https://classroompath.example.invalid',
       LINUX_AJAX_AUTO_ALLOW_CANARY_GROUP_ID: 'group-linux',
       LINUX_AJAX_AUTO_ALLOW_CANARY_ADMIN_TOKEN: 'protected-admin-token',
+      LINUX_AJAX_AUTO_ALLOW_FIREFOX_EXTENSION_URL:
+        'https://classroompath.example.invalid/api/extensions/firefox/openpath.xpi',
       EXPECTED_EXTENSION_ID: 'expected-extension',
     },
     cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
@@ -194,10 +201,10 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       canaryScript,
       /\/usr\/share\/openpath\/firefox-release\/openpath-firefox-extension\.xpi/
     );
-    assert.match(canaryScript, /\/usr\/share\/openpath\/firefox-extension['"]/);
-    assert.match(canaryScript, /async function materializeFirefoxCanaryExtensionArchive/);
-    assert.match(canaryScript, /candidateStat\.isDirectory\(\)/);
-    assert.match(canaryScript, /manifest\.json/);
+    assert.match(canaryScript, /const EXPLICIT_FIREFOX_EXTENSION_PATH/);
+    assert.match(canaryScript, /if \(EXPLICIT_FIREFOX_EXTENSION_PATH\)/);
+    assert.doesNotMatch(canaryScript, /async function materializeFirefoxCanaryExtensionArchive/);
+    assert.doesNotMatch(canaryScript, /'\/usr\/share\/openpath\/firefox-extension',/);
     assert.doesNotMatch(canaryScript, /options\.addExtensions\(seleniumExtensionPath\);/);
     assert.match(canaryScript, /driver\.installAddon\(seleniumExtensionPath, false\)/);
     assert.match(canaryScript, /installedExtensionId !== expectedExtensionId/);
@@ -238,7 +245,19 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       assert.match(readFileSync(harness.outputPath, 'utf8'), /canary_result=success/);
       assert.match(
         readFileSync(harness.nodeCallsPath, 'utf8'),
-        /node scripts\/linux-ajax-auto-allow-canary\.mjs/
+        /node scripts\/linux-ajax-auto-allow-canary\.mjs firefox-extension-path=.*openpath-firefox-extension\.xpi/
+      );
+      const calls = readFileSync(harness.callsPath, 'utf8');
+      const xpiDownloadIndex = calls.indexOf(
+        'curl -fsSL --connect-timeout 10 --max-time 30 https://classroompath.example.invalid/api/extensions/firefox/openpath.xpi -o'
+      );
+      const installerIndex = calls.indexOf(
+        'sudo env OPENPATH_ALLOW_DEFERRED_FIREFOX_REGISTRATION=1 bash'
+      );
+      assert.ok(xpiDownloadIndex >= 0, 'downloads the served signed XPI before installation');
+      assert.ok(
+        installerIndex > xpiDownloadIndex,
+        'installs OpenPath after preserving the signed XPI'
       );
       assert.match(
         readFileSync(harness.callsPath, 'utf8'),
@@ -260,6 +279,37 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       assert.match(
         readFileSync(join(harness.tempDir, 'linux-install-openpath.log'), 'utf8'),
         /installer-ran/
+      );
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test('Linux bootstrap runtime fails before installation when it cannot preserve the signed XPI', () => {
+    const harness = createLinuxCanaryRuntimeHarness({
+      installer: 'success',
+      extensionDownload: 'failure',
+    });
+    try {
+      const result = runProjectCommand('bash', [runtimeScriptPath], { env: harness.env });
+
+      assert.equal(result.status, 1);
+      assert.match(readFileSync(harness.outputPath, 'utf8'), /canary_result=failure/);
+      assert.match(
+        readFileSync(harness.outputPath, 'utf8'),
+        /failure_boundary_id=firefox-extension-download/
+      );
+      assert.match(
+        readFileSync(join(harness.tempDir, 'production-linux-ajax-auto-allow-canary.json'), 'utf8'),
+        /Could not download the served signed Firefox extension before OpenPath changed networking/
+      );
+      assert.doesNotMatch(
+        readFileSync(harness.callsPath, 'utf8'),
+        /OPENPATH_ALLOW_DEFERRED_FIREFOX_REGISTRATION/
+      );
+      assert.doesNotMatch(
+        readFileSync(harness.nodeCallsPath, 'utf8'),
+        /node scripts\/linux-ajax-auto-allow-canary\.mjs/
       );
     } finally {
       harness.cleanup();
