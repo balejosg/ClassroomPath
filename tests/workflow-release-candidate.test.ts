@@ -603,6 +603,19 @@ describe('Release candidate workflow contracts', () => {
     );
   });
 
+  test('migrations image rebuilds when the OpenPath promotion contract changes', () => {
+    const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
+    const migrationsJob = workflow.jobs?.['build-migrations-release-candidate'];
+
+    assert.ok(migrationsJob, 'workflow must build the migrations image family');
+    assert.ok(
+      String(migrationsJob?.with?.build_required ?? '').includes(
+        "needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true'"
+      ),
+      'migrations images embed OpenPath sources and must not reuse an image from another OpenPath SHA'
+    );
+  });
+
   test('release candidate workflow publishes manifest-only changes without image-family jobs', () => {
     const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
     const jobs = workflow.jobs ?? {};

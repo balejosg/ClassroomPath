@@ -309,7 +309,7 @@ jobs:
       - detect-release-candidate-components
     with:
       display_name: Migrations Release Candidate
-      build_required: ${{ needs.detect-release-candidate-components.outputs.migrations_changed == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
+      build_required: ${{ needs.detect-release-candidate-components.outputs.migrations_changed == 'true' || needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' || needs.resolve-previous-release-candidate-manifest.outputs.available != 'true' }}
       context: .
       file: docker/Dockerfile.migrations
       image_repo: ${{ needs.derive-release-image-refs.outputs.migrations_repo }}
