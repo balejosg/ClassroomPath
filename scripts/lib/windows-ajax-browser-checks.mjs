@@ -321,19 +321,61 @@ async function readElementText(element) {
   return String(await element.getText()).trim();
 }
 
+async function readBlockedPageFormState(driver, By, expectedReason) {
+  try {
+    const reasonInput = await driver.findElement(By.id('request-reason'));
+    const submitButton = await driver.findElement(By.id('submit-unblock-request'));
+    const statusElement = await driver.findElement(By.id('request-status'));
+    const reasonValue =
+      typeof reasonInput.getProperty === 'function' ? await reasonInput.getProperty('value') : null;
+    const submitDisabled =
+      typeof submitButton.getProperty === 'function'
+        ? await submitButton.getProperty('disabled')
+        : false;
+    const normalizedReason = typeof reasonValue === 'string' ? reasonValue : '';
+
+    return {
+      reasonLength: typeof reasonValue === 'string' ? reasonValue.length : null,
+      reasonMatchesExpected: normalizedReason === expectedReason,
+      submitDisabled: submitDisabled === true || submitDisabled === 'true',
+      statusText: await readElementText(statusElement),
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 function isStaleElementReferenceError(error) {
   const message = error instanceof Error ? error.message : String(error);
-  return /stale element(?: reference)?|node document is not the active document|no longer connected to the DOM/i.test(
+  return /stale element(?: reference)?|node document is not the active document|no longer connected to the DOM|can't access dead object/i.test(
     message
   );
 }
 
 async function waitForStableBlockedPageDom(driver, timeoutMs, condition) {
+  let observedReadyState = false;
   return driver.wait(async () => {
     try {
-      return await condition();
+      const value = await condition();
+      if (!value) {
+        observedReadyState = false;
+        return false;
+      }
+
+      // Firefox can replace a privileged extension document immediately after
+      // its controls first become visible. Require a second successful
+      // WebDriver observation before interacting with it.
+      if (!observedReadyState) {
+        observedReadyState = true;
+        return false;
+      }
+
+      return value;
     } catch (error) {
       if (isStaleElementReferenceError(error)) {
+        observedReadyState = false;
         return false;
       }
       throw error;
@@ -383,6 +425,8 @@ export async function runBlockedPageUnblockRequestCheck({
   let pageSnapshot = null;
   let submitClicked = false;
   let submitClickStale = false;
+  let formStateBeforeSubmit = null;
+  let formStateAfterSubmit = null;
   let extensionDiagnosticsBeforeSubmit = null;
   let extensionDiagnosticsAfterSubmit = null;
 
@@ -446,6 +490,7 @@ export async function runBlockedPageUnblockRequestCheck({
         return reasonValue === unblockReason ? button : false;
       }
     );
+    formStateBeforeSubmit = await readBlockedPageFormState(driver, By, unblockReason);
     try {
       await submitButton.click();
       submitClicked = true;
@@ -455,6 +500,7 @@ export async function runBlockedPageUnblockRequestCheck({
       }
       submitClickStale = true;
     }
+    formStateAfterSubmit = await readBlockedPageFormState(driver, By, unblockReason);
     const readRequestStatus = async () => {
       const statusElement = await driver.findElement(By.id('request-status'));
       return {
@@ -545,6 +591,8 @@ export async function runBlockedPageUnblockRequestCheck({
     userInputHandlerError,
     submitClicked,
     submitClickStale,
+    formStateBeforeSubmit,
+    formStateAfterSubmit,
     elapsedMs: Date.now() - startedAt,
     discovery,
     extensionDiagnosticsBeforeSubmit,

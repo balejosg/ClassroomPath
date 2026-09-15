@@ -21,7 +21,9 @@ function createDriver({
   privilegedScriptsUnsupported = false,
   delayedBlockedPageInitialization = false,
   staleBlockedDomainReadOnce = false,
+  deadBlockedDomainReadOnce = false,
   staleReasonInputClearOnce = false,
+  deadReasonValueOnce = false,
   staleSubmitClickOnce = false,
   resetReasonBeforeFirstSubmitLookup = false,
 } = {}) {
@@ -29,7 +31,9 @@ function createDriver({
   const scriptCalls: string[] = [];
   let blockedDomainReads = 0;
   let staleBlockedDomain = staleBlockedDomainReadOnce;
+  let deadBlockedDomain = deadBlockedDomainReadOnce;
   let staleReasonInput = staleReasonInputClearOnce;
+  let deadReasonValue = deadReasonValueOnce;
   let staleSubmitClick = staleSubmitClickOnce;
   let resetReasonBeforeSubmitLookup = resetReasonBeforeFirstSubmitLookup;
   let reasonValue = '';
@@ -63,7 +67,13 @@ function createDriver({
         reasonValue += value;
         calls.push('send-reason');
       },
-      getProperty: async (name: string) => (name === 'value' ? reasonValue : null),
+      getProperty: async (name: string) => {
+        if (name === 'value' && deadReasonValue) {
+          deadReasonValue = false;
+          throw new Error("TypeError: can't access dead object");
+        }
+        return name === 'value' ? reasonValue : null;
+      },
     },
     'submit-unblock-request': {
       click: async () => {
@@ -85,6 +95,7 @@ function createDriver({
         submitStarted = true;
         calls.push('submit');
       },
+      getProperty: async (name: string) => (name === 'disabled' ? false : null),
     },
     'request-status': statusElement,
     'blocked-domain': {
@@ -99,6 +110,10 @@ function createDriver({
       },
       getDomProperty: async () => {
         blockedDomainReads += 1;
+        if (deadBlockedDomain) {
+          deadBlockedDomain = false;
+          throw new Error("TypeError: can't access dead object");
+        }
         if (staleBlockedDomain) {
           return null;
         }
@@ -298,6 +313,49 @@ describe('Windows AJAX browser checks', () => {
     }
   });
 
+  test('records blocked-page form state when a click leaves no request status', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'windows-ajax-browser-checks-'));
+    try {
+      await writeFile(
+        join(tempDir, 'extensions.json'),
+        JSON.stringify({
+          addons: [{ id: 'monitor-bloqueos@openpath', rootURI: 'moz-extension://uuid/' }],
+        }),
+        'utf8'
+      );
+      const driver = createDriver({ statusText: '' });
+
+      const evidence = await runBlockedPageUnblockRequestCheck({
+        driver,
+        profileDir: tempDir,
+        firefoxExtensionWarmup: { mode: 'selenium-managed' },
+        config: {
+          expectedExtensionId: 'monitor-bloqueos@openpath',
+          blockedPageUnblockRequestDomain: 'blocked.example.test',
+          blockedPageUnblockRequestTimeoutMs: 100,
+          useLocalFirefoxAddon: false,
+          useSeleniumFirefox: true,
+        },
+      });
+
+      assert.equal(evidence.success, false);
+      assert.deepEqual(evidence.formStateBeforeSubmit, {
+        reasonLength: 'Windows direct canary blocked-page unblock request'.length,
+        reasonMatchesExpected: true,
+        submitDisabled: false,
+        statusText: '',
+      });
+      assert.deepEqual(evidence.formStateAfterSubmit, {
+        reasonLength: 'Windows direct canary blocked-page unblock request'.length,
+        reasonMatchesExpected: true,
+        submitDisabled: false,
+        statusText: '',
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   test('waits for blocked-page initialization before clicking submit', async () => {
     const tempDir = await mkdtemp(join(tmpdir(), 'windows-ajax-browser-checks-'));
     try {
@@ -328,6 +386,47 @@ describe('Windows AJAX browser checks', () => {
 
       assert.equal(evidence.success, true);
       assert.ok(driver.calls.includes('submit'));
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('retries a Firefox dead object before the unblock click', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'windows-ajax-browser-checks-'));
+    try {
+      await writeFile(
+        join(tempDir, 'extensions.json'),
+        JSON.stringify({
+          addons: [{ id: 'monitor-bloqueos@openpath', rootURI: 'moz-extension://uuid/' }],
+        }),
+        'utf8'
+      );
+      const driver = createDriver({
+        statusText: 'Request sent. It remains pending.',
+        deadReasonValueOnce: true,
+      });
+
+      const evidence = await runBlockedPageUnblockRequestCheck({
+        driver,
+        profileDir: tempDir,
+        firefoxExtensionWarmup: { mode: 'selenium-managed' },
+        config: {
+          expectedExtensionId: 'monitor-bloqueos@openpath',
+          blockedPageUnblockRequestDomain: 'blocked.example.test',
+          blockedPageUnblockRequestTimeoutMs: 100,
+          useLocalFirefoxAddon: false,
+          useSeleniumFirefox: true,
+        },
+      });
+
+      assert.equal(evidence.success, true);
+      assert.equal(evidence.submitClicked, true);
+      assert.ok(driver.calls.includes('submit'));
+      assert.equal(
+        driver.calls.filter((call: string) => call === 'clear-reason').length,
+        3,
+        'the click must wait for two consecutive live form observations after recovery'
+      );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -366,7 +465,7 @@ describe('Windows AJAX browser checks', () => {
       assert.equal(evidence.submitClicked, true);
       assert.deepEqual(
         driver.calls.filter((call: string) => call === 'clear-reason'),
-        ['clear-reason']
+        ['clear-reason', 'clear-reason']
       );
       assert.deepEqual(
         driver.calls.filter((call: string) => call === 'submit'),
@@ -408,7 +507,7 @@ describe('Windows AJAX browser checks', () => {
       assert.equal(evidence.success, true);
       assert.deepEqual(
         driver.calls.filter((call: string) => call === 'clear-reason'),
-        ['clear-reason', 'clear-reason']
+        ['clear-reason', 'clear-reason', 'clear-reason']
       );
       assert.deepEqual(
         driver.calls.filter((call: string) => call === 'submit'),
