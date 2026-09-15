@@ -646,6 +646,8 @@ test('release-candidate staging forces state operations through the verifier ima
 
   assert.match(loader, /DEPLOYMENT_STATE_USE_VERIFIER=1/u);
   assert.match(loader, /export .*DEPLOYMENT_STATE_USE_VERIFIER/u);
+  assert.match(loader, /ROLLBACK_READINESS_USE_VERIFIER=1/u);
+  assert.match(loader, /export ROLLBACK_READINESS_USE_VERIFIER/u);
 });
 
 test('pulled release images must resolve to an immutable digest', () => {
