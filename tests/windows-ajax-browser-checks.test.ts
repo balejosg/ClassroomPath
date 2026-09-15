@@ -19,9 +19,11 @@ function createDriver({
   browserLogs = [],
   navigationError = null,
   privilegedScriptsUnsupported = false,
+  delayedBlockedPageInitialization = false,
 } = {}) {
   const calls: string[] = [];
   const scriptCalls: string[] = [];
+  let blockedDomainReads = 0;
   const statusElement = {
     getText: async () => statusText,
     getDomProperty: async (name: string) => (name === 'textContent' ? statusText : null),
@@ -40,9 +42,23 @@ function createDriver({
       sendKeys: async () => calls.push('send-reason'),
     },
     'submit-unblock-request': {
-      click: async () => calls.push('submit'),
+      click: async () => {
+        if (delayedBlockedPageInitialization && blockedDomainReads < 2) {
+          throw new Error('blocked page handler is not initialized');
+        }
+        calls.push('submit');
+      },
     },
     'request-status': statusElement,
+    'blocked-domain': {
+      getText: async () => 'blocked.example.test',
+      getDomProperty: async () => {
+        blockedDomainReads += 1;
+        return delayedBlockedPageInitialization && blockedDomainReads === 1
+          ? '-'
+          : 'blocked.example.test';
+      },
+    },
   };
 
   return {
@@ -91,7 +107,13 @@ function createDriver({
       const id = rawValue.match(/\[id="([^"]+)"\]/)?.[1] ?? rawValue;
       return elements[id];
     },
-    wait: async (predicate: () => Promise<unknown>) => predicate(),
+    wait: async (predicate: () => Promise<unknown>) => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const result = await predicate();
+        if (result) return result;
+      }
+      return false;
+    },
   };
 }
 
@@ -219,6 +241,41 @@ describe('Windows AJAX browser checks', () => {
       assert.equal(evidence.page.href, 'moz-extension://uuid/blocked/blocked.html');
       assert.equal(evidence.page.statusClass, '');
       assert.equal(evidence.extensionDiagnosticsBeforeSubmit.success, false);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('waits for blocked-page initialization before clicking submit', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'windows-ajax-browser-checks-'));
+    try {
+      await writeFile(
+        join(tempDir, 'extensions.json'),
+        JSON.stringify({
+          addons: [{ id: 'monitor-bloqueos@openpath', rootURI: 'moz-extension://uuid/' }],
+        }),
+        'utf8'
+      );
+      const driver = createDriver({
+        statusText: 'Request sent. It remains pending.',
+        delayedBlockedPageInitialization: true,
+      });
+
+      const evidence = await runBlockedPageUnblockRequestCheck({
+        driver,
+        profileDir: tempDir,
+        firefoxExtensionWarmup: { mode: 'selenium-managed' },
+        config: {
+          expectedExtensionId: 'monitor-bloqueos@openpath',
+          blockedPageUnblockRequestDomain: 'blocked.example.test',
+          blockedPageUnblockRequestTimeoutMs: 100,
+          useLocalFirefoxAddon: false,
+          useSeleniumFirefox: true,
+        },
+      });
+
+      assert.equal(evidence.success, true);
+      assert.ok(driver.calls.includes('submit'));
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

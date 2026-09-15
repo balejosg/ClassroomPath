@@ -382,6 +382,11 @@ export async function runBlockedPageUnblockRequestCheck({
       const currentUrl = String(await driver.getCurrentUrl());
       return currentUrl.startsWith(discovery.baseUrl);
     }, config.blockedPageUnblockRequestTimeoutMs);
+    const blockedDomainElement = await driver.findElement(By.id('blocked-domain'));
+    await driver.wait(
+      async () => (await readElementText(blockedDomainElement)) === blockedPageDomain,
+      config.blockedPageUnblockRequestTimeoutMs
+    );
     extensionDiagnosticsBeforeSubmit = await collectExtensionRuntimeDiagnostics(driver, [
       blockedPageDomain,
     ]);
