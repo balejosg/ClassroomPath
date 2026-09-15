@@ -790,9 +790,6 @@ async function createFirefoxSession() {
   // then waits for the document_start observer + probe results.
   options.setPageLoadStrategy('none');
   options.addArguments('-headless');
-  if (seleniumExtensionPath !== null) {
-    options.addExtensions(seleniumExtensionPath);
-  }
   options.setPreference('network.dns.disablePrefetch', true);
   options.setPreference('network.trr.mode', 5);
   options.setPreference('network.trr.uri', '');
@@ -802,6 +799,18 @@ async function createFirefoxSession() {
   const driver = await new Builder().forBrowser('firefox').setFirefoxOptions(options).build();
   diag('Firefox launched; configuring timeouts');
   await driver.manage().setTimeouts({ pageLoad: PAGE_LOAD_TIMEOUT_MS, script: 10000 });
+  if (seleniumExtensionPath !== null) {
+    if (typeof driver.installAddon !== 'function') {
+      throw new Error('Firefox WebDriver does not expose installAddon for signed XPI verification');
+    }
+    const installedExtensionId = await driver.installAddon(seleniumExtensionPath, false);
+    if (installedExtensionId !== expectedExtensionId) {
+      throw new Error(
+        `Firefox installed unexpected extension id ${installedExtensionId}; expected ${expectedExtensionId}`
+      );
+    }
+    diag(`installed signed Firefox extension via WebDriver: ${installedExtensionId}`);
+  }
   const capabilities = await driver.getCapabilities();
   const profileDir = capabilities.get('moz:profile');
   if (typeof profileDir !== 'string' || profileDir === '') {

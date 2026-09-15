@@ -198,7 +198,9 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     assert.match(canaryScript, /async function materializeFirefoxCanaryExtensionArchive/);
     assert.match(canaryScript, /candidateStat\.isDirectory\(\)/);
     assert.match(canaryScript, /manifest\.json/);
-    assert.match(canaryScript, /options\.addExtensions\(seleniumExtensionPath\);/);
+    assert.doesNotMatch(canaryScript, /options\.addExtensions\(seleniumExtensionPath\);/);
+    assert.match(canaryScript, /driver\.installAddon\(seleniumExtensionPath, false\)/);
+    assert.match(canaryScript, /installedExtensionId !== expectedExtensionId/);
     assert.match(canaryScript, /extensions\\.webextensions\\.uuids/);
     assert.match(canaryScript, /moz-extension:\/\/\$\{extensionUuid\}\/popup\/popup\.html/);
     assert.match(canaryScript, /const capabilities = await driver\.getCapabilities\(\);/);
