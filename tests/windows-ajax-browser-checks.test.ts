@@ -25,7 +25,14 @@ function createDriver({
   const statusElement = {
     getText: async () => statusText,
     getDomProperty: async (name: string) => (name === 'textContent' ? statusText : null),
-    getAttribute: async (name: string) => (name === 'class' ? 'success' : null),
+    getAttribute: async (name: string) => {
+      if (privilegedScriptsUnsupported) {
+        throw new Error(
+          'ExecuteScript and ExecuteAsyncScript are not supported for privileged browsing contexts: 13'
+        );
+      }
+      return name === 'class' ? 'success' : null;
+    },
   };
   const elements = {
     'request-reason': {
@@ -210,7 +217,7 @@ describe('Windows AJAX browser checks', () => {
       assert.equal(evidence.success, true);
       assert.equal(evidence.statusText, 'Request sent. It remains pending.');
       assert.equal(evidence.page.href, 'moz-extension://uuid/blocked/blocked.html');
-      assert.equal(evidence.page.statusClass, 'success');
+      assert.equal(evidence.page.statusClass, '');
       assert.equal(evidence.extensionDiagnosticsBeforeSubmit.success, false);
     } finally {
       await rm(tempDir, { recursive: true, force: true });

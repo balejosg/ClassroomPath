@@ -419,7 +419,7 @@ export async function runBlockedPageUnblockRequestCheck({
       statusText,
       statusClass:
         typeof statusElement.getAttribute === 'function'
-          ? String((await statusElement.getAttribute('class')) ?? '')
+          ? String((await statusElement.getAttribute('class').catch(() => '')) ?? '')
           : '',
       bodyText: '',
     };
