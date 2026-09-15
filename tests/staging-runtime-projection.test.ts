@@ -634,6 +634,7 @@ test('release-candidate staging prepares projection before the boundary and acti
   const switchAdapter = extractShellFunction(source, 'staging_runtime_adapter_switch');
 
   assert.match(prepare, /prepare_staging_release_candidate_runtime_projection/u);
+  assert.match(migrate, /bash "\$APP_DIR\/scripts\/run-migrations-docker\.sh"/u);
   assert.match(migrate, /--env-file "\$STAGING_CANDIDATE_ENV_FILE"/u);
   assert.doesNotMatch(migrate, /apply_staging_release_candidate_runtime_projection/u);
   assert.match(switchAdapter, /deploy_runtime_compose_switch/u);

@@ -844,7 +844,7 @@ bash "$2"
     assert.match(project, /\$runtime_projection_file/u);
     assert.match(project, /\$STAGING_CANDIDATE_ENV_FILE/u);
     assert.doesNotMatch(migrate, /prepare_staging_release_candidate_runtime_projection/u);
-    assert.match(migrate, /bash scripts\/run-migrations-docker\.sh/u);
+    assert.match(migrate, /bash "\$APP_DIR\/scripts\/run-migrations-docker\.sh"/u);
     assert.match(migrate, /--env-file "\$STAGING_CANDIDATE_ENV_FILE"/u);
     assert.ok(
       !localContent.includes('node "$SCRIPT_DIR/release-images.mjs" outputs --sha "$REMOTE_SHA"')

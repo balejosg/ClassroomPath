@@ -207,7 +207,7 @@ describe('Deployment foundation contracts', () => {
     const billingSyncStep = 'bash scripts/sync-billing-env.sh "$APP_DIR/config/.env"';
     const validateStep = 'bash scripts/validate-runtime-config-docker.sh';
     const emailPreflightStep = 'bash scripts/check-email-delivery-docker.sh';
-    const pushStep = 'bash scripts/run-migrations-docker.sh --cp --openpath \\';
+    const pushStep = 'bash "$APP_DIR/scripts/run-migrations-docker.sh" --cp --openpath \\';
 
     assert.ok(existsSync(stagingDeployRemoteScriptPath));
     assert.ok(

@@ -812,14 +812,14 @@ run_staging_database_migrations() {
 
   if [ "$STAGING_IMAGE_MODE" = "source-build" ]; then
     log_info "Running database migrations from workspace sources..."
-    bash scripts/run-migrations-docker.sh --cp --openpath || return 1
+    bash "$APP_DIR/scripts/run-migrations-docker.sh" --cp --openpath || return 1
   else
     if [ -z "${CLASSROOMPATH_MIGRATIONS_IMAGE:-}" ]; then
       die "Release candidate migrations image ref is missing" 1
     fi
 
     log_info "Running database migrations from release candidate image..."
-    bash scripts/run-migrations-docker.sh --cp --openpath \
+    bash "$APP_DIR/scripts/run-migrations-docker.sh" --cp --openpath \
       --env-file "$STAGING_CANDIDATE_ENV_FILE" \
       --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
   fi
