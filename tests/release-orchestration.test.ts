@@ -82,6 +82,10 @@ describe('release promotion orchestration', () => {
     assert.match(commandsById['deploy-staging'], /npm run deploy:staging/);
     assert.match(commandsById['deploy-staging'], /--rc-run-id/);
     assert.match(commandsById['ensure-windows-prepromotion-evidence'], /run-and-persist/);
+    assert.match(
+      commandsById['ensure-windows-prepromotion-evidence'],
+      /--openpath-root upstream\/openpath/
+    );
     assert.match(commandsById['verify-staging-exact'], /npm run verify:staging-exact/);
     assert.match(commandsById['production-readiness'], /npm run verify:production-readiness/);
     assert.match(commandsById['release-preflight'], /RELEASE_PREFLIGHT_NEXT_TAG=v1\.2\.301/);

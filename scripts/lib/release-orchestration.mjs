@@ -195,7 +195,13 @@ function buildRcFirstPromotionPlan({
       ? [
           step(
             'ensure-windows-prepromotion-evidence',
-            ['node', 'scripts/prepromotion-windows-evidence.mjs', 'run-and-persist'],
+            [
+              'node',
+              'scripts/prepromotion-windows-evidence.mjs',
+              'run-and-persist',
+              '--openpath-root',
+              'upstream/openpath',
+            ],
             'Run and persist required Windows prepromotion evidence.'
           ),
         ]
