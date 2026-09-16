@@ -317,6 +317,8 @@ function buildRcFirstPromotionPlan({
             '--environment',
             'production',
             '--confirm-production',
+            '--openpath-root',
+            'upstream/openpath',
             '--artifact-dir',
             `.opencode/tmp/postproduction-windows-ajax/rc-${rcRunId}`,
             '--skip-when-canary-token-absent',

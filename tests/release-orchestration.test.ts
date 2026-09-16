@@ -111,6 +111,10 @@ describe('release promotion orchestration', () => {
       commandsById['verify-production-health'],
       /classroompath\.example\.invalid/
     );
+    assert.match(
+      commandsById['run-post-production-windows-canary'],
+      /--openpath-root upstream\/openpath/
+    );
     assert.match(commandsById['report-residual-actions-runs'], /actions-health\.mjs report-stale/);
     assert.match(commandsById['report-residual-actions-runs'], /--tag v1\.2\.301/);
   });
@@ -188,7 +192,7 @@ describe('release promotion orchestration', () => {
     assert.equal(plan.steps.at(-1)?.id, 'print-summary');
     assert.equal(
       commandsById['run-post-production-windows-canary'],
-      'npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --artifact-dir .opencode/tmp/postproduction-windows-ajax/rc-34124312483 --skip-when-canary-token-absent'
+      'npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --openpath-root upstream/openpath --artifact-dir .opencode/tmp/postproduction-windows-ajax/rc-34124312483 --skip-when-canary-token-absent'
     );
   });
 
