@@ -321,7 +321,6 @@ function buildRcFirstPromotionPlan({
             'upstream/openpath',
             '--artifact-dir',
             `.opencode/tmp/postproduction-windows-ajax/rc-${rcRunId}`,
-            '--skip-when-canary-token-absent',
           ],
           'Run the post-production Windows AJAX canary against production.'
         )

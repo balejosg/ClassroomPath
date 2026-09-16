@@ -242,6 +242,19 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
         command: formatCommand(planStep.command),
         retryOf: extra.retryOf ?? null,
       };
+      // An inherited optional-skip setting must not become successful release
+      // evidence or a resumable success, even when the diagnostic exits zero.
+      if (
+        planStep.id === 'run-post-production-windows-canary' &&
+        recorded.status === 'success' &&
+        String(recorded.stdout ?? '').includes('POST_PRODUCTION_WINDOWS_CANARY_SKIPPED=')
+      ) {
+        recorded.status = 'failed';
+        const message =
+          'Post-production Windows canary was skipped; production client evidence is incomplete. Configure canary credentials and resume this step.';
+        recorded.stderr = `${recorded.stderr ?? ''}\n${message}\n`;
+        io.stderr(`${message}\n`);
+      }
       results.push(recorded);
       if (recorded.githubRun) {
         io.stdout(`${summarizeGitHubRunMonitor(recorded.githubRun)}\n`);
@@ -284,16 +297,6 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
       let result = await executeStep(planStep);
       if (planStep.id === 'wait-production-deploy') {
         attachProductionDeployRun(result);
-      }
-
-      if (
-        planStep.id === 'run-post-production-windows-canary' &&
-        result.status === 'success' &&
-        String(result.stdout ?? '').includes('POST_PRODUCTION_WINDOWS_CANARY_SKIPPED=token-absent')
-      ) {
-        io.stdout(
-          'run-post-production-windows-canary skipped (CI-only CP_CLIENT_CANARY_ADMIN_TOKEN absent; deploy.yml production Windows canaries cover it)\n'
-        );
       }
 
       if (

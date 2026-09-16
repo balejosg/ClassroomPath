@@ -1407,6 +1407,9 @@ async function main() {
 
   ensureFilesExist(options, plan);
 
+  // Resolve credentials (including an explicitly requested optional skip) before
+  // touching Windows. process.exit for a skip must never bypass runner recovery.
+  const billingContext = resolveBillingContext(options, env);
   const localFirefoxExtension = await buildLocalFirefoxExtension(options, artifactDir);
   const seleniumNodeModulesBundle = buildSeleniumNodeModulesBundle(options, artifactDir);
 
@@ -1416,7 +1419,6 @@ async function main() {
     pauseWindowsRunnerServices(options);
     runnerServicesPaused = true;
 
-    const billingContext = resolveBillingContext(options, env);
     const summary = provisionCanary({ options, baseUrl, artifactDir, billingContext, env });
     summary.apiUrl = summary.apiUrl || baseUrl;
 

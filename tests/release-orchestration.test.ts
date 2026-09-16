@@ -192,19 +192,19 @@ describe('release promotion orchestration', () => {
     assert.equal(plan.steps.at(-1)?.id, 'print-summary');
     assert.equal(
       commandsById['run-post-production-windows-canary'],
-      'npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --openpath-root upstream/openpath --artifact-dir .opencode/tmp/postproduction-windows-ajax/rc-34124312483 --skip-when-canary-token-absent'
+      'npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --openpath-root upstream/openpath --artifact-dir .opencode/tmp/postproduction-windows-ajax/rc-34124312483'
     );
   });
 
-  it('run-post-production-windows-canary command includes --skip-when-canary-token-absent', () => {
+  it('requires the post-production canary to attempt remote credential resolution', () => {
     const plan = buildPromotionPlan({ tag: 'v1.2.301', highRiskWindows: true });
     const canaryStep = plan.steps.find((step) => step.id === 'run-post-production-windows-canary');
 
     assert.ok(canaryStep, 'run-post-production-windows-canary step should be present');
     assert.ok(
       Array.isArray(canaryStep.command) &&
-        canaryStep.command.includes('--skip-when-canary-token-absent'),
-      'post-production canary command must include --skip-when-canary-token-absent'
+        !canaryStep.command.includes('--skip-when-canary-token-absent'),
+      'post-production canary must attempt the configured remote credential reader'
     );
   });
 
@@ -787,8 +787,10 @@ describe('release promotion orchestration', () => {
     );
   });
 
-  it('logs a clear skip message when the post-production canary exits 0 with the skip marker', async () => {
+  it('fails and persists failure when the post-production canary exits 0 with a skip marker', async () => {
     let stdout = '';
+    let stderr = '';
+    const persisted: Array<{ stepId: string; status: string }> = [];
 
     const result = await runReleasePromoteCommand(
       ['--tag', 'v0.0.0', '--execute', '--no-high-risk-windows'],
@@ -796,7 +798,13 @@ describe('release promotion orchestration', () => {
         stdout: (value) => {
           stdout += value;
         },
-        stderr: () => {},
+        stderr: (value) => {
+          stderr += value;
+        },
+        transcriptRoot: mkdtempSync(join(tmpdir(), 'release-canary-skipped-')),
+        writeStepState: (value) => {
+          persisted.push(value);
+        },
         runStep: async (step) => ({
           id: step.id,
           status: 'success',
@@ -810,11 +818,13 @@ describe('release promotion orchestration', () => {
       }
     );
 
-    assert.equal(result.status, 0);
-    assert.match(
-      stdout,
-      /run-post-production-windows-canary skipped \(CI-only CP_CLIENT_CANARY_ADMIN_TOKEN absent/
-    );
+    assert.equal(result.status, 1);
+    assert.equal(persisted.at(-1)?.stepId, 'run-post-production-windows-canary');
+    assert.equal(persisted.at(-1)?.status, 'failed');
+    assert.equal(result.results.at(-1)?.status, 'failed');
+    assert.match(stderr, /Post-production Windows canary was skipped/);
+    assert.doesNotMatch(stdout, /==> report-residual-actions-runs/);
+    assert.doesNotMatch(stdout, /production Windows canaries cover it/);
   });
 
   it('rejects missing tag before building a plan', async () => {

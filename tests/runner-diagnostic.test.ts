@@ -1222,6 +1222,8 @@ describe('runner diagnostic wrapper', () => {
     assert.match(result.stdout, /POST_PRODUCTION_WINDOWS_CANARY_SKIPPED=token-absent/);
     assert.match(result.stderr, /CP_CLIENT_CANARY_ADMIN_TOKEN is absent/);
     assert.match(result.stderr, /--skip-when-canary-token-absent/);
+    // Missing credentials must be decided before pausing any runner service.
+    assert.doesNotMatch(result.stdout, /^ssh .*qm.*guest.*exec/m);
   });
 
   test('direct Windows AJAX diagnostic still throws when token is absent and skip flag is not set', () => {
