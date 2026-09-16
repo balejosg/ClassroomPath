@@ -62,7 +62,11 @@ function summaryValue(value) {
   return value === 'n/a' ? undefined : value;
 }
 
-export function renderCanaryBoundarySummary({ linux = {}, windows = {} } = {}) {
+export function renderCanaryBoundarySummary({
+  linux = {},
+  windows = {},
+  windowsProduction = {},
+} = {}) {
   return [
     '## Release Canary Boundary',
     '',
@@ -70,6 +74,7 @@ export function renderCanaryBoundarySummary({ linux = {}, windows = {} } = {}) {
     '| --- | --- | --- | --- |',
     canarySummaryRow('Linux bootstrap/AJAX', linux),
     canarySummaryRow('Windows bootstrap/AJAX', windows),
+    canarySummaryRow('Windows production bootstrap/AJAX', windowsProduction),
     '',
   ].join('\n');
 }
@@ -145,9 +150,12 @@ function renderDashboardStatusRow({
 function renderReleaseDashboardMarkdown({
   evidence,
   windowsFailureBoundary,
+  windowsProductionFailureBoundary,
   linuxFailureBoundary,
 }) {
   const timings = evidence.timings?.jobs ?? {};
+  const liveWindowsProductionJobResult = /** @type {any} */ (evidence.jobs)
+    .windowsProductionBootstrapCanary;
 
   return [
     '## Release Dashboard',
@@ -199,6 +207,13 @@ function renderReleaseDashboardMarkdown({
         'n/a',
     }),
     renderDashboardStatusRow({
+      label: 'Live Windows production bootstrap canary',
+      result: liveWindowsProductionJobResult ?? 'n/a',
+      boundary: windowsProductionFailureBoundary,
+      duration: timings.windowsProductionBootstrapCanary,
+      evidence: evidence.artifacts.windowsProductionBootstrapCanary ?? 'n/a',
+    }),
+    renderDashboardStatusRow({
       label: 'Linux production bootstrap canary',
       result: evidence.jobs.linuxProductionBootstrapCanary ?? 'n/a',
       boundary: linuxFailureBoundary,
@@ -218,6 +233,10 @@ function renderReleaseDashboardMarkdown({
 
 export function renderReleaseEvidenceMarkdown(evidenceInput) {
   const evidence = createReleaseEvidenceSnapshot(evidenceInput);
+  const liveWindowsProductionJobResult = /** @type {any} */ (evidence.jobs)
+    .windowsProductionBootstrapCanary;
+  const liveWindowsProductionCanary = /** @type {any} */ (evidence.canaries ?? {})
+    .windowsProduction;
   const windowsArtifactIntegrity =
     evidence.artifactIntegrity?.preproductionWindowsBootstrapCanary?.status ??
     evidence.artifactIntegrity?.windowsProductionBootstrapCanary?.status ??
@@ -234,6 +253,14 @@ export function renderReleaseEvidenceMarkdown(evidenceInput) {
     evidence.diagnostics.preproductionWindowsBootstrapFailureBoundary?.message ??
     evidence.diagnostics.windowsProductionBootstrapFailureBoundary.message ??
     'n/a';
+  const windowsProductionFailureBoundary =
+    liveWindowsProductionCanary?.failureBoundary?.id ??
+    evidence.diagnostics.windowsProductionBootstrapFailureBoundary?.id ??
+    'n/a';
+  const windowsProductionFailureBoundaryMessage =
+    liveWindowsProductionCanary?.failureBoundary?.message ??
+    evidence.diagnostics.windowsProductionBootstrapFailureBoundary?.message ??
+    'n/a';
   const linuxFailureBoundary =
     evidence.canaries?.linux?.failureBoundary?.id ??
     evidence.diagnostics.linuxProductionBootstrapFailureBoundary.id ??
@@ -243,12 +270,14 @@ export function renderReleaseEvidenceMarkdown(evidenceInput) {
     evidence.diagnostics.linuxProductionBootstrapFailureBoundary.message ??
     'n/a';
   const windowsCanaryTargetUrl = evidence.canaries?.windows?.targetUrl ?? 'n/a';
+  const windowsProductionCanaryTargetUrl = liveWindowsProductionCanary?.targetUrl ?? 'n/a';
   const linuxCanaryTargetUrl = evidence.canaries?.linux?.targetUrl ?? 'n/a';
 
   return [
     ...renderReleaseDashboardMarkdown({
       evidence,
       windowsFailureBoundary,
+      windowsProductionFailureBoundary,
       linuxFailureBoundary,
     }),
     renderCanaryBoundarySummary({
@@ -261,6 +290,11 @@ export function renderReleaseEvidenceMarkdown(evidenceInput) {
         result: evidence.jobs.preproductionWindowsBootstrapCanary,
         boundaryId: summaryValue(windowsFailureBoundary),
         message: summaryValue(windowsFailureBoundaryMessage),
+      },
+      windowsProduction: {
+        result: liveWindowsProductionJobResult,
+        boundaryId: summaryValue(windowsProductionFailureBoundary),
+        message: summaryValue(windowsProductionFailureBoundaryMessage),
       },
     }),
     '## Release Evidence',
@@ -297,6 +331,9 @@ export function renderReleaseEvidenceMarkdown(evidenceInput) {
     `- Windows bootstrap failure boundary: \`${windowsFailureBoundary}\``,
     `- Boundary message: ${windowsFailureBoundaryMessage}`,
     `- Preproduction Windows target URL: ${windowsCanaryTargetUrl}`,
+    `- Live Windows production bootstrap failure boundary: \`${windowsProductionFailureBoundary}\``,
+    `- Live Windows production boundary message: ${windowsProductionFailureBoundaryMessage}`,
+    `- Live Windows production target URL: ${windowsProductionCanaryTargetUrl}`,
     `- Linux bootstrap failure boundary: \`${linuxFailureBoundary}\``,
     `- Linux boundary message: ${linuxFailureBoundaryMessage}`,
     `- Linux target URL: ${linuxCanaryTargetUrl}`,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Orchestrates the full production promotion sequence: evidence validation, deploy, health check, and post-release canary.
+ * Orchestrates the full production promotion sequence: evidence validation, deploy, and health check.
  *
  * Invoked by: Developer CLI via `npm run release:promote`.
  * Usage: node scripts/release-promote.mjs --rc-run-id <id> [--auto-tag|--tag <tag>] [--dry-run]
@@ -67,8 +67,8 @@ Options:
   --local-only                        Create the tag locally without pushing it.
   --high-risk-windows                 Include Windows prepromotion evidence step. Default.
   --no-high-risk-windows              Omit Windows prepromotion evidence step.
-  --post-production-windows-canary    Include the post-production Windows canary step. Default.
-  --no-post-production-windows-canary Omit the post-production Windows canary step for emergency opt-out.
+  --post-production-windows-canary    Run an additional local Windows diagnostic after deploy.
+  --no-post-production-windows-canary Omit the additional local Windows diagnostic (default).
   --from-step <id>                    Skip all steps before <id> and run from <id> to the end.
                                       Rejected if any skipped promotion gate has not already passed
                                       (i.e. is not recorded 'success' in the RC identity state file).
@@ -98,7 +98,7 @@ export function parseReleasePromoteArgs(argv) {
     execute: false,
     localOnly: false,
     highRiskWindows: true,
-    postProductionWindowsCanary: true,
+    postProductionWindowsCanary: false,
     help: false,
     fromStep: null,
     only: [],
@@ -399,6 +399,16 @@ const PROMOTION_GATE_IDS = new Set([
   'release-preflight',
 ]);
 
+// Resume only reuses immutable candidate work. Live target and deployment
+// evidence is deliberately revalidated so a stale host state cannot be treated
+// as proof merely because an earlier attempt reached the same step.
+const RESUME_REUSABLE_STEP_IDS = new Set([
+  'resolve-release-candidate',
+  'deploy-staging',
+  'verify-candidate-tooling',
+  'tag-production',
+]);
+
 /**
  * Compute the skip set and skip reasons for the current run based on --from-step / --only / --resume.
  *
@@ -464,7 +474,7 @@ function resolveSkipSet({ plan, options, stateRoot, tag, rcRunId, identityRoot, 
   } else if (options.resume) {
     const state = readStepStateFn({ root: stateRoot, tag, rcRunId, identityRoot });
     for (const id of allIds) {
-      if ((state?.steps?.[id]?.status ?? '') === 'success') {
+      if ((state?.steps?.[id]?.status ?? '') === 'success' && RESUME_REUSABLE_STEP_IDS.has(id)) {
         skipSet.add(id);
         skipReasons.set(id, `skipped: recorded success`);
       }

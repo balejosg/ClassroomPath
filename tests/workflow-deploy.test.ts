@@ -901,6 +901,7 @@ describe('Deploy workflow contracts', () => {
     assert.ok(jobs['release-evidence']);
     assert.ok(jobs['windows-firefox-canary']);
     assert.ok(jobs['windows-staging-bootstrap-canary']);
+    assert.ok(jobs['windows-production-bootstrap-canary']);
     assert.equal(
       jobs['windows-firefox-canary']?.uses,
       './.github/workflows/windows-firefox-canary.yml'
@@ -925,6 +926,40 @@ describe('Deploy workflow contracts', () => {
       'reusable workflow inputs cannot use env context'
     );
     assert.equal(jobs['windows-staging-bootstrap-canary']?.with?.diagnostic_mode, "${{ 'false' }}");
+    assert.equal(
+      jobs['windows-production-bootstrap-canary']?.uses,
+      './.github/workflows/windows-production-bootstrap-canary.yml'
+    );
+    assert.equal(
+      jobs['windows-production-bootstrap-canary']?.with?.target_environment,
+      'production'
+    );
+    assert.match(
+      String(jobs['windows-production-bootstrap-canary']?.with?.base_url ?? ''),
+      /vars\.CLASSROOMPATH_PRODUCTION_CANARY_PUBLIC_URL/
+    );
+    assert.equal(
+      jobs['windows-production-bootstrap-canary']?.with?.diagnostic_mode,
+      "${{ 'false' }}"
+    );
+    assert.match(
+      String(jobs['windows-production-bootstrap-canary']?.if ?? ''),
+      /needs\.deploy-production\.result == 'success'/
+    );
+    assert.match(
+      String(jobs['windows-production-bootstrap-canary']?.if ?? ''),
+      /needs\.smoke-test-production\.result == 'success'/
+    );
+    assert.match(
+      String(jobs['windows-production-bootstrap-canary']?.if ?? ''),
+      /staging_windows_firefox_high_risk == 'true'/
+    );
+    const productionBootstrapNeeds = normalizeNeeds(
+      jobs['windows-production-bootstrap-canary']?.needs
+    );
+    assert.ok(productionBootstrapNeeds.includes('deploy-production'));
+    assert.ok(productionBootstrapNeeds.includes('smoke-test-production'));
+    assert.ok(productionBootstrapNeeds.includes('verify-staging-release-state'));
     assert.ok(
       !('continue-on-error' in jobs['windows-firefox-canary']),
       'reusable workflow jobs cannot use continue-on-error in the caller'
@@ -943,6 +978,15 @@ describe('Deploy workflow contracts', () => {
         'Upload production bootstrap canary artifacts'
       )?.with?.name,
       'windows-production-bootstrap-canary'
+    );
+    assert.match(
+      String(
+        findWorkflowStepByName(
+          windowsProductionBootstrapCanaryJob,
+          'Upload production bootstrap canary artifacts'
+        )?.if ?? ''
+      ),
+      /TARGET_ENVIRONMENT == 'production'/
     );
     assert.equal(
       findWorkflowStepByName(
@@ -1017,6 +1061,18 @@ describe('Deploy workflow contracts', () => {
     assert.match(
       deployWorkflowText,
       /"PREPRODUCTION_WINDOWS_BOOTSTRAP_FAILURE_BOUNDARY_ID": "\$\{\{ needs\.windows-staging-bootstrap-canary\.outputs\.failure_boundary_id \|\| 'preproduction-windows-bootstrap-canary' \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /"LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.windows-production-bootstrap-canary\.outputs\.canary_result \|\| needs\.windows-production-bootstrap-canary\.result \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /"LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "\$\{\{ needs\.windows-production-bootstrap-canary\.result \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /"LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "\$\{\{ needs\.windows-production-bootstrap-canary\.outputs\.failure_boundary_id \|\| 'windows-production-bootstrap-canary' \}\}"/
     );
     assert.match(
       deployWorkflowText,
@@ -1099,9 +1155,9 @@ describe('Deploy workflow contracts', () => {
     );
     assert.ok(!jobs['production-client-update-canary']);
     assert.equal(
-      jobs['windows-production-bootstrap-canary'],
-      undefined,
-      'production deploy must not repeat full Windows installed-client bootstrap canaries after deploy'
+      jobs['windows-production-bootstrap-canary']?.with?.target_environment,
+      'production',
+      'production deploy must exercise the live Windows installed-client bootstrap canary'
     );
     assert.equal(
       jobs['linux-production-bootstrap-canary'],
@@ -1116,7 +1172,7 @@ describe('Deploy workflow contracts', () => {
     assert.ok(deployNeeds.includes('windows-staging-bootstrap-canary'));
     assert.ok(releaseEvidenceNeeds.includes('windows-firefox-canary'));
     assert.ok(releaseEvidenceNeeds.includes('windows-staging-bootstrap-canary'));
-    assert.ok(!releaseEvidenceNeeds.includes('windows-production-bootstrap-canary'));
+    assert.ok(releaseEvidenceNeeds.includes('windows-production-bootstrap-canary'));
     assert.ok(!releaseEvidenceNeeds.includes('linux-production-bootstrap-canary'));
     assert.match(String(jobs['deploy-production']?.if ?? ''), /^always\(\) && /);
     assert.doesNotMatch(String(jobs['deploy-production']?.if ?? ''), /windows-firefox-canary/);
@@ -1125,10 +1181,10 @@ describe('Deploy workflow contracts', () => {
       /needs\.verify-staging-release-state\.outputs\.staging_windows_firefox_high_risk != 'true' \|\| needs\.windows-staging-bootstrap-canary\.result == 'success'/
     );
     assert.ok(
-      !normalizeNeeds(jobs['rollback-production']?.needs).includes(
+      normalizeNeeds(jobs['rollback-production']?.needs).includes(
         'windows-production-bootstrap-canary'
       ),
-      'rollback should only observe deploy and production smoke failures on the release path'
+      'rollback must observe a failed live Windows production canary'
     );
     assert.ok(
       !normalizeNeeds(jobs['rollback-production']?.needs).includes(
@@ -1136,9 +1192,9 @@ describe('Deploy workflow contracts', () => {
       ),
       'rollback should not wait on full Linux installed-client canaries after production deploy'
     );
-    assert.doesNotMatch(
+    assert.match(
       String(jobs['rollback-production']?.if ?? ''),
-      /production-bootstrap-canary/
+      /needs\.windows-production-bootstrap-canary\.result == 'failure'/
     );
     assert.ok(windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.inputs);
     assert.equal(

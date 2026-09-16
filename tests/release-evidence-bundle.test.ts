@@ -330,6 +330,71 @@ describe('release evidence bundle module', () => {
     });
   });
 
+  test('keeps preproduction and live Windows canary evidence separate', () => {
+    const preproductionArtifactDir = createTempDir(
+      'classroompath-release-evidence-preproduction-windows-'
+    );
+    const productionArtifactDir = createTempDir(
+      'classroompath-release-evidence-production-windows-'
+    );
+    const linuxArtifactDir = createTempDir('classroompath-release-evidence-production-linux-');
+    const outputDir = createTempDir('classroompath-release-evidence-separated-output-');
+
+    writeWindowsCanaryArtifact(preproductionArtifactDir);
+    writeWindowsCanaryArtifact(productionArtifactDir);
+    writeLinuxCanaryArtifact(linuxArtifactDir);
+
+    const bundle = buildReleaseEvidenceBundle({
+      releaseEvidence: buildReleaseEvidenceInput({
+        jobs: {
+          ...buildReleaseEvidenceInput().jobs,
+          windowsProductionBootstrapCanary: 'success',
+        },
+        artifacts: {
+          ...buildReleaseEvidenceInput().artifacts,
+          windowsProductionBootstrapCanary: 'windows-production-bootstrap-canary',
+        },
+      }),
+      productionHealth: {
+        health: { status: 'ok' },
+        ready: { ready: true },
+      },
+      outputDir,
+      preproductionWindowsBootstrapCanary: {
+        listed: true,
+        artifactDir: preproductionArtifactDir,
+      },
+      windowsProductionBootstrapCanary: {
+        listed: true,
+        artifactDir: productionArtifactDir,
+      },
+      linuxProductionBootstrapCanary: {
+        listed: true,
+        artifactDir: linuxArtifactDir,
+      },
+    });
+
+    assert.equal(bundle.artifactIntegrity.preproductionWindowsBootstrapCanary.status, 'ok');
+    assert.equal(bundle.artifactIntegrity.windowsProductionBootstrapCanary.status, 'ok');
+    assert.equal(
+      bundle.canaries.windows.targetUrl,
+      'https://staging.classroompath.example.invalid'
+    );
+    assert.equal(bundle.canaries.windowsProduction.targetUrl, 'http://127.0.0.1:0');
+    assert.ok(existsSync(resolve(outputDir, 'canary-evidence/windows-production-bootstrap.json')));
+    assert.throws(
+      () =>
+        assertReleaseEvidenceBundleCompleteness({
+          ...bundle,
+          canaries: {
+            ...bundle.canaries,
+            windowsProduction: { ...bundle.canaries.windowsProduction, artifactPath: null },
+          },
+        }),
+      /windowsProduction\.artifactPath missing/
+    );
+  });
+
   test('parses Windows and Linux bootstrap canary artifacts into normalized evidence', () => {
     const windowsArtifactDir = createTempDir('classroompath-release-evidence-windows-');
     const linuxArtifactDir = createTempDir('classroompath-release-evidence-linux-');
@@ -1266,7 +1331,12 @@ exit 1
 describe('deploy brief module', () => {
   test('formats a passing release into less than 120 Markdown lines', () => {
     const brief = buildDeployBrief({
-      releaseEvidence: buildReleaseEvidenceInput(),
+      releaseEvidence: buildReleaseEvidenceInput({
+        jobs: {
+          ...buildReleaseEvidenceInput().jobs,
+          windowsProductionBootstrapCanary: 'success',
+        },
+      }),
       sourceArtifacts: ['release-evidence.json'],
     });
     const markdown = renderDeployBriefMarkdown(brief);
@@ -1284,6 +1354,10 @@ describe('deploy brief module', () => {
   test('accepts staging Windows bootstrap evidence when prepromotion rehearsal is unset', () => {
     const brief = buildDeployBrief({
       releaseEvidence: buildReleaseEvidenceInput({
+        jobs: {
+          ...buildReleaseEvidenceInput().jobs,
+          windowsProductionBootstrapCanary: 'success',
+        },
         stagingVerification: {
           windowsFirefoxHighRisk: 'true',
           windowsBootstrapResult: 'success',
@@ -1350,7 +1424,7 @@ describe('deploy brief module', () => {
     assert.match(markdown, /missing-release-evidence\.json/);
   });
 
-  test('preserves advisory versus post-release canary distinction', () => {
+  test('requires the live Windows production canary while retaining advisory signals', () => {
     const brief = buildDeployBrief({
       releaseEvidence: buildReleaseEvidenceInput({
         jobs: {
@@ -1359,12 +1433,16 @@ describe('deploy brief module', () => {
           verifyStagingReleaseState: 'success',
           windowsFirefoxCanary: 'failure',
           preproductionWindowsBootstrapCanary: 'success',
-          windowsProductionBootstrapCanary: null,
+          windowsProductionBootstrapCanary: 'success',
           linuxProductionBootstrapCanary: 'skipped',
           productionClientUpdateCanary: 'advisory-only',
           deployProduction: 'success',
           smokeTestProduction: 'success',
           rollbackProduction: 'skipped',
+        },
+        artifacts: {
+          ...buildReleaseEvidenceInput().artifacts,
+          windowsProductionBootstrapCanary: 'windows-production-bootstrap-canary',
         },
       }),
       sourceArtifacts: ['release-evidence.json'],
@@ -1380,7 +1458,23 @@ describe('deploy brief module', () => {
 
     assert.equal(brief.status, 'partial');
     assert.equal(advisoryGate?.category, 'advisory');
-    assert.equal(postReleaseGate?.category, 'post-release-advisory');
+    assert.equal(postReleaseGate?.category, 'post-release-required');
     assert.equal(clientUpdateGate?.category, 'post-release-advisory');
+  });
+
+  test('does not treat a pending live Windows canary as releasable', () => {
+    const brief = buildDeployBrief({
+      releaseEvidence: buildReleaseEvidenceInput({
+        jobs: {
+          ...buildReleaseEvidenceInput().jobs,
+          windowsProductionBootstrapCanary: 'pending-post-release',
+        },
+      }),
+      sourceArtifacts: ['release-evidence.json'],
+    } as any);
+
+    const liveGate = brief.gates.find((gate) => gate.id === 'windows-production-bootstrap-canary');
+    assert.equal(liveGate?.category, 'post-release-required');
+    assert.equal(brief.status, 'unknown');
   });
 });

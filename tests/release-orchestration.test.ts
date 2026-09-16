@@ -57,7 +57,6 @@ describe('release promotion orchestration', () => {
         'tag-production',
         'wait-production-deploy',
         'verify-production-health',
-        'run-post-production-windows-canary',
         'report-residual-actions-runs',
         'print-summary',
       ]
@@ -111,10 +110,7 @@ describe('release promotion orchestration', () => {
       commandsById['verify-production-health'],
       /classroompath\.example\.invalid/
     );
-    assert.match(
-      commandsById['run-post-production-windows-canary'],
-      /--openpath-root upstream\/openpath/
-    );
+    assert.equal(commandsById['run-post-production-windows-canary'], undefined);
     assert.match(commandsById['report-residual-actions-runs'], /actions-health\.mjs report-stale/);
     assert.match(commandsById['report-residual-actions-runs'], /--tag v1\.2\.301/);
   });
@@ -177,27 +173,26 @@ describe('release promotion orchestration', () => {
     assert.deepEqual(readReleaseBundleLocatorIdentity(locatorPath), identity);
   });
 
-  it('runs the post-production Windows canary by default before residual reporting', () => {
+  it('leaves the live Windows canary to the production deploy workflow by default', () => {
     const plan = buildPromotionPlan({
       tag: 'v1.2.301',
       highRiskWindows: true,
     });
 
-    const commandsById = Object.fromEntries(
-      plan.steps.map((step) => [step.id, formatCommand(step.command)])
+    assert.equal(
+      plan.steps.some((step) => step.id === 'run-post-production-windows-canary'),
+      false
     );
-
-    assert.equal(plan.steps.at(-3)?.id, 'run-post-production-windows-canary');
     assert.equal(plan.steps.at(-2)?.id, 'report-residual-actions-runs');
     assert.equal(plan.steps.at(-1)?.id, 'print-summary');
-    assert.equal(
-      commandsById['run-post-production-windows-canary'],
-      'npm run diagnostics:windows-ajax:direct -- --environment production --confirm-production --openpath-root upstream/openpath --artifact-dir .opencode/tmp/postproduction-windows-ajax/rc-34124312483'
-    );
   });
 
-  it('requires the post-production canary to attempt remote credential resolution', () => {
-    const plan = buildPromotionPlan({ tag: 'v1.2.301', highRiskWindows: true });
+  it('keeps an explicit local Windows canary diagnostic opt-in and credential-bound', () => {
+    const plan = buildPromotionPlan({
+      tag: 'v1.2.301',
+      highRiskWindows: true,
+      postProductionWindowsCanary: true,
+    });
     const canaryStep = plan.steps.find((step) => step.id === 'run-post-production-windows-canary');
 
     assert.ok(canaryStep, 'run-post-production-windows-canary step should be present');
@@ -206,6 +201,7 @@ describe('release promotion orchestration', () => {
         !canaryStep.command.includes('--skip-when-canary-token-absent'),
       'post-production canary must attempt the configured remote credential reader'
     );
+    assert.match(formatCommand(canaryStep.command), /--openpath-root upstream\/openpath/);
   });
 
   it('omits the post-production Windows canary when explicitly disabled', () => {
@@ -340,7 +336,7 @@ describe('release promotion orchestration', () => {
       execute: true,
       localOnly: false,
       highRiskWindows: true,
-      postProductionWindowsCanary: true,
+      postProductionWindowsCanary: false,
       help: false,
       fromStep: null,
       only: [],
@@ -355,7 +351,7 @@ describe('release promotion orchestration', () => {
       execute: false,
       localOnly: false,
       highRiskWindows: true,
-      postProductionWindowsCanary: true,
+      postProductionWindowsCanary: false,
       help: false,
       fromStep: null,
       only: [],
@@ -437,7 +433,7 @@ describe('release promotion orchestration', () => {
       stdout,
       /bash scripts\/tag-production-release\.sh v0\.0\.0 --rc-run-id "\$STAGING_RELEASE_RUN_ID"/
     );
-    assert.match(stdout, /run-post-production-windows-canary/);
+    assert.doesNotMatch(stdout, /run-post-production-windows-canary/);
     assert.match(stdout, /actions-health\.mjs report-stale/);
   });
 
@@ -793,7 +789,13 @@ describe('release promotion orchestration', () => {
     const persisted: Array<{ stepId: string; status: string }> = [];
 
     const result = await runReleasePromoteCommand(
-      ['--tag', 'v0.0.0', '--execute', '--no-high-risk-windows'],
+      [
+        '--tag',
+        'v0.0.0',
+        '--execute',
+        '--no-high-risk-windows',
+        '--post-production-windows-canary',
+      ],
       {
         stdout: (value) => {
           stdout += value;

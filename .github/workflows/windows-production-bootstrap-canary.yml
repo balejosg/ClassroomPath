@@ -666,7 +666,7 @@ jobs:
 
       - name: Upload production bootstrap canary artifacts
         id: upload-artifacts
-        if: always()
+        if: always() && env.TARGET_ENVIRONMENT == 'production'
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
@@ -705,7 +705,7 @@ jobs:
           FUNCTIONAL_BOUNDARY_ID: ${{ steps.ajax-summary.outputs.failure_boundary_id || 'artifact-written' }}
           FUNCTIONAL_BOUNDARY_MESSAGE: ${{ steps.ajax-summary.outputs.failure_boundary_message || 'Windows AJAX evidence artifact was not written.' }}
           VERIFY_ARTIFACTS_OUTCOME: ${{ steps.verify-artifacts.outcome }}
-          ARTIFACT_UPLOAD_OUTCOME: ${{ steps.upload-artifacts.outcome }}
+          ARTIFACT_UPLOAD_OUTCOME: ${{ env.TARGET_ENVIRONMENT != 'production' && 'success' || steps.upload-artifacts.outcome }}
           PREPRODUCTION_ARTIFACT_UPLOAD_OUTCOME: ${{ env.TARGET_ENVIRONMENT == 'production' && 'success' || steps.upload-preproduction-artifacts.outcome }}
         run: |
           set -euo pipefail

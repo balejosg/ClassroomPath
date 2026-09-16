@@ -594,7 +594,9 @@ export function assertReleaseEvidenceBundleCompleteness(bundle) {
     const integrityName =
       platform === 'windows'
         ? 'preproductionWindowsBootstrapCanary'
-        : `${platform}ProductionBootstrapCanary`;
+        : platform === 'windowsProduction'
+          ? 'windowsProductionBootstrapCanary'
+          : `${platform}ProductionBootstrapCanary`;
     if (
       bundle.artifactIntegrity?.[integrityName]?.status === 'ok' &&
       !valueOrNull(canary?.artifactPath)

@@ -203,6 +203,8 @@ export function buildReleaseEvidenceBundle({
   assertReleaseBundleProofMatchesEvidence(releaseEvidence, releaseBundle);
   const preproductionWindowsEvidence =
     preproductionWindowsBootstrapCanary ?? windowsProductionBootstrapCanary;
+  /** @type {{ artifactDir?: string | null }} */
+  const liveWindowsEvidence = windowsProductionBootstrapCanary ?? {};
   const artifactIntegrity = verifyArtifactIntegrity({
     releaseEvidence,
     preproductionWindowsBootstrapCanary: preproductionWindowsEvidence,
@@ -220,6 +222,19 @@ export function buildReleaseEvidenceBundle({
     fallbackRedditHosts: buildFallbackWindowsRedditHosts(),
   });
 
+  const windowsProductionCanary = buildBundleCanaryEvidence({
+    integrity: artifactIntegrity.windowsProductionBootstrapCanary,
+    artifactDir: liveWindowsEvidence.artifactDir,
+    parser: parseWindowsBootstrapCanaryArtifact,
+    fallbackFailureBoundary: releaseEvidence?.diagnostics
+      ?.windowsProductionBootstrapFailureBoundary ?? {
+      id: 'windows-production-bootstrap-canary',
+      message: 'Windows production bootstrap canary did not produce a failure boundary.',
+    },
+    fallbackDiagnosticPhases: undefined,
+    fallbackRedditHosts: buildFallbackWindowsRedditHosts(),
+  });
+
   const linuxCanary = buildBundleCanaryEvidence({
     integrity: artifactIntegrity.linuxProductionBootstrapCanary,
     artifactDir: linuxProductionBootstrapCanary.artifactDir,
@@ -233,6 +248,11 @@ export function buildReleaseEvidenceBundle({
     canaries: {
       windows: withReleaseTargetMetadata(windowsCanary, {
         targetUrl: releaseEvidence?.targets?.staging?.publicUrl,
+        targetSha: releaseEvidence?.release?.classroomPathSha,
+        targetTag: releaseEvidence?.release?.tagName,
+      }),
+      windowsProduction: withReleaseTargetMetadata(windowsProductionCanary, {
+        targetUrl: releaseEvidence?.targets?.production?.publicUrl,
         targetSha: releaseEvidence?.release?.classroomPathSha,
         targetTag: releaseEvidence?.release?.tagName,
       }),
@@ -262,6 +282,10 @@ export function buildReleaseEvidenceBundle({
     writeJsonFile(
       resolve(outputDir, 'canary-evidence/preproduction-windows-bootstrap.json'),
       bundle.canaries.windows
+    );
+    writeJsonFile(
+      resolve(outputDir, 'canary-evidence/windows-production-bootstrap.json'),
+      bundle.canaries.windowsProduction
     );
     writeJsonFile(
       resolve(outputDir, 'canary-evidence/linux-production-bootstrap.json'),
@@ -469,21 +493,42 @@ export async function runReleaseEvidenceBundle({
   const windowsFirefoxHighRisk = isTrueFlag(
     releaseEvidence?.stagingVerification?.windowsFirefoxHighRisk
   );
-  const windowsArtifactDir = resolve(outputDir, 'tmp-preproduction-windows-bootstrap-canary');
+  const preproductionWindowsArtifactDir = resolve(
+    outputDir,
+    'tmp-preproduction-windows-bootstrap-canary'
+  );
+  const productionWindowsArtifactDir = resolve(
+    outputDir,
+    'tmp-windows-production-bootstrap-canary'
+  );
   const linuxArtifactDir = resolve(outputDir, 'tmp-linux-production-bootstrap-canary');
-  const windowsEvidence = resolveArtifactEvidence({
+  const preproductionWindowsEvidence = resolveArtifactEvidence({
     repo,
     runId: selectArtifactRunId({
       preferredRunId: windowsCanaryRun,
       deployRunId: deployRun,
       highRisk: windowsFirefoxHighRisk,
-      result:
-        releaseEvidence?.jobs?.preproductionWindowsBootstrapCanary ??
-        releaseEvidence?.jobs?.windowsProductionBootstrapCanary,
+      result: releaseEvidence?.jobs?.preproductionWindowsBootstrapCanary,
     }),
     artifactName: PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT,
-    fallbackArtifactNames: [WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT],
-    outputDir: windowsArtifactDir,
+    // The production-named artifact is a legacy preproduction alias only when
+    // no explicit live production canary exists. Once both jobs are present,
+    // accepting it here would allow live evidence to satisfy the staging gate.
+    fallbackArtifactNames: valueOrNull(releaseEvidence?.jobs?.windowsProductionBootstrapCanary)
+      ? []
+      : [WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT],
+    outputDir: preproductionWindowsArtifactDir,
+  });
+  const windowsProductionEvidence = resolveArtifactEvidence({
+    repo,
+    runId: selectArtifactRunId({
+      preferredRunId: null,
+      deployRunId: deployRun,
+      highRisk: windowsFirefoxHighRisk,
+      result: releaseEvidence?.jobs?.windowsProductionBootstrapCanary,
+    }),
+    artifactName: WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT,
+    outputDir: productionWindowsArtifactDir,
   });
   const linuxEvidence = resolveArtifactEvidence({
     repo,
@@ -502,9 +547,10 @@ export async function runReleaseEvidenceBundle({
     releaseEvidence,
     productionHealth,
     outputDir,
-    preproductionWindowsBootstrapCanary: windowsEvidence,
+    preproductionWindowsBootstrapCanary: preproductionWindowsEvidence,
+    windowsProductionBootstrapCanary: windowsProductionEvidence,
     linuxProductionBootstrapCanary: linuxEvidence,
-    releaseBundle,
+    releaseBundle: /** @type {any} */ (releaseBundle),
   });
 
   assertReleaseEvidenceBundleCompleteness(bundle);

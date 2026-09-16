@@ -1,5 +1,5 @@
 /**
- * Library: implements the high-risk promotion step order, production deploy commands, and post-release canary trigger.
+ * Library: implements the high-risk promotion step order and production deploy commands.
  *
  * Invoked by: Imported by `scripts/release-promote.mjs`; tested by `release-orchestration.test.ts`.
  * Usage: (library module, not invoked directly)
@@ -85,7 +85,7 @@ function buildRcFirstPromotionPlan({
   rcRunId,
   tag,
   highRiskWindows = false,
-  postProductionWindowsCanary = true,
+  postProductionWindowsCanary = false,
   localOnly = false,
   transcriptRoot = '.opencode/tmp/release-promote',
 } = {}) {

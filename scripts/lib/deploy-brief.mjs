@@ -223,13 +223,13 @@ function buildGates(releaseEvidence) {
     }),
     buildGate({
       id: 'windows-production-bootstrap-canary',
-      label: 'Live Windows production bootstrap canary monitor',
+      label: 'Live Windows production bootstrap canary',
       result: releaseEvidence.jobs?.windowsProductionBootstrapCanary,
       boundary:
         releaseEvidence.canaries?.windowsProduction?.failureBoundary?.id ??
         releaseEvidence.diagnostics?.windowsProductionBootstrapFailureBoundary?.id,
       evidence: releaseEvidence.artifacts?.windowsProductionBootstrapCanary,
-      category: 'post-release-advisory',
+      category: 'post-release-required',
     }),
     buildGate({
       id: 'linux-production-bootstrap-canary',
@@ -276,11 +276,15 @@ function isUnknownBlockingGate(gate) {
 }
 
 function isPartialGate(gate) {
-  if (gate.category !== 'post-release-required' && gate.category !== 'post-release-advisory') {
+  if (gate.category !== 'post-release-advisory') {
     return false;
   }
 
   return PARTIAL_RESULTS.has(gate.result);
+}
+
+function isIncompleteRequiredPostReleaseGate(gate) {
+  return gate.category === 'post-release-required' && PARTIAL_RESULTS.has(gate.result);
 }
 
 function classifyStatus({ releaseEvidence, gates }) {
@@ -297,6 +301,10 @@ function classifyStatus({ releaseEvidence, gates }) {
   }
 
   if (gates.some(isUnknownBlockingGate)) {
+    return 'unknown';
+  }
+
+  if (gates.some(isIncompleteRequiredPostReleaseGate)) {
     return 'unknown';
   }
 

@@ -258,8 +258,10 @@ The shared workspace wrapper selects the maintained first pass. During developme
   reaches the approval/tag boundary. Production remains tag-only. The default
   plan includes Windows prepromotion evidence; `--no-high-risk-windows` is the
   explicit override for releases where that proof is reviewed as unnecessary.
-  `--post-production-windows-canary` appends the post-production Windows client
-  canary after production health.
+  The tagged `deploy.yml` workflow runs the physical Windows production bootstrap
+  canary for high-risk Windows releases before release evidence is finalized;
+  `--post-production-windows-canary` remains an explicit opt-in for an additional
+  local diagnostic after production health.
 - Staging deploy GHCR preflight classifies auth, missing manifest, and network
   failures before remote mutation. For private GHCR access failures, rerun the
   same deploy command with `STAGING_GHCR_USERNAME=<user>` and

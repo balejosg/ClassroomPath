@@ -52,7 +52,7 @@ function stateWithSuccessGates(...ids: string[]) {
   };
 }
 
-// Full ordered step list for the default plan (highRiskWindows=true, postProductionWindowsCanary=true)
+// Full ordered step list for the default plan (highRiskWindows=true; live canary runs in deploy.yml).
 const ALL_STEP_IDS = [
   'resolve-release-candidate',
   'verify-clean-repos',
@@ -67,7 +67,6 @@ const ALL_STEP_IDS = [
   'tag-production',
   'wait-production-deploy',
   'verify-production-health',
-  'run-post-production-windows-canary',
   'report-residual-actions-runs',
   'print-summary',
 ];
@@ -253,8 +252,10 @@ describe('step filtering — --resume', () => {
     );
 
     assert.equal(result.status, 0);
-    // Already-success steps must be skipped.
-    for (const id of ['verify-clean-repos', 'resolve-release-candidate', 'deploy-staging']) {
+    // Only immutable candidate steps may be reused on resume. Repository and
+    // deployment evidence is revalidated against the current target.
+    assert.equal(executedSteps.includes('verify-clean-repos'), true);
+    for (const id of ['resolve-release-candidate', 'deploy-staging']) {
       assert.equal(executedSteps.includes(id), false, `${id} should be skipped`);
     }
     // Everything after must run.
@@ -347,21 +348,14 @@ describe('fail-closed promotion gate guard', () => {
 
     assert.equal(result.status, 0);
     assert.ok(executedSteps.includes('tag-production'), 'tag-production must run');
-    assert.equal(
-      executedSteps.includes('verify-clean-repos'),
-      false,
-      'verify-clean-repos must be skipped'
-    );
+    assert.equal(executedSteps.includes('verify-clean-repos'), false);
   });
 
   it('allows --resume when all skipped gates were recorded success', async () => {
     const executedSteps: string[] = [];
-    // All non-postcanary steps already succeeded.
+    // All steps except the live health check already succeeded.
     const succeededIds = ALL_STEP_IDS.filter(
-      (id) =>
-        id !== 'verify-production-health' &&
-        id !== 'print-summary' &&
-        id !== 'run-post-production-windows-canary'
+      (id) => id !== 'verify-production-health' && id !== 'print-summary'
     );
     const state = stateWithSuccessGates(...succeededIds);
 
@@ -384,20 +378,46 @@ describe('fail-closed promotion gate guard', () => {
     );
 
     assert.equal(result.status, 0);
-    // Only the not-yet-succeeded steps should have run.
+    // Resume reuses immutable candidate work but revalidates all repository,
+    // staging, production, and residual evidence.
     assert.ok(
       executedSteps.includes('verify-production-health'),
       'verify-production-health must run'
     );
-    assert.equal(
-      executedSteps.includes('verify-clean-repos'),
-      false,
-      'verify-clean-repos was already success'
-    );
+    assert.ok(executedSteps.includes('verify-clean-repos'), 'verify-clean-repos must revalidate');
     assert.ok(
       executedSteps.includes('verify-promotion-identity'),
       'verify-promotion-identity must always run'
     );
+  });
+
+  it('revalidates live production evidence on resume while reusing immutable steps', async () => {
+    const executedSteps: string[] = [];
+    const state = stateWithSuccessGates(...ALL_STEP_IDS);
+
+    const result = await runReleasePromoteCommand(
+      ['--tag', 'v1.2.301', '--execute', '--resume'],
+      makeSuccessDeps({
+        readStepState: () => state,
+        runStep: async (step: { id: string }) => {
+          executedSteps.push(step.id);
+          return { id: step.id, status: 'success', seconds: 1 };
+        },
+      })
+    );
+
+    assert.equal(result.status, 0);
+    assert.deepEqual(executedSteps, [
+      'verify-clean-repos',
+      'verify-promotion-identity',
+      'ensure-windows-prepromotion-evidence',
+      'verify-staging-exact',
+      'production-readiness',
+      'release-preflight',
+      'wait-production-deploy',
+      'verify-production-health',
+      'report-residual-actions-runs',
+    ]);
   });
 });
 
@@ -422,8 +442,7 @@ describe('default behavior unchanged', () => {
     assert.equal(result.status, 0);
     // All executable steps (everything except print-summary which has no command) must appear.
     const expectedCommandSteps = ALL_STEP_IDS.filter(
-      (id) =>
-        id !== 'print-summary' && id !== 'run-post-production-windows-canary' && id !== 'approval'
+      (id) => id !== 'print-summary' && id !== 'approval'
     );
     for (const id of expectedCommandSteps) {
       assert.ok(executedSteps.includes(id), `${id} must run in the default plan`);
@@ -810,7 +829,7 @@ describe('writeStepState / readStepState', () => {
     );
 
     assert.equal(result.status, 1);
-    assert.deepEqual(executedSteps, ['verify-promotion-identity']);
+    assert.deepEqual(executedSteps, ['verify-clean-repos', 'verify-promotion-identity']);
   });
 
   it('returns null when no state file exists', () => {
