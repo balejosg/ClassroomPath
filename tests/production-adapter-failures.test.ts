@@ -41,6 +41,48 @@ test('production migration classification does not invoke an optional host Node 
   assert.match(result.stdout, /hermetic-classification/);
 });
 
+test('production migration tools resolve from the app root after runtime enters docker', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cp-production-migration-tools-'));
+  mkdirSync(join(root, 'config'));
+  mkdirSync(join(root, 'docker'));
+  writeFileSync(join(root, 'config/.env'), 'fixture=value\n');
+  const source = readFileSync(join(projectRoot, 'scripts/deploy-production-remote.sh'), 'utf8');
+  const migrations = source.slice(
+    source.indexOf('run_production_database_migrations() {'),
+    source.indexOf('\nproduction_runtime_adapter_migrate()')
+  );
+  const harness = `
+set -Eeuo pipefail
+${migrations}
+APP_DIR="$FIXTURE"
+PRODUCTION_CANDIDATE_ENV_FILE="$FIXTURE/config/.env"
+CLASSROOMPATH_VERIFIER_IMAGE=fixture
+CLASSROOMPATH_MIGRATIONS_IMAGE=fixture
+release_execution_mark_stage() { :; }
+cleanup_production_disk_if_needed() { :; }
+login_production_registry() { :; }
+log_info() { :; }
+bash() { printf '%s\\n' "$1" >> "$FIXTURE/commands"; }
+cd "$APP_DIR/docker"
+run_production_database_migrations
+`;
+  writeFileSync(join(root, 'harness.sh'), harness);
+
+  try {
+    const result = spawnSync('bash', [join(root, 'harness.sh')], {
+      encoding: 'utf8',
+      env: { ...process.env, FIXTURE: root },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(readFileSync(join(root, 'commands'), 'utf8').trim().split('\n'), [
+      join(root, 'scripts/check-email-delivery-docker.sh'),
+      join(root, 'scripts/run-migrations-docker.sh'),
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // Exercise the shipped shell functions through the same conditional call as
 // production. External effects are seams; transaction marker persistence is real.
 for (const fault of [

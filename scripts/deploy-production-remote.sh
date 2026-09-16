@@ -675,11 +675,13 @@ run_production_database_migrations() {
   CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA="${CP_EMAIL_PREFLIGHT_ALLOW_DAILY_QUOTA:-0}" \
     CP_EMAIL_PREFLIGHT_MODE="${CP_EMAIL_PREFLIGHT_MODE:-required}" \
     CLASSROOMPATH_VERIFIER_IMAGE="${CLASSROOMPATH_VERIFIER_IMAGE:-}" \
-    bash scripts/check-email-delivery-docker.sh \
+    bash "$APP_DIR/scripts/check-email-delivery-docker.sh" \
+      --app-dir "$APP_DIR" \
       --env-file "$PRODUCTION_CANDIDATE_ENV_FILE" || return 1
 
   log_info "Running database migrations from the release candidate runner..."
-  bash scripts/run-migrations-docker.sh --cp --openpath \
+  bash "$APP_DIR/scripts/run-migrations-docker.sh" --cp --openpath \
+    --app-dir "$APP_DIR" \
     --env-file "$PRODUCTION_CANDIDATE_ENV_FILE" \
     --runner-image "$CLASSROOMPATH_MIGRATIONS_IMAGE" || return 1
 

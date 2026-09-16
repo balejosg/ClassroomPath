@@ -562,7 +562,8 @@ describe('Deployment runtime contracts', () => {
         productionRemote.includes(
           'CP_EMAIL_PREFLIGHT_MODE="${CP_EMAIL_PREFLIGHT_MODE:-required}"'
         ) &&
-        productionRemote.includes('bash scripts/check-email-delivery-docker.sh'),
+        productionRemote.includes('bash "$APP_DIR/scripts/check-email-delivery-docker.sh"') &&
+        productionRemote.includes('--app-dir "$APP_DIR"'),
       'production email delivery preflight must propagate the risk-gated quota policy into Docker'
     );
     assert.ok(
