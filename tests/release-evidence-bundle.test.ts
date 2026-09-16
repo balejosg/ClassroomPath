@@ -20,6 +20,7 @@ import {
   parseLinuxBootstrapCanaryArtifact,
   parseWindowsBootstrapCanaryArtifact,
   runReleaseEvidenceBundle,
+  selectNewestArtifact,
   validateReleaseEvidenceChecklist,
   verifyArtifactIntegrity,
   verifyReleaseBundleEvidence,
@@ -294,6 +295,37 @@ afterEach(() => {
 });
 
 describe('release evidence bundle module', () => {
+  test('selects the newest non-expired artifact instance by metadata', () => {
+    const artifactName = 'preproduction-windows-bootstrap-canary';
+    const selected = selectNewestArtifact(
+      [
+        {
+          id: 100,
+          name: artifactName,
+          created_at: '2026-09-16T14:00:00.000Z',
+          updated_at: '2026-09-16T14:00:00.000Z',
+        },
+        {
+          id: 101,
+          name: artifactName,
+          created_at: '2026-09-16T14:05:00.000Z',
+          updated_at: '2026-09-16T14:05:00.000Z',
+        },
+        {
+          id: 102,
+          name: artifactName,
+          created_at: '2026-09-16T14:10:00.000Z',
+          updated_at: '2026-09-16T14:10:00.000Z',
+          expired: true,
+        },
+      ],
+      artifactName
+    );
+
+    assert.equal(selected?.id, 101);
+    assert.equal(selectNewestArtifact([], artifactName), null);
+  });
+
   test('selects parsed canary evidence only when artifact integrity passed', () => {
     const windowsArtifactDir = createTempDir('classroompath-release-evidence-policy-windows-');
     writeWindowsCanaryArtifact(windowsArtifactDir);
@@ -851,6 +883,9 @@ describe('release evidence bundle module', () => {
   test('uses the deploy run as the default canary artifact run', async () => {
     const workspace = createTempDir('classroompath-release-evidence-deploy-run-workspace-');
     const fakeBinDir = createTempDir('classroompath-release-evidence-deploy-run-bin-');
+    const windowsInitialSourceDir = createTempDir(
+      'classroompath-release-evidence-deploy-run-windows-initial-'
+    );
     const windowsSourceDir = createTempDir('classroompath-release-evidence-deploy-run-windows-');
     const linuxSourceDir = createTempDir('classroompath-release-evidence-deploy-run-linux-');
     const outputDir = resolve(workspace, 'bundle-output');
@@ -858,6 +893,14 @@ describe('release evidence bundle module', () => {
     const ghLogPath = resolve(workspace, 'gh.log');
 
     writeWindowsCanaryArtifact(windowsSourceDir);
+    writeJson(resolve(windowsInitialSourceDir, 'production-windows-ajax-auto-allow-canary.json'), {
+      success: false,
+      failureBoundary: {
+        id: 'firefox-extension-ready',
+        message: 'initial canary attempt failed',
+      },
+      diagnosticPhases: [{ id: 'firefox-extension-ready', status: 'failed' }],
+    });
     writeLinuxCanaryArtifact(linuxSourceDir);
     writeJson(resolve(workspace, 'release-evidence.json'), buildReleaseEvidenceInput());
 
@@ -869,40 +912,22 @@ printf '%s\\n' "$*" >> "${ghLogPath}"
 if [ "$1" = "api" ]; then
   case "$2" in
     *"/runs/deploy-456/artifacts")
-      printf '%s\\n' '{"artifacts":[{"name":"preproduction-windows-bootstrap-canary"},{"name":"linux-production-bootstrap-canary"}]}'
+      printf '%s\\n' '{"artifacts":[{"id":499,"name":"preproduction-windows-bootstrap-canary","created_at":"2026-04-30T09:55:00.000Z","updated_at":"2026-04-30T09:55:00.000Z"},{"id":501,"name":"preproduction-windows-bootstrap-canary","created_at":"2026-04-30T10:05:00.000Z","updated_at":"2026-04-30T10:05:00.000Z"},{"id":502,"name":"linux-production-bootstrap-canary","created_at":"2026-04-30T10:00:00.000Z","updated_at":"2026-04-30T10:00:00.000Z"}]}'
+      exit 0
+      ;;
+    *"/artifacts/499/zip")
+      zip -qr - "$TEST_WINDOWS_INITIAL_ARTIFACT_DIR"
+      exit 0
+      ;;
+    *"/artifacts/501/zip")
+      zip -qr - "$TEST_WINDOWS_ARTIFACT_DIR"
+      exit 0
+      ;;
+    *"/artifacts/502/zip")
+      zip -qr - "$TEST_LINUX_ARTIFACT_DIR"
       exit 0
       ;;
   esac
-fi
-if [ "$1" = "run" ] && [ "$2" = "download" ] && [ "$3" = "deploy-456" ]; then
-  artifact_name=''
-  output_dir=''
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --name)
-        artifact_name="$2"
-        shift 2
-        ;;
-      --dir)
-        output_dir="$2"
-        shift 2
-        ;;
-      *)
-        shift
-        ;;
-    esac
-  done
-  mkdir -p "$output_dir"
-  if [ "$artifact_name" = "preproduction-windows-bootstrap-canary" ]; then
-    mkdir -p "$output_dir/ClassroomPath/ClassroomPath"
-    cp -R "$TEST_WINDOWS_ARTIFACT_DIR"/. "$output_dir/ClassroomPath/ClassroomPath"/
-    exit 0
-  fi
-  if [ "$artifact_name" = "linux-production-bootstrap-canary" ]; then
-    mkdir -p "$output_dir/ClassroomPath/ClassroomPath"
-    cp -R "$TEST_LINUX_ARTIFACT_DIR"/. "$output_dir/ClassroomPath/ClassroomPath"/
-    exit 0
-  fi
 fi
 echo "unexpected gh invocation: $*" >&2
 exit 1
@@ -914,6 +939,7 @@ exit 1
     const originalCwd = process.cwd();
     const originalPath = process.env.PATH;
     const originalWindowsArtifactDir = process.env.TEST_WINDOWS_ARTIFACT_DIR;
+    const originalWindowsInitialArtifactDir = process.env.TEST_WINDOWS_INITIAL_ARTIFACT_DIR;
     const originalLinuxArtifactDir = process.env.TEST_LINUX_ARTIFACT_DIR;
     const originalFetch = globalThis.fetch;
 
@@ -921,6 +947,7 @@ exit 1
       process.chdir(workspace);
       process.env.PATH = `${fakeBinDir}:${originalPath ?? ''}`;
       process.env.TEST_WINDOWS_ARTIFACT_DIR = windowsSourceDir;
+      process.env.TEST_WINDOWS_INITIAL_ARTIFACT_DIR = windowsInitialSourceDir;
       process.env.TEST_LINUX_ARTIFACT_DIR = linuxSourceDir;
       globalThis.fetch = (async (input: string | URL | Request) => {
         const url =
@@ -960,13 +987,18 @@ exit 1
       assert.equal(bundle.artifactIntegrity.linuxProductionBootstrapCanary.status, 'ok');
       assert.match(
         bundle.canaries.windows.artifactPath,
-        /ClassroomPath\/ClassroomPath\/production-windows-ajax-auto-allow-canary\.json/
+        /production-windows-ajax-auto-allow-canary\.json$/
       );
-      assert.match(readFileSync(ghLogPath, 'utf8'), /run download deploy-456/);
+      const ghLog = readFileSync(ghLogPath, 'utf8');
+      assert.match(ghLog, /api repos\/balejosg\/ClassroomPath\/actions\/artifacts\/501\/zip/);
+      assert.match(ghLog, /api repos\/balejosg\/ClassroomPath\/actions\/artifacts\/502\/zip/);
+      assert.doesNotMatch(ghLog, /actions\/artifacts\/499\/zip/);
+      assert.doesNotMatch(ghLog, /run download/);
     } finally {
       process.chdir(originalCwd);
       process.env.PATH = originalPath;
       process.env.TEST_WINDOWS_ARTIFACT_DIR = originalWindowsArtifactDir;
+      process.env.TEST_WINDOWS_INITIAL_ARTIFACT_DIR = originalWindowsInitialArtifactDir;
       process.env.TEST_LINUX_ARTIFACT_DIR = originalLinuxArtifactDir;
       globalThis.fetch = originalFetch;
     }
@@ -1000,34 +1032,14 @@ printf '%s\\n' "$*" >> "${ghLogPath}"
 if [ "$1" = "api" ]; then
   case "$2" in
     *"/runs/deploy-legacy/artifacts")
-      printf '%s\\n' '{"artifacts":[{"name":"windows-production-bootstrap-canary"}]}'
+      printf '%s\\n' '{"artifacts":[{"id":503,"name":"windows-production-bootstrap-canary","created_at":"2026-04-30T10:00:00.000Z","updated_at":"2026-04-30T10:00:00.000Z"}]}'
+      exit 0
+      ;;
+    *"/artifacts/503/zip")
+      zip -qr - "$TEST_WINDOWS_ARTIFACT_DIR"
       exit 0
       ;;
   esac
-fi
-if [ "$1" = "run" ] && [ "$2" = "download" ] && [ "$3" = "deploy-legacy" ]; then
-  artifact_name=''
-  output_dir=''
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --name)
-        artifact_name="$2"
-        shift 2
-        ;;
-      --dir)
-        output_dir="$2"
-        shift 2
-        ;;
-      *)
-        shift
-        ;;
-    esac
-  done
-  mkdir -p "$output_dir"
-  if [ "$artifact_name" = "windows-production-bootstrap-canary" ]; then
-    cp -R "$TEST_WINDOWS_ARTIFACT_DIR"/. "$output_dir"/
-    exit 0
-  fi
 fi
 echo "unexpected gh invocation: $*" >&2
 exit 1
@@ -1080,7 +1092,9 @@ exit 1
       });
 
       assert.equal(bundle.artifactIntegrity.preproductionWindowsBootstrapCanary.status, 'ok');
-      assert.match(readFileSync(ghLogPath, 'utf8'), /--name windows-production-bootstrap-canary/);
+      const ghLog = readFileSync(ghLogPath, 'utf8');
+      assert.match(ghLog, /api repos\/balejosg\/ClassroomPath\/actions\/artifacts\/503\/zip/);
+      assert.doesNotMatch(ghLog, /run download/);
     } finally {
       process.chdir(originalCwd);
       process.env.PATH = originalPath;
@@ -1170,36 +1184,20 @@ exit 1
       `#!/bin/sh
 set -eu
 if [ "$1" = "api" ]; then
-  printf '%s\n' '{"artifacts":[{"name":"preproduction-windows-bootstrap-canary"},{"name":"linux-production-bootstrap-canary"}]}'
-  exit 0
-fi
-if [ "$1" = "run" ] && [ "$2" = "download" ]; then
-  artifact_name=''
-  output_dir=''
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --name)
-        artifact_name="$2"
-        shift 2
-        ;;
-      --dir)
-        output_dir="$2"
-        shift 2
-        ;;
-      *)
-        shift
-        ;;
-    esac
-  done
-  mkdir -p "$output_dir"
-  if [ "$artifact_name" = "preproduction-windows-bootstrap-canary" ]; then
-    cp -R "$TEST_WINDOWS_ARTIFACT_DIR"/. "$output_dir"/
-    exit 0
-  fi
-  if [ "$artifact_name" = "linux-production-bootstrap-canary" ]; then
-    cp -R "$TEST_LINUX_ARTIFACT_DIR"/. "$output_dir"/
-    exit 0
-  fi
+  case "$2" in
+    *"/runs/123/artifacts")
+      printf '%s\n' '{"artifacts":[{"id":504,"name":"preproduction-windows-bootstrap-canary","created_at":"2026-04-30T10:00:00.000Z","updated_at":"2026-04-30T10:00:00.000Z"},{"id":505,"name":"linux-production-bootstrap-canary","created_at":"2026-04-30T10:00:00.000Z","updated_at":"2026-04-30T10:00:00.000Z"}]}'
+      exit 0
+      ;;
+    *"/artifacts/504/zip")
+      zip -qr - "$TEST_WINDOWS_ARTIFACT_DIR"
+      exit 0
+      ;;
+    *"/artifacts/505/zip")
+      zip -qr - "$TEST_LINUX_ARTIFACT_DIR"
+      exit 0
+      ;;
+  esac
 fi
 echo "unexpected gh invocation: $*" >&2
 exit 1

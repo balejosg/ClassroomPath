@@ -5,7 +5,14 @@
  * Usage: (library module, not invoked directly)
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
@@ -32,6 +39,59 @@ export {
   validateReleaseEvidenceChecklist,
   verifyArtifactIntegrity,
 } from './release-evidence-contract.mjs';
+
+function artifactTimestamp(artifact) {
+  for (const field of ['updated_at', 'created_at']) {
+    const value = artifact?.[field];
+    if (!value) {
+      continue;
+    }
+    const timestamp = Date.parse(String(value));
+    if (Number.isFinite(timestamp)) {
+      return timestamp;
+    }
+  }
+  return Number.NEGATIVE_INFINITY;
+}
+
+function compareArtifactIds(left, right) {
+  try {
+    const leftId = BigInt(String(left?.id));
+    const rightId = BigInt(String(right?.id));
+    return leftId === rightId ? 0 : leftId > rightId ? -1 : 1;
+  } catch {
+    return String(right?.id ?? '').localeCompare(String(left?.id ?? ''));
+  }
+}
+
+/**
+ * Selects one immutable artifact instance from a run. A rerun can publish
+ * multiple instances with the same name, so callers must use the newest
+ * non-expired API record and its ID for the subsequent download.
+ */
+export function selectNewestArtifact(artifacts, artifactName) {
+  return (
+    artifacts
+      .filter(
+        (artifact) =>
+          artifact?.name === artifactName &&
+          artifact?.expired !== true &&
+          artifact?.id !== undefined &&
+          artifact?.id !== null
+      )
+      .sort((left, right) => {
+        const leftTimestamp = artifactTimestamp(left);
+        const rightTimestamp = artifactTimestamp(right);
+        if (rightTimestamp > leftTimestamp) {
+          return 1;
+        }
+        if (rightTimestamp < leftTimestamp) {
+          return -1;
+        }
+        return compareArtifactIds(left, right);
+      })[0] ?? null
+  );
+}
 
 function readJsonFile(filePath) {
   return JSON.parse(readFileSync(filePath, 'utf8'));
@@ -315,23 +375,63 @@ function listRunArtifacts({ repo, runId }) {
   return Array.isArray(payload.artifacts) ? payload.artifacts : [];
 }
 
-function tryDownloadRunArtifact({ repo, runId, artifactName, outputDir }) {
-  const result = spawnSync(
-    'gh',
-    ['run', 'download', String(runId), '--repo', repo, '--name', artifactName, '--dir', outputDir],
-    {
+function commandOutput(value) {
+  return Buffer.isBuffer(value) ? value.toString('utf8') : value;
+}
+
+function tryDownloadRunArtifact({ repo, artifact, outputDir }) {
+  const artifactId = valueOrNull(artifact?.id);
+  if (!artifactId) {
+    return {
+      success: false,
+      error: 'artifact ID is missing from the GitHub API record',
+    };
+  }
+
+  mkdirSync(outputDir, { recursive: true });
+  const archivePath = resolve(outputDir, `.github-artifact-${artifactId}.zip`);
+  const download = spawnSync('gh', ['api', `repos/${repo}/actions/artifacts/${artifactId}/zip`], {
+    encoding: null,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  if (download.status !== 0) {
+    return {
+      success: false,
+      error:
+        valueOrNull(commandOutput(download.stderr)) ??
+        valueOrNull(commandOutput(download.stdout)) ??
+        'artifact download failed',
+    };
+  }
+
+  try {
+    if (!download.stdout || download.stdout.length === 0) {
+      return {
+        success: false,
+        error: 'artifact download returned an empty archive',
+      };
+    }
+    writeFileSync(archivePath, download.stdout);
+    const extraction = spawnSync('unzip', ['-q', archivePath, '-d', outputDir], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    if (extraction.status !== 0) {
+      return {
+        success: false,
+        error:
+          valueOrNull(extraction.stderr) ??
+          valueOrNull(extraction.stdout) ??
+          'artifact archive extraction failed',
+      };
     }
-  );
-
-  return {
-    success: result.status === 0,
-    error:
-      result.status === 0
-        ? null
-        : (valueOrNull(result.stderr) ?? valueOrNull(result.stdout) ?? 'download failed'),
-  };
+    return { success: true, error: null };
+  } finally {
+    if (existsSync(archivePath)) {
+      unlinkSync(archivePath);
+    }
+  }
 }
 
 export async function collectProductionHealth(productionUrl) {
@@ -397,23 +497,23 @@ function resolveArtifactEvidence({
   const listedArtifacts = listRunArtifacts({ repo, runId });
   const artifactNames = [artifactName, ...fallbackArtifactNames];
   for (const candidateArtifactName of artifactNames) {
-    const listed = listedArtifacts.some((artifact) => artifact?.name === candidateArtifactName);
-    if (!listed) {
+    const listedArtifact = selectNewestArtifact(listedArtifacts, candidateArtifactName);
+    if (!listedArtifact) {
       continue;
     }
 
     const download = tryDownloadRunArtifact({
       repo,
-      runId,
-      artifactName: candidateArtifactName,
+      artifact: listedArtifact,
       outputDir,
     });
     return {
-      listed,
+      listed: true,
       artifactDir: download.success ? outputDir : null,
       downloadError: !download.success,
       downloadErrorMessage: download.error,
       artifactName: candidateArtifactName,
+      artifactId: listedArtifact.id,
     };
   }
 
@@ -436,9 +536,7 @@ function resolveReleaseBundleEvidence({ repo, runId, releaseEvidence, outputDir 
 
   const artifactName = `release-bundle-${identity.classroomPathSha}`;
   const listedArtifacts = listRunArtifacts({ repo, runId: normalizedRunId });
-  const listedArtifact = listedArtifacts.find(
-    (artifact) => artifact?.name === artifactName && artifact.expired !== true
-  );
+  const listedArtifact = selectNewestArtifact(listedArtifacts, artifactName);
   if (!listedArtifact) {
     throw new Error(
       `exact Release Bundle proof is required: artifact ${artifactName} is missing from RC run ${normalizedRunId}`
@@ -449,8 +547,7 @@ function resolveReleaseBundleEvidence({ repo, runId, releaseEvidence, outputDir 
   mkdirSync(artifactDir, { recursive: true });
   const download = tryDownloadRunArtifact({
     repo,
-    runId: normalizedRunId,
-    artifactName,
+    artifact: listedArtifact,
     outputDir: artifactDir,
   });
   if (!download.success) {
