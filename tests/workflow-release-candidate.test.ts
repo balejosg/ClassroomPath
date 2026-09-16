@@ -622,7 +622,11 @@ describe('Release candidate workflow contracts', () => {
     const rebuildCondition =
       "needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true'";
 
-    for (const jobName of ['build-gateway-release-candidate', 'build-spa-release-candidate']) {
+    for (const jobName of [
+      'build-gateway-release-candidate',
+      'build-spa-release-candidate',
+      'build-verifier-release-candidate',
+    ]) {
       assert.ok(
         String(jobs[jobName]?.with?.build_required ?? '').includes(rebuildCondition),
         `${jobName} must not reuse an image whose OpenPath provenance belongs to another SHA`
