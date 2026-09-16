@@ -542,34 +542,59 @@ void describe('Remote Deploy Bootstrap', () => {
           'prepare_staging_checkout',
           'run_staging_preflight_checks',
           'cleanup_staging_disk_if_needed',
-          'run_staging_database_migrations',
-          'start_staging_runtime',
-          'wait_for_staging_runtime_readiness',
+          'execute_staging_runtime',
         ],
       ],
       [
         'deploy-production-remote.sh',
         readFileSync(productionRemotePath, 'utf-8'),
         [
-          'load_production_deploy_payload',
+          'load_production_deploy_payload_intent',
           'prepare_production_checkout',
+          'load_production_executor_helpers',
+          'load_production_deploy_payload',
           'load_production_release_manifest',
           'classify_production_migration_risk',
+          'ensure_production_recovery_host_capacity',
           'production_recovery_artifact_prepare',
-          'cleanup_production_disk_if_needed',
-          'run_production_database_migrations',
-          'start_production_runtime',
-          'wait_for_production_runtime_readiness',
+          'execute_production_runtime',
         ],
       ],
     ] as const) {
+      const phaseBlock = content.slice(content.lastIndexOf('run_remote_deploy_phases \\'));
       assert.ok(
-        content.includes('run_remote_deploy_phases \\') &&
+        phaseBlock.includes('run_remote_deploy_phases \\') &&
           phases.every(
-            (phase) => content.includes(`  ${phase} \\`) || content.includes(`  ${phase}`)
+            (phase) => phaseBlock.includes(`  ${phase} \\`) || phaseBlock.includes(`  ${phase}`)
           ),
         `${scriptName} should pass its ordered runtime phases to run_remote_deploy_phases`
       );
     }
+  });
+
+  void test('production restores disposable Docker capacity before recovery preflight', () => {
+    const productionRemote = readFileSync(productionRemotePath, 'utf-8');
+    const phaseBlock = productionRemote.slice(
+      productionRemote.lastIndexOf('run_remote_deploy_phases \\')
+    );
+    const manifestIndex = phaseBlock.indexOf('load_production_release_manifest');
+    const capacityIndex = phaseBlock.indexOf('ensure_production_recovery_host_capacity');
+    const recoveryIndex = phaseBlock.indexOf('production_recovery_artifact_prepare');
+    const capacityGuard =
+      productionRemote.match(/ensure_production_recovery_host_capacity\(\) \{[\s\S]*?^\}/mu)?.[0] ??
+      '';
+
+    assert.ok(manifestIndex >= 0, 'production must verify the immutable release bundle first');
+    assert.ok(
+      capacityIndex > manifestIndex,
+      'capacity cleanup must occur after verifier-image validation can consume disk'
+    );
+    assert.ok(
+      recoveryIndex > capacityIndex,
+      'exact recovery preflight must run only after capacity is restored and revalidated'
+    );
+    assert.match(capacityGuard, /cleanup_production_disk_if_needed/u);
+    assert.match(capacityGuard, /production_host_contract_validate/u);
+    assert.match(capacityGuard, /PRODUCTION_HOST_DISK_THRESHOLD_PERCENT/u);
   });
 });

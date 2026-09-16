@@ -587,12 +587,34 @@ jobs:
           printf 'source_version=%s\n' "$source_version" >> "$GITHUB_OUTPUT"
           printf 'contract_version=%s\n' "$contract_version" >> "$GITHUB_OUTPUT"
           printf 'diagnostic_fallback_base64=%s\n' "$(base64 recovery-source/scripts/lib/production-deployment-diagnostic-fallback.sh | tr -d '\n')" >> "$GITHUB_OUTPUT"
+          rollback_transport_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+          rollback_transport_dir="$(mktemp -d "$rollback_transport_root/production-recovery-transport.XXXXXX")"
+          rollback_transport_path="$rollback_transport_root/production-recovery-transport.tgz"
+          mkdir -p "$rollback_transport_dir/lib"
+          cp recovery-source/scripts/rollback-production-remote.sh "$rollback_transport_dir/"
+          cp recovery-source/scripts/resolve-ssh-host.sh "$rollback_transport_dir/"
+          cp recovery-source/scripts/lib/github-actions-remote.sh "$rollback_transport_dir/lib/"
+          tar -czf "$rollback_transport_path" \
+            -C "$rollback_transport_dir" \
+            rollback-production-remote.sh \
+            resolve-ssh-host.sh \
+            lib/github-actions-remote.sh
+          rollback_transport_listing="$(tar -tzf "$rollback_transport_path")"
+          for rollback_transport_file in \
+            rollback-production-remote.sh \
+            resolve-ssh-host.sh \
+            lib/github-actions-remote.sh; do
+            if [ "$(printf '%s\n' "$rollback_transport_listing" | grep -Fxc "$rollback_transport_file")" -ne 1 ]; then
+              echo "::error::Stable rollback transport is missing $rollback_transport_file"
+              exit 1
+            fi
+          done
 
       - name: Upload stable rollback transport wrapper
         uses: actions/upload-artifact@v7
         with:
           name: production-recovery-transport-${{ github.run_id }}
-          path: recovery-source/scripts/rollback-production-remote.sh
+          path: ${{ runner.temp }}/production-recovery-transport.tgz
           retention-days: 14
 
   deploy-production:
@@ -1211,7 +1233,28 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: production-recovery-transport-${{ github.run_id }}
-          path: scripts
+          path: rollback-transport
+
+      - name: Extract stable rollback transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          transport_path='rollback-transport/production-recovery-transport.tgz'
+          transport_listing="$(tar -tzf "$transport_path")"
+          for transport_file in \
+            rollback-production-remote.sh \
+            resolve-ssh-host.sh \
+            lib/github-actions-remote.sh; do
+            if [ "$(printf '%s\n' "$transport_listing" | grep -Fxc "$transport_file")" -ne 1 ]; then
+              echo "::error::Stable rollback transport is missing $transport_file"
+              exit 1
+            fi
+          done
+          mkdir -p scripts
+          tar -xzf "$transport_path" -C scripts
+          test -f scripts/rollback-production-remote.sh
+          test -f scripts/lib/github-actions-remote.sh
+          test -f scripts/resolve-ssh-host.sh
 
       - name: Resolve deploy host
         id: resolve

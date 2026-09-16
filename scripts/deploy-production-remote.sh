@@ -643,6 +643,24 @@ classify_production_migration_risk() {
   release_execution_write_deploy_context "$DEPLOY_CONTEXT_FILE"
 }
 
+ensure_production_recovery_host_capacity() {
+  local disk_threshold="${PRODUCTION_HOST_DISK_THRESHOLD_PERCENT:-80}"
+
+  # Immutable bundle verification can pull its verifier image after the first
+  # host-contract check. Reclaim only Docker's unused objects, then prove the
+  # recovery preflight still has the hard capacity required to run.
+  FAILURE_POINT="recovery-host-capacity"
+  FAILURE_CATEGORY="host-contract"
+  FAILURE_MESSAGE="production host capacity did not meet recovery preflight after Docker cleanup"
+  export FAILURE_POINT FAILURE_CATEGORY FAILURE_MESSAGE
+
+  DEPLOY_DISK_THRESHOLD_PERCENT="$disk_threshold" cleanup_production_disk_if_needed || return 1
+  production_host_contract_validate \
+    "$CLASSROOMPATH_DEPLOY_ROOT" \
+    "$disk_threshold" \
+    "$PRODUCTION_HOST_CONTRACT_REPORT_FILE" || return 1
+}
+
 run_production_database_migrations() {
   FAILURE_POINT="migration"
   FAILURE_CATEGORY="migration"
@@ -713,5 +731,6 @@ run_remote_deploy_phases \
   load_production_deploy_payload \
   load_production_release_manifest \
   classify_production_migration_risk \
+  ensure_production_recovery_host_capacity \
   production_recovery_artifact_prepare \
   execute_production_runtime

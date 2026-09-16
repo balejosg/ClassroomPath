@@ -27,6 +27,33 @@ type RollbackScenario = {
   expected: boolean;
 };
 
+test('production rollback workflow resolves its host from the independently packaged recovery transport', () => {
+  const workflow = readFileSync(resolve(projectRoot, '.github/workflows/deploy.yml'), 'utf8');
+  const recoveryJob =
+    workflow.match(/  prepare-production-recovery:[\s\S]*?(?=\n  [a-z0-9-]+:|$)/u)?.[0] ?? '';
+  const rollbackJob =
+    workflow.match(/  rollback-production:[\s\S]*?(?=\n  [a-z0-9-]+:|$)/u)?.[0] ?? '';
+
+  const transportIndex = rollbackJob.indexOf('Download stable rollback transport wrapper');
+  const resolverIndex = rollbackJob.indexOf('Resolve deploy host');
+
+  assert.doesNotMatch(rollbackJob, /actions\/checkout|Checkout/u);
+  assert.match(recoveryJob, /recovery-source\/scripts\/lib\/github-actions-remote\.sh/u);
+  assert.match(recoveryJob, /recovery-source\/scripts\/resolve-ssh-host\.sh/u);
+  assert.match(recoveryJob, /production-recovery-transport\.tgz/u);
+  assert.ok(transportIndex >= 0, 'rollback must download its stable transport');
+  assert.ok(resolverIndex > transportIndex, 'host resolution must run after transport setup');
+  assert.match(rollbackJob, /Extract stable rollback transport/u);
+  assert.match(
+    rollbackJob,
+    /transport_path='rollback-transport\/production-recovery-transport\.tgz'/u
+  );
+  assert.match(rollbackJob, /tar -xzf "\$transport_path" -C scripts/u);
+  assert.match(rollbackJob, /test -f scripts\/lib\/github-actions-remote\.sh/u);
+  assert.match(rollbackJob, /test -f scripts\/resolve-ssh-host\.sh/u);
+  assert.match(rollbackJob, /source scripts\/lib\/github-actions-remote\.sh/u);
+});
+
 test('production rollback workflow requires exact durable COMMITTED identity', () => {
   const workflow = readFileSync(resolve(projectRoot, '.github/workflows/deploy.yml'), 'utf8');
   const deployJob = workflow.match(/  deploy-production:[\s\S]*?(?=\n  [a-z0-9-]+:|$)/u)?.[0];
