@@ -344,7 +344,12 @@ async function fetchWorkflowRunsForSha({ repo, workflow, sha, token }) {
 function workflowRunMatchesSha(workflowRun, sha) {
   return (
     workflowRun.head_sha === sha &&
-    ['queued', 'in_progress', 'completed'].includes(workflowRun.status)
+    // A completed workflow is not evidence that its mapped required check
+    // exists. For example, workflow_dispatch prerelease runs can finish
+    // successfully while the publish job is skipped, and cancelled E2E runs
+    // still report the target SHA. Reuse only live runs; a missing check must
+    // dispatch a fresh exact-SHA workflow.
+    ['queued', 'in_progress', 'waiting', 'requested', 'pending'].includes(workflowRun.status)
   );
 }
 

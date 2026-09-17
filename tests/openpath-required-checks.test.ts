@@ -692,6 +692,69 @@ describe('OpenPath required check auto-dispatch', () => {
     }
   });
 
+  it('does not reuse a completed workflow run when its required check is missing', async () => {
+    const originalFetch = globalThis.fetch;
+    const dispatches: unknown[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url.includes('/actions/workflows/e2e-tests.yml/runs')) {
+        return buildFetchResponse({
+          workflow_runs: [
+            {
+              id: 202,
+              head_sha: sha,
+              status: 'completed',
+              conclusion: 'success',
+            },
+          ],
+        });
+      }
+
+      if (url.includes('/git/ref/heads/release-evidence/')) {
+        return buildFetchResponse({
+          ref: `refs/heads/release-evidence/${sha}`,
+        });
+      }
+
+      if (url.includes('/actions/workflows/e2e-tests.yml/dispatches')) {
+        dispatches.push(JSON.parse(String(init?.body)));
+        return {
+          ok: true,
+          status: 204,
+          json: async () => ({}),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected URL ${url}`);
+    }) as typeof fetch;
+
+    try {
+      const result = await dispatchMissingOpenPathRequiredChecks({
+        repo,
+        sha,
+        token: 'dispatch-token',
+        missingChecks: ['E2E Summary'],
+      });
+
+      assert.deepEqual(result.dispatched, ['E2E Summary']);
+      assert.deepEqual(result.reused, []);
+      assert.deepEqual(dispatches, [
+        {
+          ref: `release-evidence/${sha}`,
+          inputs: {
+            platform: 'all',
+            suite: 'all',
+            student_policy_sse_group: 'auto',
+          },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('dispatches the WEDU lab workflow with the full-lab timeout input', async () => {
     const originalFetch = globalThis.fetch;
     const dispatches: unknown[] = [];
