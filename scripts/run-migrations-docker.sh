@@ -173,6 +173,7 @@ run_cp_migrations() {
   fi
 
   if docker run --rm \
+    --add-host host.docker.internal:host-gateway \
     -v "$APP_DIR:/app" \
     -v "$ENV_FILE:/app/.env:ro" \
     -w /app \
@@ -197,6 +198,7 @@ run_openpath_migrations() {
   log=$(mktemp)
 
   if docker run --rm \
+    --add-host host.docker.internal:host-gateway \
     -v "$APP_DIR/upstream/openpath:/app" \
     -v "$ENV_FILE:/app/.env:ro" \
     -v "$OPENPATH_DB_ENV_HELPER_PATH:/derive-openpath-db-env.mjs:ro" \

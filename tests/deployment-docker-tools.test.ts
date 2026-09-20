@@ -82,6 +82,17 @@ void describe('Deploy Docker Tool Helpers', () => {
     );
   });
 
+  void test('workspace migration containers resolve host.docker.internal like the prebuilt runner', () => {
+    const migrationsContent = readFileSync(migrationsScriptPath, 'utf-8');
+    const addHostCount =
+      migrationsContent.match(/--add-host host\.docker\.internal:host-gateway/g)?.length ?? 0;
+    assert.equal(
+      addHostCount,
+      3,
+      'every docker run in run-migrations-docker.sh (prebuilt runner, ClassroomPath workspace, OpenPath workspace) must map host.docker.internal'
+    );
+  });
+
   void test('deploy shell helpers centralize tool-image resolution for migrations, validation, email, and smoke', () => {
     const helperContent = readFileSync(deployImagesHelperPath, 'utf-8');
     const migrationsContent = readFileSync(migrationsScriptPath, 'utf-8');
