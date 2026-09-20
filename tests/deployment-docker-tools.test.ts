@@ -38,6 +38,25 @@ void describe('Deploy Docker Tool Helpers', () => {
     );
   });
 
+  void test('staging source-build deploys forward the Windows offline template pins', () => {
+    const localRuntimeHelperPath = resolve(
+      projectRoot,
+      'scripts/lib/staging-deploy-local-runtime.sh'
+    );
+    const localRuntimeHelper = readFileSync(localRuntimeHelperPath, 'utf-8');
+    for (const name of [
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_VERSION',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_COMMIT',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_RELEASE_TAG',
+      'OPENPATH_WINDOWS_OFFLINE_TEMPLATE_SHA256',
+    ]) {
+      assert.ok(
+        localRuntimeHelper.includes(`remote_assignment ${name}`),
+        `staging local runtime helper must forward ${name} to the remote deploy`
+      );
+    }
+  });
+
   void test('staging deploy reuses the release verifier image for remote runtime validation', () => {
     const localDeployScriptPath = resolve(projectRoot, 'scripts/deploy-staging-local.sh');
     const localRuntimeHelperPath = resolve(
