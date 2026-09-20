@@ -164,9 +164,13 @@ case "$STAGING_IMAGE_MODE" in
     release-candidate)
         ;;
     source-build)
-        log_error "npm run deploy:staging does not support source-build staging deploys"
-        log_error "Allowed value: release-candidate"
-        exit 2
+        if [ "${STAGING_ALLOW_SOURCE_BUILD:-0}" != "1" ]; then
+            log_error "npm run deploy:staging does not support source-build staging deploys"
+            log_error "Set STAGING_ALLOW_SOURCE_BUILD=1 for an operator-authorized debug staging deploy"
+            log_error "Allowed value: release-candidate"
+            exit 2
+        fi
+        log_warn "Authorized source-build staging deploy: no release candidate and no OpenPath promotion contract; this deployment can never produce promotion evidence"
         ;;
     *)
         log_error "Invalid STAGING_IMAGE_MODE: $STAGING_IMAGE_MODE"

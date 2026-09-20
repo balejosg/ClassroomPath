@@ -805,6 +805,10 @@ bash "$2"
     assert.ok(localContent.includes('Allowed value: release-candidate'));
     assert.ok(localContent.includes('does not support source-build staging deploys'));
     assert.ok(
+      localContent.includes('STAGING_ALLOW_SOURCE_BUILD') &&
+        localContent.includes('can never produce promotion evidence')
+    );
+    assert.ok(
       releaseHelperContent.includes('STAGING_RELEASE_MANIFEST_FILE') &&
         releaseHelperContent.includes('STAGING_RELEASE_MANIFEST_B64')
     );
