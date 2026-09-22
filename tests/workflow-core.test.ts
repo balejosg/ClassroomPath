@@ -873,10 +873,13 @@ describe('Workflow core contracts', () => {
     const bootstrapCanaryScriptText = readText(
       'scripts/create-production-windows-bootstrap-canary.mjs'
     );
+    const stagingInstallerScriptPath = 'scripts/generate-staging-windows-installer.mjs';
+    const stagingInstallerScriptText = readText(stagingInstallerScriptPath);
 
     assert.ok(
       existsSync(resolve(projectRoot, 'scripts/create-production-windows-bootstrap-canary.mjs'))
     );
+    assert.ok(existsSync(resolve(projectRoot, stagingInstallerScriptPath)));
     assert.ok(productionBootstrapWorkflow.on?.workflow_dispatch);
     assert.ok(productionBootstrapJob);
     assert.deepEqual(productionBootstrapJob?.['runs-on'], [
@@ -913,6 +916,23 @@ describe('Workflow core contracts', () => {
     assert.equal(String(setupNodeStep?.with?.['enable-cache'] ?? ''), 'false');
     assert.ok(
       productionBootstrapWorkflowText.includes('create-production-windows-bootstrap-canary.mjs')
+    );
+    assert.ok(
+      productionBootstrapWorkflowText.includes('Generate personalized staging Windows installer') &&
+        productionBootstrapWorkflowText.includes(
+          'node scripts/generate-staging-windows-installer.mjs'
+        ) &&
+        productionBootstrapWorkflowText.includes('STAGING_WINDOWS_CANARY_EMAIL') &&
+        productionBootstrapWorkflowText.includes('STAGING_WINDOWS_CANARY_PASSWORD') &&
+        productionBootstrapWorkflowText.includes('STAGING_WINDOWS_CANARY_CLASSROOM_ID') &&
+        productionBootstrapWorkflowText.includes('Upload personalized staging Windows installer'),
+      'staging Windows canary must generate and archive a real enrollment-bearing installer'
+    );
+    assert.ok(
+      stagingInstallerScriptText.includes('windowsOfflineInstaller.generate') &&
+        stagingInstallerScriptText.includes('sha256 mismatch') &&
+        stagingInstallerScriptText.includes('writeFileSync'),
+      'staging installer helper must generate, hash-verify, and write the executable'
     );
     assert.ok(
       productionBootstrapWorkflowText.includes('id: blocked-page-domain') &&
