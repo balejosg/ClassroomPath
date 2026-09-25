@@ -71,9 +71,12 @@ jobs:
           # The promotion scripts resolve the stage hosts from the repository
           # secrets; without these exports the wrapper falls back to the
           # placeholder staging-host.example.invalid.
-          echo "STAGING_HOST=${{ secrets.STAGING_DEPLOY_HOST }}" >> "$GITHUB_ENV"
+          # Resolve the staging deploy host the same way the nightly candidate
+          # workflow does: the LAN address is the authoritative deploy host
+          # that owns /srv/classroompath/release-state.
+          echo "STAGING_HOST=${{ secrets.STAGING_DEPLOY_LAN_HOST || secrets.STAGING_DEPLOY_HOST }}" >> "$GITHUB_ENV"
           echo "STAGING_USER=${{ secrets.STAGING_DEPLOY_USER }}" >> "$GITHUB_ENV"
-          echo "STAGING_PORT=${{ secrets.STAGING_DEPLOY_PORT }}" >> "$GITHUB_ENV"
+          echo "STAGING_PORT=${{ secrets.STAGING_DEPLOY_LAN_PORT || secrets.STAGING_DEPLOY_PORT }}" >> "$GITHUB_ENV"
           echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> "$GITHUB_ENV"
           echo "DEPLOY_USER=${{ secrets.DEPLOY_USER }}" >> "$GITHUB_ENV"
           echo "DEPLOY_PORT=${{ secrets.DEPLOY_PORT }}" >> "$GITHUB_ENV"
