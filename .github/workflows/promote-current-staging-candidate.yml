@@ -123,6 +123,17 @@ jobs:
             fi
           done
 
+      - name: Dump staging release state (diagnostic)
+        shell: bash
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_DEPLOY_LAN_HOST || secrets.STAGING_DEPLOY_HOST }}
+          STAGING_PORT: ${{ secrets.STAGING_DEPLOY_LAN_PORT || secrets.STAGING_DEPLOY_PORT }}
+          STAGING_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i "$STAGING_SSH_KEY" -p "$STAGING_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "${STAGING_USER}@${STAGING_HOST}" \
+            'echo "== state dir =="; ls -la /srv/classroompath/release-state/ 2>&1 | head -20; echo "== staging-verification.env =="; cat /srv/classroompath/release-state/staging-verification.env 2>&1 | head -40; echo "== current-images.env =="; cat /srv/classroompath/release-state/current-images.env 2>&1 | head -30' || true
+
       - name: Ensure GitHub CLI
         shell: bash
         env:
