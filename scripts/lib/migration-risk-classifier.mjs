@@ -10,14 +10,39 @@ import { execFileSync } from 'node:child_process';
 
 export const MIGRATION_GLOBS = ['api/drizzle/*.sql', 'upstream/openpath/api/drizzle/*.sql'];
 
+function resolveUsableRef(repoRoot, ref) {
+  if (!ref) {
+    return null;
+  }
+  try {
+    execFileSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], {
+      cwd: repoRoot,
+      stdio: 'ignore',
+    });
+    return ref;
+  } catch {
+    return null;
+  }
+}
+
 export function listChangedMigrationFiles({ repoRoot, fromRef, toRef }) {
   if (!fromRef || !toRef || fromRef === toRef) {
     return [];
   }
 
+  // Historical staging deployments recorded the literal fallback value
+  // "origin-main" as APP_SHA, which is not a usable git revision. Fall back to
+  // the fetched remote main (and to HEAD for the head side) so the risk
+  // classification keeps running instead of aborting the deployment.
+  const baseRef = resolveUsableRef(repoRoot, fromRef) ?? resolveUsableRef(repoRoot, 'origin/main');
+  if (!baseRef) {
+    return [];
+  }
+  const headRef = resolveUsableRef(repoRoot, toRef) ?? 'HEAD';
+
   const output = execFileSync(
     'git',
-    ['diff', '--name-only', `${fromRef}..${toRef}`, '--', ...MIGRATION_GLOBS],
+    ['diff', '--name-only', `${baseRef}..${headRef}`, '--', ...MIGRATION_GLOBS],
     { cwd: repoRoot, encoding: 'utf8' }
   );
 
