@@ -78,6 +78,48 @@ jobs:
           echo "DEPLOY_USER=${{ secrets.DEPLOY_USER }}" >> "$GITHUB_ENV"
           echo "DEPLOY_PORT=${{ secrets.DEPLOY_PORT }}" >> "$GITHUB_ENV"
 
+      - name: Export deploy target configuration
+        shell: bash
+        env:
+          CLASSROOMPATH_STAGING_PUBLIC_URL: ${{ vars.CLASSROOMPATH_STAGING_PUBLIC_URL }}
+          CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL: ${{ vars.CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL }}
+          CLASSROOMPATH_STAGING_GATEWAY_HEALTH_URL: ${{ vars.CLASSROOMPATH_STAGING_GATEWAY_HEALTH_URL }}
+          CLASSROOMPATH_STAGING_READY_URL: ${{ vars.CLASSROOMPATH_STAGING_READY_URL }}
+          CLASSROOMPATH_STAGING_API_HEALTH_URL: ${{ vars.CLASSROOMPATH_STAGING_API_HEALTH_URL }}
+          CLASSROOMPATH_STAGING_API_CONFIG_URL: ${{ vars.CLASSROOMPATH_STAGING_API_CONFIG_URL }}
+          CLASSROOMPATH_STAGING_CONTAINER_PLATFORM: ${{ vars.CLASSROOMPATH_STAGING_CONTAINER_PLATFORM }}
+          CLASSROOMPATH_PRODUCTION_PUBLIC_URL: ${{ vars.CLASSROOMPATH_PRODUCTION_PUBLIC_URL }}
+          CLASSROOMPATH_PRODUCTION_CANARY_PUBLIC_URL: ${{ vars.CLASSROOMPATH_PRODUCTION_CANARY_PUBLIC_URL }}
+          CLASSROOMPATH_PRODUCTION_GATEWAY_HEALTH_URL: ${{ vars.CLASSROOMPATH_PRODUCTION_GATEWAY_HEALTH_URL }}
+          CLASSROOMPATH_PRODUCTION_READY_URL: ${{ vars.CLASSROOMPATH_PRODUCTION_READY_URL }}
+          CLASSROOMPATH_PRODUCTION_API_HEALTH_URL: ${{ vars.CLASSROOMPATH_PRODUCTION_API_HEALTH_URL }}
+          CLASSROOMPATH_PRODUCTION_API_CONFIG_URL: ${{ vars.CLASSROOMPATH_PRODUCTION_API_CONFIG_URL }}
+        run: |
+          set -euo pipefail
+          # The promotion orchestrator resolves deploy targets from the
+          # CLASSROOMPATH_<ENV>_<FIELD> environment overrides; map the public
+          # repository variables so CI does not fall back to the .invalid
+          # placeholders in config/deploy-targets.json.
+          for name in \
+            CLASSROOMPATH_STAGING_PUBLIC_URL \
+            CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL \
+            CLASSROOMPATH_STAGING_GATEWAY_HEALTH_URL \
+            CLASSROOMPATH_STAGING_READY_URL \
+            CLASSROOMPATH_STAGING_API_HEALTH_URL \
+            CLASSROOMPATH_STAGING_API_CONFIG_URL \
+            CLASSROOMPATH_STAGING_CONTAINER_PLATFORM \
+            CLASSROOMPATH_PRODUCTION_PUBLIC_URL \
+            CLASSROOMPATH_PRODUCTION_CANARY_PUBLIC_URL \
+            CLASSROOMPATH_PRODUCTION_GATEWAY_HEALTH_URL \
+            CLASSROOMPATH_PRODUCTION_READY_URL \
+            CLASSROOMPATH_PRODUCTION_API_HEALTH_URL \
+            CLASSROOMPATH_PRODUCTION_API_CONFIG_URL; do
+            value="$(printenv "$name" || true)"
+            if [ -n "$value" ]; then
+              printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
+            fi
+          done
+
       - name: Ensure GitHub CLI
         shell: bash
         env:
