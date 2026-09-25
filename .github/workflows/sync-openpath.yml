@@ -197,7 +197,7 @@ jobs:
 
       - name: Open Pull Request
         if: steps.lock.outputs.locked != 'true' && steps.verify.outcome == 'success' && steps.mode.outputs.mode == 'pull-request' && (steps.check.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch')
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'chore: update openpath submodule to ${{ steps.check.outputs.latest }}'
