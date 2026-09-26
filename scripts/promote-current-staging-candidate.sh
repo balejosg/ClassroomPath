@@ -81,18 +81,18 @@ read_env_value() {
 
 rc_run_id="$(read_env_value "$current_state_file" RC_RUN_ID)"
 rc_run_id="${rc_run_id:-$(read_env_value "$current_state_file" STAGING_RELEASE_RUN_ID)}"
-verified_state="$(read_env_value "$verification_state_file" STAGING_VERIFICATION_STATE)"
-verified_source="$(read_env_value "$verification_state_file" STAGING_VERIFIED_IMAGE_SOURCE)"
-verified_rc_run_id="$(read_env_value "$verification_state_file" STAGING_VERIFIED_RC_RUN_ID)"
-verified_rc_run_id="${verified_rc_run_id:-$(read_env_value "$verification_state_file" RC_RUN_ID)}"
 
 [[ "$rc_run_id" =~ ^[0-9]+$ ]] || die "Staging current-images.env has no exact RC run ID" 1
-[ "$verified_state" = success ] ||
-  die "Staging verification state=${verified_state:-unset}; expected success" 1
-[ "$verified_source" = release-candidate ] ||
-  die "Staging verified image source=${verified_source:-unset}; expected release-candidate" 1
-[ "$rc_run_id" = "$verified_rc_run_id" ] ||
-  die "Staging RC run ID does not match the verified staging RC" 1
+
+# The staging verification state is produced by the promotion plan itself:
+# release:promote runs deploy-staging (npm run deploy:staging, which deploys
+# the exact RC and persists the verification), then verify-staging-exact,
+# production-readiness, release-preflight, and only then approval (--execute)
+# and tag-production. Requiring a pre-existing success state here is a
+# chicken-and-egg that no workflow satisfies (the deploy path that seeds the
+# state also seeds it as pending), so resolve time only enforces the exact-RC
+# identity and the verification gates run right after the plan freshly
+# deploys and verifies staging.
 
 promotion_args=(--rc-run-id "$rc_run_id" --auto-tag --execute)
 if [ "$local_only" -eq 1 ]; then
