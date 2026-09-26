@@ -91,6 +91,7 @@ jobs:
           echo "CP_BILLING_MODE=${{ vars.CP_BILLING_MODE }}" >> "$GITHUB_ENV"
           echo "STAGING_GHCR_USERNAME=${{ secrets.STAGING_GHCR_USERNAME || 'balejosg' }}" >> "$GITHUB_ENV"
           echo "STAGING_GHCR_TOKEN=${{ secrets.STAGING_GHCR_TOKEN || secrets.CLASSROOMPATH_SYNC_TOKEN }}" >> "$GITHUB_ENV"
+          echo "PRODUCTION_RECOVERY_SHA=${{ vars.PRODUCTION_RECOVERY_SHA }}" >> "$GITHUB_ENV"
 
       - name: Export deploy target configuration
         shell: bash
