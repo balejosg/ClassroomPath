@@ -80,6 +80,11 @@ jobs:
           echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> "$GITHUB_ENV"
           echo "DEPLOY_USER=${{ secrets.DEPLOY_USER }}" >> "$GITHUB_ENV"
           echo "DEPLOY_PORT=${{ secrets.DEPLOY_PORT }}" >> "$GITHUB_ENV"
+          # The Windows prepromotion evidence step drives the classroompath
+          # Windows runner VM directly through Proxmox; both values come from
+          # repository variables so the plan can reach the lab.
+          echo "WINDOWS_RUNNER_VMID=${{ vars.WINDOWS_RUNNER_VMID }}" >> "$GITHUB_ENV"
+          echo "WINDOWS_RUNNER_PROXMOX_HOST=${{ vars.WINDOWS_RUNNER_PROXMOX_HOST }}" >> "$GITHUB_ENV"
 
       - name: Export deploy target configuration
         shell: bash
