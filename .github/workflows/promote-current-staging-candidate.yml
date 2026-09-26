@@ -85,6 +85,12 @@ jobs:
           # repository variables so the plan can reach the lab.
           echo "WINDOWS_RUNNER_VMID=${{ vars.WINDOWS_RUNNER_VMID }}" >> "$GITHUB_ENV"
           echo "WINDOWS_RUNNER_PROXMOX_HOST=${{ vars.WINDOWS_RUNNER_PROXMOX_HOST }}" >> "$GITHUB_ENV"
+          # The production-readiness gate matches these env names against the
+          # repository and production-environment configuration.
+          echo "CLASSROOMPATH_DEPLOY_ROOT=${{ secrets.CLASSROOMPATH_DEPLOY_ROOT || vars.CLASSROOMPATH_DEPLOY_ROOT }}" >> "$GITHUB_ENV"
+          echo "CP_BILLING_MODE=${{ vars.CP_BILLING_MODE }}" >> "$GITHUB_ENV"
+          echo "STAGING_GHCR_USERNAME=${{ secrets.STAGING_GHCR_USERNAME || 'balejosg' }}" >> "$GITHUB_ENV"
+          echo "STAGING_GHCR_TOKEN=${{ secrets.STAGING_GHCR_TOKEN || secrets.CLASSROOMPATH_SYNC_TOKEN }}" >> "$GITHUB_ENV"
 
       - name: Export deploy target configuration
         shell: bash
@@ -139,6 +145,20 @@ jobs:
           ssh -i "$STAGING_SSH_KEY" -p "$STAGING_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "${STAGING_USER}@${STAGING_HOST}" \
             'echo "== state dir =="; ls -la /srv/classroompath/release-state/ 2>&1 | head -20; echo "== staging-verification.env =="; cat /srv/classroompath/release-state/staging-verification.env 2>&1 | head -40; echo "== current-images.env =="; cat /srv/classroompath/release-state/current-images.env 2>&1 | head -30' || true
 
+      - name: Prepare independent production recovery source checkout
+        shell: bash
+        env:
+          PRODUCTION_RECOVERY_SHA: ${{ vars.PRODUCTION_RECOVERY_SHA }}
+        run: |
+          set -euo pipefail
+          test -n "$PRODUCTION_RECOVERY_SHA"
+          recovery_root="$RUNNER_TEMP/production-recovery-source"
+          rm -rf "$recovery_root"
+          git clone --quiet --no-tags https://github.com/${{ github.repository }}.git "$recovery_root"
+          git -C "$recovery_root" checkout --quiet "$PRODUCTION_RECOVERY_SHA"
+          test "$(git -C "$recovery_root" rev-parse HEAD)" = "$PRODUCTION_RECOVERY_SHA"
+          echo "PRODUCTION_RECOVERY_SOURCE_ROOT=$recovery_root" >> "$GITHUB_ENV"
+
       - name: Ensure GitHub CLI
         shell: bash
         env:
@@ -186,8 +206,11 @@ jobs:
       - name: Resolve and delegate current staging candidate
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The production-readiness gate lists repository and environment
+          # secrets/variables through `gh`, which requires admin-level access
+          # that the default workflow token does not have.
+          GH_TOKEN: ${{ secrets.CLASSROOMPATH_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.CLASSROOMPATH_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
           PROMOTION_TAG_PUSH_TOKEN: ${{ steps.promotion-app-token.outputs.token }}
         run: |
           set -euo pipefail
