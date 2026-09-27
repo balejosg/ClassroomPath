@@ -371,6 +371,14 @@ describe('Deploy workflow contracts', () => {
       !/prepromotion-windows-evidence\.mjs[\s\S]{0,200}\n {2}exit 1$/m.test(verifyScript),
       'rehearsal branch must use blocked(), not a bare exit 1'
     );
+    // The readiness evidence writer must bind the staged OpenPath identity:
+    // without these flags an eligible candidate fails inside
+    // promotion-evidence-cli with "openpathSha and contractSha256 are
+    // required together".
+    assert.match(
+      verifyScript,
+      /write-tag-identity[\s\S]{0,400}--openpath-sha "\$TARGET_OPENPATH_SHA"[\s\S]{0,200}--contract-sha256 "\$staging_contract_sha256"/u
+    );
   });
 
   test('manual current staging promotion workflow creates a tag and leaves deploy to deploy.yml', () => {
