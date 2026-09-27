@@ -1605,12 +1605,15 @@ warn_if_other_release_candidate_run_in_progress target-sha
     assert.ok(existsSync(promoteCurrentStagingPreflightPath));
   });
 
-  test('promotion helper forwards only the verified staging RC to the canonical orchestrator', () => {
+  test('promotion helper forwards only the exact staging RC to the canonical orchestrator', () => {
     const helper = readFileSync(
       resolve(projectRoot, 'scripts/promote-current-staging-candidate.sh'),
       'utf-8'
     );
-    assert.match(helper, /\[ "\$rc_run_id" = "\$verified_rc_run_id" \]/u);
+    // Resolve time enforces the exact-RC identity only; the plan itself
+    // deploys, verifies, and gates the candidate afterwards.
+    assert.match(helper, /\[\[ "\$rc_run_id" =~ \^\[0-9\]\+\$ \]\]/u);
+    assert.doesNotMatch(helper, /\[ "\$rc_run_id" = "\$verified_rc_run_id" \]/u);
     assert.match(helper, /promotion_args=\(--rc-run-id "\$rc_run_id" --auto-tag --execute\)/u);
     assert.doesNotMatch(helper, /git tag -a/u);
     assert.doesNotMatch(helper, /git push origin/u);
