@@ -354,6 +354,8 @@ if [ -n "${PROMOTION_EVIDENCE_DIR:-}" ]; then
     --release-id "$RELEASE_ID" \
     --rc-run-id "$release_bundle_run_id" \
     --classroompath-sha "$TARGET_SHA" \
+    --openpath-sha "$TARGET_OPENPATH_SHA" \
+    --contract-sha256 "$staging_contract_sha256" \
     --identity-output "$PROMOTION_EVIDENCE_DIR/release-identity.env"
 fi
 
