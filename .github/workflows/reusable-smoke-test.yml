@@ -135,12 +135,34 @@ jobs:
           NODE
           exit 1
 
+      - name: Resolve verifier image from the exact release bundle
+        if: ${{ inputs.verifier_image == '' }}
+        id: verifier
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -n "${{ inputs.rc_run_id }}"
+          bundle_dir="$(mktemp -d)"
+          node scripts/wait-for-release-candidate.mjs resolve-bundle \
+            --rc-run-id "${{ inputs.rc_run_id }}" \
+            --repo "${{ github.repository }}" \
+            --output-dir "$bundle_dir" >/dev/null
+          node -e "
+            const fs = require('node:fs');
+            const bundle = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+            const verifier = String(bundle.images?.verifier ?? '');
+            if (!verifier) { throw new Error('release bundle is missing images.verifier'); }
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'verifier_image=' + verifier + '\n');
+          " "$bundle_dir/classroompath-release-bundle.json"
+
       - name: Run smoke tests
         id: smoke
         env:
           SMOKE_TEST_URL: ${{ steps.target.outputs.public_url }}
           SMOKE_TEST_TIMEOUT: '30000'
-          CLASSROOMPATH_VERIFIER_IMAGE: ${{ inputs.verifier_image }}
+          CLASSROOMPATH_VERIFIER_IMAGE: ${{ inputs.verifier_image != '' && inputs.verifier_image || steps.verifier.outputs.verifier_image }}
           CLASSROOMPATH_RELEASE_ID: ${{ inputs.release_id }}
           CLASSROOMPATH_RC_RUN_ID: ${{ inputs.rc_run_id }}
           OPENPATH_SHA: ${{ inputs.openpath_sha }}
