@@ -1066,6 +1066,16 @@ describe('Linux AJAX auto-allow canary contracts', () => {
       canaryScript,
       /journalctl -u openpath-sse-listener\.service -u openpath-update\.service/
     );
+    assert.match(
+      canaryScript,
+      /systemctl status openpath-runtime-dependency-apply\.path openpath-runtime-dependency-apply\.service/
+    );
+    assert.match(
+      canaryScript,
+      /journalctl -u openpath-runtime-dependency-apply\.service -u openpath-runtime-dependency-apply\.path/
+    );
+    assert.match(canaryScript, /runtime-dependency-overlay\.json/);
+    assert.match(canaryScript, /runtime-dependency-queue\//);
     assert.match(canaryScript, /\/etc\/openpath\/api-url\.conf/);
     assert.match(canaryScript, /openpath-native-host\.log/);
     assert.match(canaryScript, /whitelist_native_host\.json/);

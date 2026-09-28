@@ -476,6 +476,12 @@ async function collectLinuxFailureDebugSnapshot() {
     'systemctl status openpath-sse-listener.service openpath-update.service --no-pager';
   const journalctlCommand =
     'journalctl -u openpath-sse-listener.service -u openpath-update.service --no-pager -n 120';
+  const runtimeDependencyApplyStatusCommand =
+    'systemctl status openpath-runtime-dependency-apply.path openpath-runtime-dependency-apply.service --no-pager';
+  const runtimeDependencyApplyJournalCommand =
+    'journalctl -u openpath-runtime-dependency-apply.service -u openpath-runtime-dependency-apply.path --no-pager -n 200';
+  const runtimeDependencyQueueListCommand =
+    'ls -la /var/lib/openpath/runtime-dependency-queue/ /var/lib/openpath/runtime-dependency-rejected/ 2>&1 | head -60';
   const resolvConfCommand = 'cat /etc/resolv.conf';
   const originGetentCommand = `getent hosts ${ORIGIN_HOST}`;
   const [
@@ -497,6 +503,10 @@ async function collectLinuxFailureDebugSnapshot() {
     apiHostDnsmasqA,
     apiHostDnsmasqAaaa,
     openpathLog,
+    runtimeDependencyApplyStatus,
+    runtimeDependencyApplyJournal,
+    runtimeDependencyQueueListing,
+    runtimeDependencyOverlay,
   ] = await Promise.all([
     runDiagnosticCommand('systemctl', [
       'status',
@@ -553,6 +563,26 @@ async function collectLinuxFailureDebugSnapshot() {
     // openpath-update dnsmasq generation log (protected-domain emission, upstream
     // selection, restart) -- not in journald.
     runDiagnosticCommand('sudo', ['bash', '-c', 'tail -n 80 /var/log/openpath.log 2>&1']),
+    // Runtime-dependency apply path: the native host queues browser dependencies and
+    // waits for the overlay to be marked applied. Capture the path/service state, their
+    // journal, the queue/rejected dirs and the overlay so a stuck `pending` is visible.
+    runDiagnosticCommand('systemctl', [
+      'status',
+      'openpath-runtime-dependency-apply.path',
+      'openpath-runtime-dependency-apply.service',
+      '--no-pager',
+    ]),
+    runDiagnosticCommand('journalctl', [
+      '-u',
+      'openpath-runtime-dependency-apply.service',
+      '-u',
+      'openpath-runtime-dependency-apply.path',
+      '--no-pager',
+      '-n',
+      '200',
+    ]),
+    runDiagnosticCommand('sudo', ['bash', '-c', runtimeDependencyQueueListCommand]),
+    readTextEvidence('/var/lib/openpath/runtime-dependency-overlay.json'),
   ]);
 
   return {
@@ -586,6 +616,21 @@ async function collectLinuxFailureDebugSnapshot() {
       allowIpset,
       allowIpset6,
       outputChain,
+    },
+    runtimeDependency: {
+      applyStatus: {
+        ...runtimeDependencyApplyStatus,
+        systemctlCommand: runtimeDependencyApplyStatusCommand,
+      },
+      applyJournal: {
+        ...runtimeDependencyApplyJournal,
+        journalctlCommand: runtimeDependencyApplyJournalCommand,
+      },
+      queueListing: {
+        ...runtimeDependencyQueueListing,
+        queueListCommand: runtimeDependencyQueueListCommand,
+      },
+      overlay: runtimeDependencyOverlay,
     },
   };
 }
