@@ -318,7 +318,16 @@ describe('Release candidate workflow contracts', () => {
       waitForOpenPathAptPublishEnv['OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN'],
       '${{ steps.openpath-dispatch-token.outputs.token }}'
     );
-    assert.equal(waitForOpenPathAptPublishEnv['OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH'], true);
+    // Minting the dispatch token must be non-fatal: when the GitHub App is not
+    // installed on the openpath repo the call 404s, but a green SHA must still
+    // resolve its release candidate via GITHUB_TOKEN-based check reading.
+    assert.equal(openPathDispatchTokenStep?.['continue-on-error'], true);
+    // Auto-dispatch only when a token was actually minted; otherwise just wait
+    // on the existing checks (no dependency on the OpenPath dispatch App).
+    assert.equal(
+      waitForOpenPathAptPublishEnv['OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH'],
+      "${{ steps.openpath-dispatch-token.outputs.token != '' }}"
+    );
     assert.deepEqual(
       normalizeNeeds(jobs['derive-release-image-refs']?.needs).sort(),
       ['detect-release-candidate-components', 'resolve-previous-release-candidate-manifest'].sort()

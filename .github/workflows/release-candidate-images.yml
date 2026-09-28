@@ -130,9 +130,15 @@ jobs:
           name: openpath-promotion-contract-${{ github.sha }}
           path: openpath-promotion-contract-input
 
+      # Non-fatal: this only mints a token for AUTO-DISPATCHING missing OpenPath
+      # checks. If the GitHub App is not installed on the openpath repo the call
+      # 404s, but check *reading* below uses GITHUB_TOKEN, so an already-green
+      # SHA must still resolve its release candidate. Auto-dispatch degrades to
+      # off when no token is produced, mirroring sync-openpath.yml.
       - name: Create OpenPath dispatch token
         id: openpath-dispatch-token
         if: needs.detect-release-candidate-components.outputs.openpath_linux_agent_required == 'true'
+        continue-on-error: true
         uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ vars.CLASSROOMPATH_PROMOTION_APP_CLIENT_ID }}
@@ -147,7 +153,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           OPENPATH_SHA: ${{ needs.derive-release-image-refs.outputs.openpath_sha }}
           OPENPATH_REQUIRED_CHECKS: Publish Prerelease to APT Repository / Publish to APT Repository (unstable),Installer Contracts Success
-          OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH: true
+          OPENPATH_REQUIRED_CHECKS_AUTO_DISPATCH: ${{ steps.openpath-dispatch-token.outputs.token != '' }}
           OPENPATH_REQUIRED_CHECKS_DISPATCH_TOKEN: ${{ steps.openpath-dispatch-token.outputs.token }}
           OPENPATH_PRERELEASE_RECOVERY_MODE: rerun-failed-once
         run: |
