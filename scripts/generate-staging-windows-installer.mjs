@@ -5,7 +5,7 @@
  * validation always runs against an installer with real enrollment.
  *
  * Env:
- *   STAGING_PUBLIC_URL  required, e.g. https://staging.classroompath.eu
+ *   STAGING_PUBLIC_URL  required, e.g. https://staging.example.invalid
  *   OUTPUT_PATH         optional, defaults to ./openpath-staging-installer.exe
  *   CLASSROOM_ID        optional, reuse an existing classroom (skips bootstrap)
  *   CANARY_EMAIL        optional, reuse an existing account
