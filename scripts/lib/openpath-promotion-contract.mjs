@@ -312,6 +312,17 @@ async function readResponseBytes(response) {
   throw new Error('exact OpenPath v2 promotion contract response has no body reader');
 }
 
+/**
+ * @param {object} [options]
+ * @param {string} [options.openpathSha]
+ * @param {string} [options.baseUrl]
+ * @param {string} [options.promotionContractsBaseUrl]
+ * @param {typeof fetch} [options.fetchImpl]
+ * @param {number} [options.waitSeconds]
+ * @param {number} [options.pollSeconds]
+ * @param {(ms: number) => Promise<unknown>} [options.sleepImpl]
+ * @param {() => number} [options.nowImpl]
+ */
 export async function resolveOpenPathPromotionContract({
   openpathSha,
   baseUrl = DEFAULT_OPENPATH_PROMOTION_CONTRACTS_V2_BASE_URL,
