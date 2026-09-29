@@ -700,6 +700,32 @@ describe('Release candidate workflow contracts', () => {
     assert.ok(workflowText.includes('release-candidate-timings-${{ github.sha }}'));
   });
 
+  test('a new OpenPath contract in the release candidate triggers the staging candidate', () => {
+    const workflow = readWorkflow('.github/workflows/release-candidate-images.yml');
+    const job = workflow.jobs?.['trigger-staging-candidate'] as
+      | (WorkflowJob & { permissions?: Record<string, unknown> })
+      | undefined;
+    const runText =
+      job?.steps?.find((step) => step.name === 'Dispatch Nightly Staging Candidate')?.run ?? '';
+
+    assert.ok(job, 'workflow must trigger staging when the RC brings a new OpenPath contract');
+    assert.deepEqual(
+      normalizeNeeds(job?.needs).sort(),
+      ['derive-release-image-refs', 'publish-release-candidate-manifest'].sort()
+    );
+    assert.ok(String(job?.if ?? '').includes('refs/heads/main'));
+    assert.ok(
+      String(job?.if ?? '').includes(
+        "needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true'"
+      )
+    );
+    assert.ok(
+      String(job?.if ?? '').includes("needs.publish-release-candidate-manifest.result == 'success'")
+    );
+    assert.equal(job?.permissions?.actions, 'write');
+    assert.ok(runText.includes('gh workflow run nightly-staging-candidate.yml'));
+  });
+
   test('migrations release image avoids recursive ownership fixups on arm64 builds', () => {
     const dockerfile = readText('docker/Dockerfile.migrations');
 

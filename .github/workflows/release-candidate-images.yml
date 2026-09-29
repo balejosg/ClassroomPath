@@ -912,3 +912,20 @@ jobs:
           name: release-candidate-timings-${{ github.sha }}
           path: release-candidate-timings.json
           retention-days: 7
+
+  trigger-staging-candidate:
+    name: Trigger Staging Candidate For New OpenPath
+    runs-on: ubuntu-latest
+    needs: [derive-release-image-refs, publish-release-candidate-manifest]
+    if: ${{ github.ref == 'refs/heads/main' && needs.derive-release-image-refs.outputs.openpath_derived_rebuild_required == 'true' && needs.publish-release-candidate-manifest.result == 'success' }}
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch Nightly Staging Candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run nightly-staging-candidate.yml --repo "$GITHUB_REPOSITORY" --ref main
+          echo "New OpenPath contract in this release candidate; dispatched Nightly Staging Candidate on main." >> "$GITHUB_STEP_SUMMARY"
