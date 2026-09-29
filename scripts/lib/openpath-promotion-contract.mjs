@@ -317,6 +317,10 @@ export async function resolveOpenPathPromotionContract({
   baseUrl = DEFAULT_OPENPATH_PROMOTION_CONTRACTS_V2_BASE_URL,
   promotionContractsBaseUrl,
   fetchImpl = globalThis.fetch,
+  waitSeconds = 0,
+  pollSeconds = 30,
+  sleepImpl = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms)),
+  nowImpl = Date.now,
 } = {}) {
   const requestedSha = assertSha40(openpathSha, 'openpathSha');
   if (typeof fetchImpl !== 'function') {
@@ -327,18 +331,31 @@ export async function resolveOpenPathPromotionContract({
     openpathSha: requestedSha,
   });
 
+  // A 404 can be a bounded publication gap: an OpenPath v2 contract is published
+  // minutes after the submodule bump that triggers the consumer. Retry only that
+  // status until waitSeconds elapses; any other status, transport error, or body
+  // failure keeps the single-attempt behavior. waitSeconds = 0 (the default) is
+  // byte-identical to the previous single attempt.
+  const deadline = nowImpl() + Math.max(0, Number(waitSeconds) || 0) * 1000;
   let response;
-  try {
-    response = await fetchImpl(url);
-  } catch (error) {
-    throw new Error('exact OpenPath v2 promotion contract download failed: ' + error.message, {
-      cause: error,
-    });
-  }
-  const status = Number(response?.status ?? 0);
-  const ok = response?.ok === true || (response?.ok === undefined && status >= 200 && status < 300);
-  if (!ok) {
-    throw new Error('exact OpenPath v2 promotion contract download failed: HTTP ' + status);
+  for (;;) {
+    try {
+      response = await fetchImpl(url);
+    } catch (error) {
+      throw new Error('exact OpenPath v2 promotion contract download failed: ' + error.message, {
+        cause: error,
+      });
+    }
+    const status = Number(response?.status ?? 0);
+    const ok =
+      response?.ok === true || (response?.ok === undefined && status >= 200 && status < 300);
+    if (ok) {
+      break;
+    }
+    if (status !== 404 || nowImpl() >= deadline) {
+      throw new Error('exact OpenPath v2 promotion contract download failed: HTTP ' + status);
+    }
+    await sleepImpl(pollSeconds * 1000);
   }
 
   let bytes;

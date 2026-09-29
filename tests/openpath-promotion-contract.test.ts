@@ -125,6 +125,74 @@ describe('exact OpenPath v2 promotion contract', () => {
     );
   });
 
+  test('retries a 404 publication gap until the exact contract appears', async () => {
+    const bytes = contractBytes();
+    const sleeps: number[] = [];
+    let attempts = 0;
+    const result = await resolveOpenPathPromotionContract({
+      openpathSha,
+      waitSeconds: 60,
+      sleepImpl: async (ms: number) => {
+        sleeps.push(ms);
+      },
+      fetchImpl: async () => {
+        attempts += 1;
+        return attempts === 1 ? responseFor(Buffer.from('missing'), 404) : responseFor(bytes);
+      },
+    });
+
+    assert.equal(attempts, 2);
+    assert.deepEqual(sleeps, [30000]);
+    assert.equal(result.contract.openpathSha, openpathSha);
+  });
+
+  test('fails closed when the 404 gap outlives the wait budget', async () => {
+    const sleeps: number[] = [];
+    let attempts = 0;
+    let clock = 0;
+    await assert.rejects(
+      resolveOpenPathPromotionContract({
+        openpathSha,
+        waitSeconds: 60,
+        nowImpl: () => clock,
+        sleepImpl: async (ms: number) => {
+          sleeps.push(ms);
+          clock += ms;
+        },
+        fetchImpl: async () => {
+          attempts += 1;
+          return responseFor(Buffer.from('missing'), 404);
+        },
+      }),
+      /exact OpenPath v2 promotion contract download failed: HTTP 404/
+    );
+
+    assert.equal(attempts, 3);
+    assert.deepEqual(sleeps, [30000, 30000]);
+  });
+
+  test('does not retry non-404 failures even with a wait budget', async () => {
+    const sleeps: number[] = [];
+    let attempts = 0;
+    await assert.rejects(
+      resolveOpenPathPromotionContract({
+        openpathSha,
+        waitSeconds: 60,
+        sleepImpl: async (ms: number) => {
+          sleeps.push(ms);
+        },
+        fetchImpl: async () => {
+          attempts += 1;
+          return responseFor(Buffer.from('server error'), 500);
+        },
+      }),
+      /exact OpenPath v2 promotion contract download failed: HTTP 500/
+    );
+
+    assert.equal(attempts, 1);
+    assert.deepEqual(sleeps, []);
+  });
+
   test('fails closed when contract.openpathSha differs from the requested SHA', () => {
     const contract = buildContract({ openpathSha: otherSha });
 

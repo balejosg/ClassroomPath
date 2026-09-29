@@ -158,6 +158,7 @@ jobs:
             "${{ steps.check.outputs.latest }}:firefox-extension/manifest.json" > "$manifest_file"
           node scripts/resolve-openpath-promotion-contract.mjs \
             --openpath-sha "${{ steps.check.outputs.latest }}" \
+            --wait-seconds 900 \
             --contract-output "$contract_file" \
             --json
           node scripts/verify-openpath-promotion-contract.mjs \

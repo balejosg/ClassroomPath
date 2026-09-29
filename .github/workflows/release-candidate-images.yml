@@ -78,6 +78,7 @@ jobs:
           set -euo pipefail
           node scripts/resolve-openpath-promotion-contract.mjs \
             --openpath-sha "$OPENPATH_SHA" \
+            --wait-seconds 900 \
             --contract-output openpath-promotion-contract.json >> "$GITHUB_OUTPUT"
 
       - name: Decide OpenPath-derived image reuse

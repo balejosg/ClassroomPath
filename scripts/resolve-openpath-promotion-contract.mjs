@@ -23,6 +23,7 @@ export function parseOpenPathPromotionContractCliArgs(argv = []) {
       process.env.OPENPATH_PROMOTION_CONTRACTS_V2_BASE_URL?.trim() ||
       DEFAULT_OPENPATH_PROMOTION_CONTRACTS_V2_BASE_URL,
     contractOutput: process.env.OPENPATH_PROMOTION_CONTRACT_OUTPUT?.trim() ?? '',
+    waitSeconds: 0,
     json: false,
   };
 
@@ -45,6 +46,16 @@ export function parseOpenPathPromotionContractCliArgs(argv = []) {
     }
     if (token === '--contract-output') {
       options.contractOutput = String(argv[index + 1] ?? '').trim();
+      index += 1;
+      continue;
+    }
+    if (token === '--wait-seconds') {
+      const rawWaitSeconds = String(argv[index + 1] ?? '').trim();
+      const waitSeconds = Number(rawWaitSeconds);
+      if (!Number.isInteger(waitSeconds) || waitSeconds < 0) {
+        throw new Error('--wait-seconds must be a non-negative integer');
+      }
+      options.waitSeconds = waitSeconds;
       index += 1;
       continue;
     }
@@ -73,6 +84,7 @@ export async function runOpenPathPromotionContractResolver(
     openpathSha,
     baseUrl: options.baseUrl,
     fetchImpl: dependencies.fetchImpl,
+    waitSeconds: options.waitSeconds,
   });
   const contractPath = options.contractOutput
     ? writeOpenPathPromotionContractArtifact({
