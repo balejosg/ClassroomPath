@@ -322,6 +322,7 @@ async function readResponseBytes(response) {
  * @param {number} [options.pollSeconds]
  * @param {(ms: number) => Promise<unknown>} [options.sleepImpl]
  * @param {() => number} [options.nowImpl]
+ * @param {(message: string) => void} [options.logImpl]
  */
 export async function resolveOpenPathPromotionContract({
   openpathSha,
@@ -332,6 +333,7 @@ export async function resolveOpenPathPromotionContract({
   pollSeconds = 30,
   sleepImpl = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms)),
   nowImpl = Date.now,
+  logImpl = console.error,
 } = {}) {
   const requestedSha = assertSha40(openpathSha, 'openpathSha');
   if (typeof fetchImpl !== 'function') {
@@ -366,6 +368,11 @@ export async function resolveOpenPathPromotionContract({
     if (status !== 404 || nowImpl() >= deadline) {
       throw new Error('exact OpenPath v2 promotion contract download failed: HTTP ' + status);
     }
+    const remainingSeconds = Math.max(0, Math.ceil((deadline - nowImpl()) / 1000));
+    logImpl(
+      `OpenPath v2 promotion contract for ${requestedSha} is not published yet (HTTP ${status}); ` +
+        `retrying in ${pollSeconds}s (${remainingSeconds}s left).`
+    );
     await sleepImpl(pollSeconds * 1000);
   }
 

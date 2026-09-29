@@ -9,6 +9,7 @@ import {
   parseOpenPathPromotionContractBytes,
   resolveOpenPathPromotionContract,
 } from '../scripts/lib/openpath-promotion-contract.mjs';
+import { parseOpenPathPromotionContractCliArgs } from '../scripts/resolve-openpath-promotion-contract.mjs';
 
 const openpathSha = 'a3846d6cbbb5c816d12dc4c5a60409760e121b90';
 const otherSha = '0123456789abcdef0123456789abcdef01234567';
@@ -132,6 +133,7 @@ describe('exact OpenPath v2 promotion contract', () => {
     const result = await resolveOpenPathPromotionContract({
       openpathSha,
       waitSeconds: 60,
+      logImpl: () => {},
       sleepImpl: async (ms: number) => {
         sleeps.push(ms);
       },
@@ -146,6 +148,28 @@ describe('exact OpenPath v2 promotion contract', () => {
     assert.equal(result.contract.openpathSha, openpathSha);
   });
 
+  test('notices each 404 retry on the injected logger', async () => {
+    const bytes = contractBytes();
+    const notices: string[] = [];
+    let attempts = 0;
+    await resolveOpenPathPromotionContract({
+      openpathSha,
+      waitSeconds: 60,
+      logImpl: (message: string) => {
+        notices.push(message);
+      },
+      sleepImpl: async () => {},
+      fetchImpl: async () => {
+        attempts += 1;
+        return attempts === 1 ? responseFor(Buffer.from('missing'), 404) : responseFor(bytes);
+      },
+    });
+
+    assert.equal(notices.length, 1);
+    assert.match(notices[0], /not published yet \(HTTP 404\)/);
+    assert.match(notices[0], /retrying in 30s \(60s left\)/);
+  });
+
   test('fails closed when the 404 gap outlives the wait budget', async () => {
     const sleeps: number[] = [];
     let attempts = 0;
@@ -154,6 +178,7 @@ describe('exact OpenPath v2 promotion contract', () => {
       resolveOpenPathPromotionContract({
         openpathSha,
         waitSeconds: 60,
+        logImpl: () => {},
         nowImpl: () => clock,
         sleepImpl: async (ms: number) => {
           sleeps.push(ms);
@@ -246,5 +271,41 @@ describe('exact OpenPath v2 promotion contract', () => {
         }),
       /components.browserPolicy is required/
     );
+  });
+});
+
+describe('OpenPath promotion contract resolver CLI', () => {
+  test('accepts --wait-seconds only with an explicit non-negative integer value', () => {
+    assert.equal(
+      parseOpenPathPromotionContractCliArgs(['--openpath-sha', openpathSha, '--wait-seconds', '0'])
+        .waitSeconds,
+      0
+    );
+    assert.equal(
+      parseOpenPathPromotionContractCliArgs([
+        '--openpath-sha',
+        openpathSha,
+        '--wait-seconds',
+        '900',
+      ]).waitSeconds,
+      900
+    );
+    assert.equal(
+      parseOpenPathPromotionContractCliArgs(['--openpath-sha', openpathSha]).waitSeconds,
+      0
+    );
+
+    for (const argv of [
+      ['--openpath-sha', openpathSha, '--wait-seconds'],
+      ['--openpath-sha', openpathSha, '--wait-seconds', ''],
+      ['--openpath-sha', openpathSha, '--wait-seconds', '-1'],
+      ['--openpath-sha', openpathSha, '--wait-seconds', '1.5'],
+      ['--openpath-sha', openpathSha, '--wait-seconds', '--json'],
+    ]) {
+      assert.throws(
+        () => parseOpenPathPromotionContractCliArgs(argv),
+        /--wait-seconds requires a non-negative integer value/
+      );
+    }
   });
 });

@@ -52,8 +52,8 @@ export function parseOpenPathPromotionContractCliArgs(argv = []) {
     if (token === '--wait-seconds') {
       const rawWaitSeconds = String(argv[index + 1] ?? '').trim();
       const waitSeconds = Number(rawWaitSeconds);
-      if (!Number.isInteger(waitSeconds) || waitSeconds < 0) {
-        throw new Error('--wait-seconds must be a non-negative integer');
+      if (!rawWaitSeconds || !Number.isInteger(waitSeconds) || waitSeconds < 0) {
+        throw new Error('--wait-seconds requires a non-negative integer value');
       }
       options.waitSeconds = waitSeconds;
       index += 1;
