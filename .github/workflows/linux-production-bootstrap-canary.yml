@@ -92,6 +92,10 @@ jobs:
 
       - name: Install Linux Firefox canary dependencies
         shell: bash
+        env:
+          # Pinned: firefox-esr-latest moved 140 -> 153 on 2026-10-14 and 153 refuses
+          # driver.get('moz-extension://.../popup.html'), failing firefox-extension-ready.
+          FIREFOX_ESR_VERSION: 140.17.0esr
         run: |
           set -euo pipefail
           npm ci --ignore-scripts
@@ -104,8 +108,9 @@ jobs:
           # correct. This mirrors the green OpenPath student-policy lane, which
           # also runs firefox-esr. Runs before the agent install so the download
           # is not affected by the agent DNS sinkhole.
-          if [ ! -x /opt/firefox/firefox ]; then
-            wget -qO /tmp/firefox-esr.tar.xz "https://download.mozilla.org/?product=firefox-esr-latest-ssl&os=linux64&lang=en-US"
+          if [ ! -x /opt/firefox/firefox ] || ! /opt/firefox/firefox --version | grep -q " ${FIREFOX_ESR_VERSION}$"; then
+            sudo rm -rf /opt/firefox
+            wget -qO /tmp/firefox-esr.tar.xz "https://ftp.mozilla.org/pub/firefox/releases/${FIREFOX_ESR_VERSION}/linux-x86_64/en-US/firefox-${FIREFOX_ESR_VERSION}.tar.xz"
             sudo tar -xf /tmp/firefox-esr.tar.xz -C /opt
             rm -f /tmp/firefox-esr.tar.xz
           fi
