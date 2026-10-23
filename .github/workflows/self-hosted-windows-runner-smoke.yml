@@ -168,6 +168,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Ensure runner services autostart after reboot
+        shell: pwsh
+        run: ./scripts/windows-runner-ensure-services.ps1
+
       - name: Restore Windows runner DNS before smoke
         uses: ./.github/actions/restore-windows-runner-dns
 

@@ -115,3 +115,11 @@ repository's Actions runner list before re-queuing blocked jobs. Use
 - The `actions.runner.*` services must be `Automatic` (Delayed) with service recovery set, so a
   VM reboot brings the runner back online without manual intervention. Check this after any
   runner reinstall.
+- `scripts/windows-runner-ensure-services.ps1` (idempotent, per-service try/catch) applies this
+  with `sc.exe config <svc> start= delayed-auto` and
+  `sc.exe failure <svc> reset= 86400 actions= restart/60000/...`. The Self-Hosted Windows Runner
+  Smoke workflow runs it on every smoke (every 30 minutes), so a reinstalled runner is repaired
+  automatically; run it manually in an elevated shell after a reinstall (`-Strict` exits 1 on failure).
+- `production-readiness` (config check) now also requires every runner in
+  `CLASSROOMPATH_WINDOWS_RUNNER_NAME` to be online in the GitHub runners API, and blocks with
+  `CONFIG_BLOCKER` naming the offline/unregistered runner otherwise.

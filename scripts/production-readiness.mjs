@@ -239,7 +239,12 @@ export async function runProductionReadinessCommand(
         }),
       recovery: () =>
         runRecoveryCheck({ options, identity, env, cwd: dependencies.cwd ?? projectRoot }),
-      config: () => runConfigCheck({ env, execFile: dependencies.execFile }),
+      config: async () => {
+        const config = runConfigCheck({ env, execFile: dependencies.execFile });
+        if (!config.ok) return config;
+        const runner = runWindowsRunnerCheck({ env, execFile: dependencies.execFile });
+        return runner.ok ? { ok: true, message: `${config.message}; ${runner.message}` } : runner;
+      },
       host: () => runHostCheck({ env, cwd: dependencies.cwd ?? projectRoot }),
       artifacts: () =>
         runArtifactCheck({
@@ -487,6 +492,56 @@ export function runConfigCheck({
     return { ok: true, message: 'production target config is complete and non-placeholder' };
   } catch (error) {
     return { ok: false, message: errorText(error, 'production config is invalid') };
+  }
+}
+
+/**
+ * Preflight: every Windows canary runner named by CLASSROOMPATH_WINDOWS_RUNNER_NAME
+ * (comma-separated) must be registered and online in the GitHub runners API.
+ * Without it the production bootstrap canary would queue forever.
+ */
+export function runWindowsRunnerCheck({ env, execFile = execFileSync }) {
+  const names = String(env.CLASSROOMPATH_WINDOWS_RUNNER_NAME ?? '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean);
+  if (names.length === 0) {
+    return {
+      ok: false,
+      message: 'Windows canary runner preflight needs CLASSROOMPATH_WINDOWS_RUNNER_NAME',
+    };
+  }
+  try {
+    const repository = String(env.GITHUB_REPOSITORY || 'balejosg/ClassroomPath').trim();
+    const output = execFile(
+      'gh',
+      [
+        'api',
+        `repos/${repository}/actions/runners`,
+        '--paginate',
+        '--jq',
+        '.runners[] | {name, status, busy}',
+      ],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
+    );
+    const runners = String(output ?? '')
+      .split(/\r?\n/u)
+      .filter((line) => line.trim())
+      .map((line) => JSON.parse(line));
+    const problems = names.flatMap((name) => {
+      const runner = runners.find((candidate) => candidate.name === name);
+      if (!runner) return [`${name} is not registered`];
+      return runner.status === 'online' ? [] : [`${name} is ${runner.status}`];
+    });
+    if (problems.length > 0) {
+      return {
+        ok: false,
+        message: `Windows canary runner is not online: ${problems.join(', ')}; see docs/runbooks/windows-runner-recovery.md`,
+      };
+    }
+    return { ok: true, message: `Windows canary runner online: ${names.join(', ')}` };
+  } catch (error) {
+    return { ok: false, message: errorText(error, 'Windows canary runner preflight failed') };
   }
 }
 

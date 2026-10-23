@@ -153,3 +153,22 @@ snapshot-clean-baseline-20260510 pre-lab clean baseline
     assert.match(result.stdout, new RegExp(`wait for ${expectedRunnerName} online busy=false`));
   });
 });
+
+describe('windows runner ensure-services script', () => {
+  test('configures delayed auto-start and failure recovery, tolerantly, and is wired into the smoke workflow', async () => {
+    const { readFileSync } = await import('node:fs');
+    const script = readFileSync(
+      new URL('../scripts/windows-runner-ensure-services.ps1', import.meta.url),
+      'utf8'
+    );
+    assert.match(script, /actions\.runner\.\*/);
+    assert.match(script, /start= delayed-auto/);
+    assert.match(script, /sc\.exe failure \$name .*actions= restart\//);
+    assert.match(script, /try \{[\s\S]*\} catch \{/);
+    const workflow = readFileSync(
+      new URL('../.github/workflows/self-hosted-windows-runner-smoke.yml', import.meta.url),
+      'utf8'
+    );
+    assert.match(workflow, /run: \.\/scripts\/windows-runner-ensure-services\.ps1/);
+  });
+});

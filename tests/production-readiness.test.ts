@@ -12,6 +12,7 @@ import {
   runArtifactCheck,
   runConfigCheck,
   runHostCheck,
+  runWindowsRunnerCheck,
   runProductionReadinessCommand,
 } from '../scripts/production-readiness.mjs';
 
@@ -301,5 +302,42 @@ describe('production readiness contract', () => {
     assert.equal(report.ok, true);
     assert.deepEqual(calls, ['rc', 'staging', 'recovery', 'config', 'host', 'artifacts']);
     assert.deepEqual(report.identity, identity);
+  });
+});
+
+describe('windows canary runner preflight', () => {
+  const runnersOutput = (rows: object[]) => rows.map((row) => JSON.stringify(row)).join('\n');
+
+  it('passes when every named runner is online', () => {
+    const result = runWindowsRunnerCheck({
+      env: { CLASSROOMPATH_WINDOWS_RUNNER_NAME: 'win-a, win-b' },
+      execFile: () =>
+        runnersOutput([
+          { name: 'win-a', status: 'online', busy: false },
+          { name: 'win-b', status: 'online', busy: true },
+        ]),
+    });
+    assert.equal(result.ok, true);
+  });
+
+  it('blocks with a clear message when a runner is offline or missing', () => {
+    const result = runWindowsRunnerCheck({
+      env: { CLASSROOMPATH_WINDOWS_RUNNER_NAME: 'win-a,win-b' },
+      execFile: () => runnersOutput([{ name: 'win-a', status: 'offline', busy: false }]),
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.message, /win-a is offline/);
+    assert.match(result.message, /win-b is not registered/);
+  });
+
+  it('blocks when the runner name is not configured or the API fails', () => {
+    assert.equal(runWindowsRunnerCheck({ env: {}, execFile: () => '' }).ok, false);
+    const failed = runWindowsRunnerCheck({
+      env: { CLASSROOMPATH_WINDOWS_RUNNER_NAME: 'win-a' },
+      execFile: () => {
+        throw new Error('gh failed');
+      },
+    });
+    assert.equal(failed.ok, false);
   });
 });
