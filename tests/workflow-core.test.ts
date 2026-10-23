@@ -1007,8 +1007,11 @@ describe('Workflow core contracts', () => {
       )
     );
     assert.ok(productionBootstrapWorkflowText.includes("Get-ScheduledTask -TaskName 'OpenPath-*'"));
-    assert.ok(productionBootstrapWorkflowText.includes("Remove-Item -LiteralPath 'C:\\OpenPath'"));
-    assert.ok(productionBootstrapWorkflowText.includes('Acrylic DNS Proxy'));
+    assert.ok(productionBootstrapWorkflowText.includes('scripts/windows-runner-reset.ps1'));
+    const runnerResetScriptText = readText('scripts/windows-runner-reset.ps1');
+    assert.ok(runnerResetScriptText.includes("'C:\\OpenPath'"));
+    assert.ok(runnerResetScriptText.includes('Remove-Item -LiteralPath $OpenPathRoot'));
+    assert.ok(runnerResetScriptText.includes('Acrylic DNS Proxy'));
     assert.ok(productionBootstrapWorkflowText.includes('browser-policy-spec.json'));
     assert.ok(productionBootstrapWorkflowText.includes('Update-OpenPath.ps1'));
     assert.ok(productionBootstrapWorkflowText.includes('Browser policy spec not found'));
