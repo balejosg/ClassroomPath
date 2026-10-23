@@ -56,6 +56,7 @@ describe('release promotion orchestration', () => {
         'approval',
         'tag-production',
         'wait-production-deploy',
+        'verify-production-host-state',
         'verify-production-health',
         'report-residual-actions-runs',
         'print-summary',
@@ -465,6 +466,7 @@ describe('release promotion orchestration', () => {
       'release-preflight',
       'tag-production',
       'wait-production-deploy',
+      'verify-production-host-state',
       'verify-production-health',
       'report-residual-actions-runs',
     ]);
@@ -608,6 +610,111 @@ describe('release promotion orchestration', () => {
       executedSteps.filter((id) => id === 'wait-production-deploy'),
       ['wait-production-deploy', 'wait-production-deploy']
     );
+  });
+
+  it('never reruns only failed jobs after rollback-production ran and stops with an explicit error', async () => {
+    const reruns = [];
+    const stderr = [];
+    let waitAttempts = 0;
+
+    const result = await runReleasePromoteCommand(
+      [
+        '--tag',
+        'v0.0.0',
+        '--execute',
+        '--no-high-risk-windows',
+        '--no-post-production-windows-canary',
+      ],
+      {
+        stdout: () => {},
+        stderr: (text) => stderr.push(text),
+        rerunGitHubRunFailedJobs: async (options) => {
+          reruns.push(options);
+          return { id: 'rerun-production-deploy', status: 'success', seconds: 1 };
+        },
+        runStep: async (step) => {
+          if (step.id === 'wait-production-deploy') {
+            waitAttempts += 1;
+            return {
+              id: step.id,
+              status: 'failed',
+              seconds: 1,
+              githubRun: {
+                repo: 'balejosg/ClassroomPath',
+                runId: '12345',
+                workflow: 'Deploy',
+                status: 'completed',
+                conclusion: 'failure',
+                jobs: [
+                  { name: 'Windows Production Bootstrap Canary', conclusion: 'failure' },
+                  { name: 'Roll Back Production', conclusion: 'success' },
+                ],
+                failedJobs: [
+                  { name: 'Windows Production Bootstrap Canary', conclusion: 'failure' },
+                ],
+              },
+              deployBrief: {
+                failureBoundary: { safeToRetry: 'yes' },
+                nextCommand: 'gh run rerun 12345 --failed --repo balejosg/ClassroomPath',
+              },
+            };
+          }
+          return { id: step.id, status: 'success', seconds: 1 };
+        },
+      }
+    );
+
+    assert.equal(result.status, 1);
+    assert.equal(waitAttempts, 1);
+    assert.deepEqual(reruns, []);
+    assert.match(stderr.join(''), /Production was rolled back[\s\S]*full workflow rerun/);
+  });
+
+  it('still reruns failed jobs when rollback-production was skipped', async () => {
+    const reruns = [];
+    let waitAttempts = 0;
+
+    const result = await runReleasePromoteCommand(
+      [
+        '--tag',
+        'v0.0.0',
+        '--execute',
+        '--no-high-risk-windows',
+        '--no-post-production-windows-canary',
+      ],
+      {
+        stdout: () => {},
+        stderr: () => {},
+        rerunGitHubRunFailedJobs: async (options) => {
+          reruns.push(options);
+          return { id: 'rerun-production-deploy', status: 'success', seconds: 1 };
+        },
+        runStep: async (step) => {
+          if (step.id === 'wait-production-deploy') {
+            waitAttempts += 1;
+            return {
+              id: step.id,
+              status: waitAttempts === 1 ? 'failed' : 'success',
+              seconds: 1,
+              githubRun: {
+                repo: 'balejosg/ClassroomPath',
+                runId: '12345',
+                workflow: 'Deploy',
+                status: 'completed',
+                conclusion: waitAttempts === 1 ? 'failure' : 'success',
+                jobs: [{ name: 'Roll Back Production', conclusion: 'skipped' }],
+                failedJobs: [],
+              },
+              deployBrief: { failureBoundary: { safeToRetry: 'yes' } },
+            };
+          }
+          return { id: step.id, status: 'success', seconds: 1 };
+        },
+      }
+    );
+
+    assert.equal(result.status, 0);
+    assert.equal(reruns.length, 1);
   });
 
   it('parses actions-health stdout, runs deploy brief, and reruns retryable production deploys', async () => {

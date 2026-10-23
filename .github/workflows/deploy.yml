@@ -1044,6 +1044,32 @@ jobs:
       diagnostic_mode: ${{ 'false' }}
     secrets: inherit
 
+  # Infra failures (runner reset, DNS restore, artifact transport) say nothing about the release.
+  # Retry the canary once before rollback-production is allowed to react; product failures and
+  # an exhausted retry still roll back.
+  windows-production-bootstrap-canary-retry:
+    name: Windows Production Bootstrap Canary (infra retry)
+    needs:
+      [
+        resolve-release-images,
+        verify-staging-release-state,
+        deploy-production,
+        smoke-test-production,
+        windows-production-bootstrap-canary,
+      ]
+    if: >-
+      always() && startsWith(github.ref, 'refs/tags/v') &&
+      needs.deploy-production.result == 'success' &&
+      needs.smoke-test-production.result == 'success' &&
+      needs.windows-production-bootstrap-canary.result == 'failure' &&
+      needs.windows-production-bootstrap-canary.outputs.failure_class == 'infra'
+    uses: ./.github/workflows/windows-production-bootstrap-canary.yml
+    with:
+      target_environment: production
+      base_url: ${{ vars.CLASSROOMPATH_PRODUCTION_CANARY_PUBLIC_URL || vars.PRODUCTION_CANARY_PUBLIC_URL || vars.CLASSROOMPATH_PRODUCTION_PUBLIC_URL || vars.PRODUCTION_PUBLIC_URL }}
+      diagnostic_mode: ${{ 'false' }}
+    secrets: inherit
+
   release-evidence:
     name: Release Evidence
     runs-on: ubuntu-latest
@@ -1057,6 +1083,7 @@ jobs:
         deploy-production,
         smoke-test-production,
         windows-production-bootstrap-canary,
+        windows-production-bootstrap-canary-retry,
         rollback-production,
       ]
     if: always() && startsWith(github.ref, 'refs/tags/v')
@@ -1152,8 +1179,10 @@ jobs:
             "LINUX_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "Functional installed-client evidence is gated before production promotion.",
             "DEPLOY_RESULT": "${{ needs.deploy-production.result }}",
             "PRODUCTION_SMOKE_RESULT": "${{ needs.smoke-test-production.result }}",
-            "LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "${{ needs.windows-production-bootstrap-canary.outputs.canary_result || needs.windows-production-bootstrap-canary.result }}",
-            "LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "${{ needs.windows-production-bootstrap-canary.result }}",
+            "LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "${{ needs.windows-production-bootstrap-canary-retry.outputs.canary_result || needs.windows-production-bootstrap-canary.outputs.canary_result || needs.windows-production-bootstrap-canary.result }}",
+            "LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "${{ needs.windows-production-bootstrap-canary-retry.result != 'skipped' && needs.windows-production-bootstrap-canary-retry.result || needs.windows-production-bootstrap-canary.result }}",
+            "LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_FAILURE_CLASS": "${{ needs.windows-production-bootstrap-canary-retry.outputs.failure_class || needs.windows-production-bootstrap-canary.outputs.failure_class }}",
+            "LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RETRY_RESULT": "${{ needs.windows-production-bootstrap-canary-retry.result }}",
             "LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_ID": "${{ needs.windows-production-bootstrap-canary.outputs.failure_boundary_id || 'windows-production-bootstrap-canary' }}",
             "LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_FAILURE_BOUNDARY_MESSAGE": "${{ needs.windows-production-bootstrap-canary.outputs.failure_boundary_message || 'Windows production bootstrap canary did not produce a failure boundary.' }}",
             "ROLLBACK_RESULT": "${{ needs.rollback-production.result }}",
@@ -1249,10 +1278,11 @@ jobs:
         deploy-production,
         smoke-test-production,
         windows-production-bootstrap-canary,
+        windows-production-bootstrap-canary-retry,
         resolve-release-images,
         prepare-production-recovery,
       ]
-    if: always() && needs.prepare-production-recovery.result == 'success' && ((needs.deploy-production.result == 'failure' && (needs.deploy-production.outputs.durable_phase != 'COMMITTED' || needs.deploy-production.outputs.durable_candidate_sha != github.sha || needs.deploy-production.outputs.durable_release_id != needs.resolve-release-images.outputs.release_id || needs.deploy-production.outputs.durable_transaction_id != needs.deploy-production.outputs.transaction_id)) || needs.smoke-test-production.result == 'failure' || needs.windows-production-bootstrap-canary.result == 'failure')
+    if: always() && needs.prepare-production-recovery.result == 'success' && ((needs.deploy-production.result == 'failure' && (needs.deploy-production.outputs.durable_phase != 'COMMITTED' || needs.deploy-production.outputs.durable_candidate_sha != github.sha || needs.deploy-production.outputs.durable_release_id != needs.resolve-release-images.outputs.release_id || needs.deploy-production.outputs.durable_transaction_id != needs.deploy-production.outputs.transaction_id)) || needs.smoke-test-production.result == 'failure' || (needs.windows-production-bootstrap-canary.result == 'failure' && (needs.windows-production-bootstrap-canary.outputs.failure_class != 'infra' || needs.windows-production-bootstrap-canary-retry.result == 'failure')))
     permissions:
       contents: read
       packages: read

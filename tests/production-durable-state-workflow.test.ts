@@ -238,6 +238,8 @@ test('production rollback workflow requires exact durable COMMITTED identity', (
         'needs.deploy-production.result': scenario.deployResult,
         'needs.smoke-test-production.result': scenario.smokeResult,
         'needs.windows-production-bootstrap-canary.result': 'skipped',
+        'needs.windows-production-bootstrap-canary.outputs.failure_class': '',
+        'needs.windows-production-bootstrap-canary-retry.result': 'skipped',
         'github.sha': githubSha,
         'always()': 'true',
       };

@@ -62,6 +62,7 @@ describe('release:promote RC-first contract', () => {
         'approval',
         'tag-production',
         'wait-production-deploy',
+        'verify-production-host-state',
         'verify-production-health',
         'report-residual-actions-runs',
         'print-summary',
@@ -99,6 +100,7 @@ describe('release:promote RC-first contract', () => {
     );
     for (const forbiddenStep of [
       'wait-production-deploy',
+      'verify-production-host-state',
       'verify-production-health',
       'run-post-production-windows-canary',
       'report-residual-actions-runs',

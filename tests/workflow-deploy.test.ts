@@ -1072,11 +1072,15 @@ describe('Deploy workflow contracts', () => {
     );
     assert.match(
       deployWorkflowText,
-      /"LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.windows-production-bootstrap-canary\.outputs\.canary_result \|\| needs\.windows-production-bootstrap-canary\.result \}\}"/
+      /"LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_RESULT": "\$\{\{ needs\.windows-production-bootstrap-canary-retry\.outputs\.canary_result \|\| needs\.windows-production-bootstrap-canary\.outputs\.canary_result \|\| needs\.windows-production-bootstrap-canary\.result \}\}"/
     );
     assert.match(
       deployWorkflowText,
-      /"LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "\$\{\{ needs\.windows-production-bootstrap-canary\.result \}\}"/
+      /"LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_JOB_RESULT": "\$\{\{ needs\.windows-production-bootstrap-canary-retry\.result != 'skipped' && needs\.windows-production-bootstrap-canary-retry\.result \|\| needs\.windows-production-bootstrap-canary\.result \}\}"/
+    );
+    assert.match(
+      deployWorkflowText,
+      /"LIVE_WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_FAILURE_CLASS": "\$\{\{ needs\.windows-production-bootstrap-canary-retry\.outputs\.failure_class \|\| needs\.windows-production-bootstrap-canary\.outputs\.failure_class \}\}"/
     );
     assert.match(
       deployWorkflowText,
@@ -1200,9 +1204,34 @@ describe('Deploy workflow contracts', () => {
       ),
       'rollback should not wait on full Linux installed-client canaries after production deploy'
     );
+    const rollbackIf = String(jobs['rollback-production']?.if ?? '');
+    assert.match(rollbackIf, /needs\.windows-production-bootstrap-canary\.result == 'failure'/);
+    // Infra-classified canary failures retry before rollback; product failures and an
+    // exhausted retry still roll back.
     assert.match(
-      String(jobs['rollback-production']?.if ?? ''),
+      rollbackIf,
+      /needs\.windows-production-bootstrap-canary\.outputs\.failure_class != 'infra' \|\| needs\.windows-production-bootstrap-canary-retry\.result == 'failure'/
+    );
+    assert.ok(
+      normalizeNeeds(jobs['rollback-production']?.needs).includes(
+        'windows-production-bootstrap-canary-retry'
+      ),
+      'rollback must wait for the infra canary retry'
+    );
+    const retryJob = jobs['windows-production-bootstrap-canary-retry'];
+    assert.ok(retryJob, 'infra retry job must exist');
+    assert.equal(retryJob.uses, './.github/workflows/windows-production-bootstrap-canary.yml');
+    assert.match(
+      String(retryJob.if ?? ''),
+      /needs\.windows-production-bootstrap-canary\.outputs\.failure_class == 'infra'/
+    );
+    assert.match(
+      String(retryJob.if ?? ''),
       /needs\.windows-production-bootstrap-canary\.result == 'failure'/
+    );
+    assert.equal(
+      windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.outputs?.failure_class?.value,
+      '${{ jobs.windows-production-bootstrap-canary.outputs.failure_class }}'
     );
     assert.ok(windowsProductionBootstrapCanaryWorkflow.on?.workflow_call?.inputs);
     assert.equal(

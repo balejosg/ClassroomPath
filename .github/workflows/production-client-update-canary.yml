@@ -414,49 +414,12 @@ jobs:
             --target-url "$PRODUCTION_BASE_URL"
 
       - name: Reset persistent Windows canary state
+        id: reset-runner
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          $openPathRoot = 'C:\OpenPath'
-          $uninstallPath = Join-Path $openPathRoot 'Uninstall-OpenPath.ps1'
-          if (Test-Path $uninstallPath) {
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $uninstallPath
-          }
-
-          Get-ScheduledTask -TaskName 'OpenPath-*' -ErrorAction SilentlyContinue |
-            Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
-
-          Get-NetFirewallRule -DisplayName 'OpenPath-*' -ErrorAction SilentlyContinue |
-            Remove-NetFirewallRule -ErrorAction SilentlyContinue
-
-          $acrylicService = Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue
-          if ($acrylicService) {
-            Stop-Service -Name $acrylicService.Name -Force -ErrorAction SilentlyContinue
-            sc.exe delete $acrylicService.Name | Out-Null
-          }
-
-          foreach ($acrylicPath in @(
-            (Join-Path ${env:ProgramFiles(x86)} 'Acrylic DNS Proxy'),
-            (Join-Path ${env:ProgramFiles} 'Acrylic DNS Proxy')
-          )) {
-            $acrylicServicePath = Join-Path $acrylicPath 'AcrylicService.exe'
-            if (Test-Path $acrylicServicePath) {
-              & $acrylicServicePath /UNINSTALL 2>$null
-            }
-            Remove-Item -LiteralPath $acrylicPath -Recurse -Force -ErrorAction SilentlyContinue
-          }
-
-          foreach ($policyPath in @(
-            (Join-Path ${env:ProgramFiles} 'Mozilla Firefox\distribution\policies.json'),
-            (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\distribution\policies.json')
-          )) {
-            Remove-Item -LiteralPath $policyPath -Force -ErrorAction SilentlyContinue
-          }
-
-          Remove-Item -LiteralPath 'C:\OpenPath' -Recurse -Force -ErrorAction SilentlyContinue
+        run: ./scripts/windows-runner-reset.ps1
 
       - name: Restore Windows runner DNS after reset
+        id: restore-runner-dns
         uses: ./.github/actions/restore-windows-runner-dns
 
       - name: Record Windows runner health after reset

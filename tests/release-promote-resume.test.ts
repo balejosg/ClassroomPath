@@ -66,6 +66,7 @@ const ALL_STEP_IDS = [
   'approval',
   'tag-production',
   'wait-production-deploy',
+  'verify-production-host-state',
   'verify-production-health',
   'report-residual-actions-runs',
   'print-summary',
@@ -415,6 +416,7 @@ describe('fail-closed promotion gate guard', () => {
       'production-readiness',
       'release-preflight',
       'wait-production-deploy',
+      'verify-production-host-state',
       'verify-production-health',
       'report-residual-actions-runs',
     ]);

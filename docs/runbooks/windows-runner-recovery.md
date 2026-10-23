@@ -100,3 +100,18 @@ on the next run, which may be slower than usual.
 After either failure mode is resolved, verify that the Windows runner appears online in the
 repository's Actions runner list before re-queuing blocked jobs. Use
 `scripts/recover-windows-runner.mjs status` to check runner state via the GitHub API.
+
+## Canary Reset, Auto-Start and Failure Classes
+
+- The persistent Windows canary state reset is a single versioned script,
+  `scripts/windows-runner-reset.ps1`, shared by the production bootstrap and client-update
+  canaries. Each sub-step is isolated (a hung Acrylic uninstaller is killed after a timeout,
+  `sc.exe delete` tolerates already-removed services, residual AppLocker policy is cleared with
+  an empty policy when the OpenPath AppControl module is gone). Residue that cannot be removed
+  emits `OPENPATH_RUNNER_RESET_INFRA_FAILURE` and `failure_class=infra`.
+- The production bootstrap canary reports `failure_class` (`infra` or `product`). In `deploy.yml`
+  an `infra` failure triggers one canary retry before `rollback-production` may run; a `product`
+  failure, or an exhausted retry, still rolls back.
+- The `actions.runner.*` services must be `Automatic` (Delayed) with service recovery set, so a
+  VM reboot brings the runner back online without manual intervention. Check this after any
+  runner reinstall.

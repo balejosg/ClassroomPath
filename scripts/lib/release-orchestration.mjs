@@ -290,6 +290,11 @@ function buildRcFirstPromotionPlan({
         'Wait for the tag-triggered production deploy workflow to finish.'
       ),
       step(
+        'verify-production-host-state',
+        ['node', 'scripts/verify-production-host-state.mjs', '--tag', tag],
+        'Read-only check of the real production host release-state: APP_SHA, OPENPATH_SHA and template commit match the tag, DEPLOYMENT_PHASE=COMMITTED and ROLLBACK_ATTEMPTED=0. A green GitHub run alone is not proof.'
+      ),
+      step(
         'verify-production-health',
         [
           'bash',

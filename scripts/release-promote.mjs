@@ -341,6 +341,24 @@ export async function runReleasePromoteCommand(argv = process.argv.slice(2), dep
           dependencies,
           executeStep,
         })) &&
+        productionRollbackRan(result)
+      ) {
+        // A failed-jobs-only rerun after rollback-production would turn the run green while
+        // the host stays reverted. Never auto-rerun; require a full rerun.
+        const message =
+          'Production was rolled back (rollback-production ran); the release is NOT live. A full workflow rerun (not "rerun --failed") is required after fixing the cause. Refusing to rerun only failed jobs.';
+        result.stderr = `${result.stderr ?? ''}\n${message}\n`;
+        io.stderr(`${message}\n`);
+      } else if (
+        result.status !== 'success' &&
+        planStep.id === 'wait-production-deploy' &&
+        (await enrichFailedProductionDeploy({
+          result,
+          tag,
+          identityRoot: plan.identityRoot,
+          dependencies,
+          executeStep,
+        })) &&
         shouldRerunProductionDeploy(result)
       ) {
         const runId = result.githubRun?.runId;
@@ -659,6 +677,21 @@ function shouldRefreshWindowsPrepromotionEvidence(result) {
     text.includes('windows prepromotion evidence') ||
     text.includes('preproduction installed-client evidence')
   );
+}
+
+/**
+ * True when the deploy run's rollback-production job executed (any conclusion except
+ * skipped). Uses both jobs and failedJobs because skipped jobs are filtered from the latter.
+ */
+export function productionRollbackRan(result) {
+  const jobs = [...(result.githubRun?.jobs ?? []), ...(result.githubRun?.failedJobs ?? [])];
+  return jobs.some((job) => {
+    const name = String(job?.name ?? '').toLowerCase();
+    const conclusion = String(job?.conclusion ?? '').toLowerCase();
+    const isRollback =
+      name.includes('roll back production') || name.includes('rollback-production');
+    return isRollback && conclusion !== '' && conclusion !== 'skipped' && conclusion !== 'unknown';
+  });
 }
 
 function shouldRerunProductionDeploy(result) {

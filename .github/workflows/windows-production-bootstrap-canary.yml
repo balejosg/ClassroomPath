@@ -26,6 +26,9 @@ on:
       failure_boundary_message:
         description: Diagnostic failure boundary message for the Windows AJAX bootstrap canary.
         value: ${{ jobs.windows-production-bootstrap-canary.outputs.failure_boundary_message }}
+      failure_class:
+        description: Failure classification, infra (runner/reset/artifact transport) or product (functional canary failure). Empty on success.
+        value: ${{ jobs.windows-production-bootstrap-canary.outputs.failure_class }}
   workflow_dispatch:
     inputs:
       target_environment:
@@ -66,6 +69,7 @@ jobs:
       canary_result: ${{ steps.result.outputs.canary_result }}
       failure_boundary_id: ${{ steps.result.outputs.failure_boundary_id }}
       failure_boundary_message: ${{ steps.result.outputs.failure_boundary_message }}
+      failure_class: ${{ steps.result.outputs.failure_class }}
     env:
       TARGET_ENVIRONMENT: ${{ inputs.target_environment || 'staging' }}
       PRODUCTION_BASE_URL: ${{ inputs.base_url }}
@@ -283,49 +287,12 @@ jobs:
             --target-url "$PRODUCTION_BASE_URL"
 
       - name: Reset persistent Windows canary state
+        id: reset-runner
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          $openPathRoot = 'C:\OpenPath'
-          $uninstallPath = Join-Path $openPathRoot 'Uninstall-OpenPath.ps1'
-          if (Test-Path $uninstallPath) {
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $uninstallPath
-          }
-
-          Get-ScheduledTask -TaskName 'OpenPath-*' -ErrorAction SilentlyContinue |
-            Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
-
-          Get-NetFirewallRule -DisplayName 'OpenPath-*' -ErrorAction SilentlyContinue |
-            Remove-NetFirewallRule -ErrorAction SilentlyContinue
-
-          $acrylicService = Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue
-          if ($acrylicService) {
-            Stop-Service -Name $acrylicService.Name -Force -ErrorAction SilentlyContinue
-            sc.exe delete $acrylicService.Name | Out-Null
-          }
-
-          foreach ($acrylicPath in @(
-            (Join-Path ${env:ProgramFiles(x86)} 'Acrylic DNS Proxy'),
-            (Join-Path ${env:ProgramFiles} 'Acrylic DNS Proxy')
-          )) {
-            $acrylicServicePath = Join-Path $acrylicPath 'AcrylicService.exe'
-            if (Test-Path $acrylicServicePath) {
-              & $acrylicServicePath /UNINSTALL 2>$null
-            }
-            Remove-Item -LiteralPath $acrylicPath -Recurse -Force -ErrorAction SilentlyContinue
-          }
-
-          foreach ($policyPath in @(
-            (Join-Path ${env:ProgramFiles} 'Mozilla Firefox\distribution\policies.json'),
-            (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\distribution\policies.json')
-          )) {
-            Remove-Item -LiteralPath $policyPath -Force -ErrorAction SilentlyContinue
-          }
-
-          Remove-Item -LiteralPath 'C:\OpenPath' -Recurse -Force -ErrorAction SilentlyContinue
+        run: ./scripts/windows-runner-reset.ps1
 
       - name: Restore Windows runner DNS after reset
+        id: restore-runner-dns
         uses: ./.github/actions/restore-windows-runner-dns
 
       - name: Record Windows runner health after reset
@@ -748,6 +715,8 @@ jobs:
           FUNCTIONAL_BOUNDARY_ID: ${{ steps.ajax-summary.outputs.failure_boundary_id || 'artifact-written' }}
           FUNCTIONAL_BOUNDARY_MESSAGE: ${{ steps.ajax-summary.outputs.failure_boundary_message || 'Windows AJAX evidence artifact was not written.' }}
           VERIFY_ARTIFACTS_OUTCOME: ${{ steps.verify-artifacts.outcome }}
+          RESET_RUNNER_OUTCOME: ${{ steps.reset-runner.outcome }}
+          RESTORE_RUNNER_DNS_OUTCOME: ${{ steps.restore-runner-dns.outcome }}
           ARTIFACT_UPLOAD_OUTCOME: ${{ env.TARGET_ENVIRONMENT != 'production' && 'success' || steps.upload-artifacts.outcome }}
           PREPRODUCTION_ARTIFACT_UPLOAD_OUTCOME: ${{ env.TARGET_ENVIRONMENT == 'production' && 'success' || steps.upload-preproduction-artifacts.outcome }}
         run: |
@@ -757,9 +726,18 @@ jobs:
           result="$FUNCTIONAL_RESULT"
           failure_boundary_id="$FUNCTIONAL_BOUNDARY_ID"
           failure_boundary_message="$FUNCTIONAL_BOUNDARY_MESSAGE"
+          failure_class=''
 
-          if [ "$ARTIFACT_UPLOAD_OUTCOME" != "success" ] || [ "$PREPRODUCTION_ARTIFACT_UPLOAD_OUTCOME" != "success" ]; then
+          # failure_class: infra = runner/reset/transport problem that says nothing about the
+          # release; product = the functional canary itself failed on a clean runner.
+          if [ "$RESET_RUNNER_OUTCOME" = "failure" ] || [ "$RESTORE_RUNNER_DNS_OUTCOME" = "failure" ]; then
             result=failure
+            failure_class=infra
+            failure_boundary_id=runner-reset
+            failure_boundary_message='OPENPATH_RUNNER_RESET_INFRA_FAILURE: persistent Windows runner could not be reset to a clean state.'
+          elif [ "$ARTIFACT_UPLOAD_OUTCOME" != "success" ] || [ "$PREPRODUCTION_ARTIFACT_UPLOAD_OUTCOME" != "success" ]; then
+            result=failure
+            failure_class=infra
             failure_boundary_id=artifact-upload
             failure_boundary_message='Functional canary evidence was produced but GitHub artifact upload failed.'
           elif [ "$VERIFY_ARTIFACTS_OUTCOME" != "success" ]; then
@@ -771,7 +749,12 @@ jobs:
             failure_boundary_message='Windows page-resource observation completed without automatic rule creation and explicit allowlist probes succeeded.'
           fi
 
+          if [ "$result" != "success" ] && [ -z "$failure_class" ]; then
+            failure_class=product
+          fi
+
           echo "canary_result=$result" >> "$GITHUB_OUTPUT"
+          echo "failure_class=$failure_class" >> "$GITHUB_OUTPUT"
           echo "failure_boundary_id=$failure_boundary_id" >> "$GITHUB_OUTPUT"
           echo "failure_boundary_message=$failure_boundary_message" >> "$GITHUB_OUTPUT"
 
@@ -779,6 +762,7 @@ jobs:
             echo "## Windows Bootstrap Canary Boundary"
             echo ""
             echo "- Result: \`$result\`"
+            echo "- Failure class: \`${failure_class:-none}\`"
             echo "- Failure boundary: \`$failure_boundary_id\`"
             echo "- Message: $failure_boundary_message"
           } >> "$GITHUB_STEP_SUMMARY"

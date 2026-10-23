@@ -112,6 +112,16 @@ environment's Compose project label. The legacy staging `source-build` path is a
 compatibility path only; it is not promotion evidence and cannot satisfy the production-readiness
 contract.
 
+### Rollback can be hidden by a partial rerun
+
+A `gh run rerun --failed` of a deploy run in which `rollback-production` ran turns the run green
+while the host stays reverted. `release:promote` now refuses to rerun only failed jobs after a
+rollback (a full rerun is required) and ends with `verify-production-host-state`, which reads the
+host `release-state/current-images.env` and `deployment-phase.env` read-only over SSH and requires
+`APP_SHA` and `OPENPATH_SHA` to match the tag, the Windows template commit to match the OpenPath
+pin, `DEPLOYMENT_PHASE=COMMITTED` and `ROLLBACK_ATTEMPTED=0`. The host release-state, not the
+GitHub run status, is the source of truth for what is live.
+
 ### Related runbooks
 
 - `docs/runbooks/deploy-staging.md` — staging deploy procedure

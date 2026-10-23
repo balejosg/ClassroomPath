@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -1162,11 +1162,16 @@ describe('Production client update canary workflow contracts', () => {
       'proxmox',
       'classroompath',
     ]);
+    assert.ok(workflowText.includes('./scripts/windows-runner-reset.ps1'));
     assert.ok(workflowText.includes('Reset persistent Windows canary state'));
     assert.ok(workflowText.includes('Reset persistent Linux canary state'));
-    assert.ok(workflowText.includes("Get-ScheduledTask -TaskName 'OpenPath-*'"));
-    assert.ok(workflowText.includes("Remove-Item -LiteralPath 'C:\\OpenPath'"));
-    assert.ok(workflowText.includes('Acrylic DNS Proxy'));
+    const resetScriptText = readFileSync(
+      resolve(projectRoot, 'scripts/windows-runner-reset.ps1'),
+      'utf8'
+    );
+    assert.ok(resetScriptText.includes("Get-ScheduledTask -TaskName 'OpenPath-*'"));
+    assert.ok(resetScriptText.includes("$OpenPathRoot = 'C:\\OpenPath'"));
+    assert.ok(resetScriptText.includes('Acrylic DNS Proxy'));
     assert.ok(
       workflowText.includes('Restore Windows runner DNS after reset') &&
         workflowText.includes('./.github/actions/restore-windows-runner-dns'),
@@ -2244,4 +2249,40 @@ describe('Bootstrap canary shared secret-read contract', () => {
     assert.match(actionText, /is missing for \$TARGET_ENVIRONMENT/);
     assert.match(actionText, /echo "\$EXPORT_NAME=\$secret_value" >> "\$GITHUB_ENV"/);
   });
+});
+
+test('windows runner reset script is shared, tolerant and classifies unrecoverable residue as infra', () => {
+  const script = readFileSync(
+    new URL('../scripts/windows-runner-reset.ps1', import.meta.url),
+    'utf8'
+  );
+  for (const workflow of [
+    'windows-production-bootstrap-canary.yml',
+    'production-client-update-canary.yml',
+  ]) {
+    const text = readFileSync(new URL(`../.github/workflows/${workflow}`, import.meta.url), 'utf8');
+    assert.match(text, /id: reset-runner[\s\S]*run: \.\/scripts\/windows-runner-reset\.ps1/);
+    assert.doesNotMatch(text, /AcrylicService\.exe/, `${workflow} must not inline the reset`);
+  }
+  assert.match(script, /function Invoke-ResetStep[\s\S]*try[\s\S]*catch/);
+  assert.match(script, /WaitForExit\(/);
+  assert.match(script, /taskkill\.exe \/T \/F/);
+  assert.match(script, /sc\.exe delete/);
+  assert.match(script, /1060, 1072/);
+  assert.match(script, /Set-AppLockerPolicy/);
+  assert.match(script, /<AppLockerPolicy Version="1" \/>/);
+  assert.match(script, /OPENPATH_RUNNER_RESET_INFRA_FAILURE/);
+  assert.match(script, /failure_class=infra/);
+});
+
+test('windows bootstrap canary classifies failure_class infra vs product', () => {
+  const text = readFileSync(
+    new URL('../.github/workflows/windows-production-bootstrap-canary.yml', import.meta.url),
+    'utf8'
+  );
+  assert.match(text, /failure_class: \$\{\{ steps\.result\.outputs\.failure_class \}\}/);
+  assert.match(text, /RESET_RUNNER_OUTCOME: \$\{\{ steps\.reset-runner\.outcome \}\}/);
+  assert.match(text, /failure_class=infra\n\s+failure_boundary_id=runner-reset/);
+  assert.match(text, /failure_class=product/);
+  assert.match(text, /echo "failure_class=\$failure_class" >> "\$GITHUB_OUTPUT"/);
 });
