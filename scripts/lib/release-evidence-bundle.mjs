@@ -599,14 +599,8 @@ export async function runReleaseEvidenceBundle({
     'tmp-windows-production-bootstrap-canary'
   );
   const linuxArtifactDir = resolve(outputDir, 'tmp-linux-production-bootstrap-canary');
-  const preproductionWindowsEvidence = resolveArtifactEvidence({
+  const preproductionArtifactRequest = {
     repo,
-    runId: selectArtifactRunId({
-      preferredRunId: windowsCanaryRun,
-      deployRunId: deployRun,
-      highRisk: windowsFirefoxHighRisk,
-      result: releaseEvidence?.jobs?.preproductionWindowsBootstrapCanary,
-    }),
     artifactName: PREPRODUCTION_WINDOWS_BOOTSTRAP_CANARY_ARTIFACT,
     // The production-named artifact is a legacy preproduction alias only when
     // no explicit live production canary exists. Once both jobs are present,
@@ -615,7 +609,31 @@ export async function runReleaseEvidenceBundle({
       ? []
       : [WINDOWS_PRODUCTION_BOOTSTRAP_CANARY_ARTIFACT],
     outputDir: preproductionWindowsArtifactDir,
+  };
+  // The deploy's staging canary uploads into the deploy run. A separate
+  // staging-verification run can still carry the initial stub instance
+  // (artifact-written) even when the deploy canary produced the full
+  // evidence. Prefer the deploy run and only fall back to the separate canary
+  // run when the deploy run has no artifact for this name.
+  let preproductionWindowsEvidence = resolveArtifactEvidence({
+    ...preproductionArtifactRequest,
+    runId: selectArtifactRunId({
+      preferredRunId: null,
+      deployRunId: deployRun,
+      highRisk: windowsFirefoxHighRisk,
+      result: releaseEvidence?.jobs?.preproductionWindowsBootstrapCanary,
+    }),
   });
+  if (
+    !preproductionWindowsEvidence.listed &&
+    valueOrNull(windowsCanaryRun) &&
+    String(windowsCanaryRun) !== String(deployRun)
+  ) {
+    preproductionWindowsEvidence = resolveArtifactEvidence({
+      ...preproductionArtifactRequest,
+      runId: windowsCanaryRun,
+    });
+  }
   const windowsProductionEvidence = resolveArtifactEvidence({
     repo,
     runId: selectArtifactRunId({
