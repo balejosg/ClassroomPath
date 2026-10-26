@@ -74,6 +74,10 @@ jobs:
       TARGET_ENVIRONMENT: ${{ inputs.target_environment || 'staging' }}
       PRODUCTION_BASE_URL: ${{ inputs.base_url }}
       RUNNER_DIAGNOSTIC_MODE: ${{ inputs.diagnostic_mode || 'false' }}
+      # AppControl activation (applockerfltr) adds work to the install before
+      # Firefox can report the managed extension; the manual production canary
+      # regularly exceeds the previous 60 s warmup budget.
+      WINDOWS_AJAX_AUTO_ALLOW_FIREFOX_WARMUP_TIMEOUT_MS: '180000'
       CLASSROOMPATH_STAGING_PUBLIC_URL: ${{ vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL }}
       CLASSROOMPATH_STAGING_CANARY_PUBLIC_URL: ${{ vars.STAGING_CANARY_PUBLIC_URL || secrets.STAGING_CANARY_PUBLIC_URL || vars.STAGING_PUBLIC_URL || secrets.STAGING_PUBLIC_URL }}
       CLASSROOMPATH_STAGING_GATEWAY_HEALTH_URL: ${{ vars.STAGING_GATEWAY_HEALTH_URL || secrets.STAGING_GATEWAY_HEALTH_URL }}
