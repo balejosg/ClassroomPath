@@ -692,6 +692,7 @@ jobs:
             ${{ runner.temp }}/Update-OpenPath.log
             ${{ runner.temp }}/windows-production-bootstrap-firefox.log
           if-no-files-found: error
+          overwrite: true
           retention-days: 14
 
       - name: Upload preproduction bootstrap canary artifacts
@@ -708,6 +709,7 @@ jobs:
             ${{ runner.temp }}/Update-OpenPath.log
             ${{ runner.temp }}/windows-production-bootstrap-firefox.log
           if-no-files-found: error
+          overwrite: true
           retention-days: 14
 
       - name: Record canary result
