@@ -131,6 +131,12 @@ Invoke-ResetStep 'firefox-policies' {
   }
 }
 
+Invoke-ResetStep 'openpath-root' {
+  Remove-Item -LiteralPath $OpenPathRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Must run after the OpenPath root is removed: the residue check below asks
+# whether the AppControl owner module is gone, and it is only gone then.
 Invoke-ResetStep 'applocker-residual' {
   # When the OpenPath AppControl owner module is gone, a leftover AppLocker
   # policy can never be removed by OpenPath itself ("AppControl owner module is
@@ -150,10 +156,6 @@ Invoke-ResetStep 'applocker-residual' {
       Remove-Item -LiteralPath $emptyPolicyPath -Force -ErrorAction SilentlyContinue
     }
   }
-}
-
-Invoke-ResetStep 'openpath-root' {
-  Remove-Item -LiteralPath $OpenPathRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # Verification: anything left behind is an infrastructure problem.

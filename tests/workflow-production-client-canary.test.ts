@@ -2251,6 +2251,23 @@ describe('Bootstrap canary shared secret-read contract', () => {
   });
 });
 
+test('windows runner reset clears residual AppLocker policy only after OpenPath root is removed', () => {
+  const script = readFileSync(
+    new URL('../scripts/windows-runner-reset.ps1', import.meta.url),
+    'utf8'
+  );
+  const rootRemoval = script.indexOf("Invoke-ResetStep 'openpath-root'");
+  const applockerResidual = script.indexOf("Invoke-ResetStep 'applocker-residual'");
+  assert.ok(rootRemoval >= 0 && applockerResidual >= 0);
+  // Otherwise the AppControl owner module still exists when the residue check runs,
+  // the step no-ops, and deleting C:\OpenPath orphans the policy so the next
+  // Install-OpenPath.ps1 fails closed ("AppControl owner module is unavailable").
+  assert.ok(
+    applockerResidual > rootRemoval,
+    'applocker-residual must run after openpath-root removal'
+  );
+});
+
 test('windows runner reset script is shared, tolerant and classifies unrecoverable residue as infra', () => {
   const script = readFileSync(
     new URL('../scripts/windows-runner-reset.ps1', import.meta.url),
