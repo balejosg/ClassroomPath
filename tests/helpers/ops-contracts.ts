@@ -30,6 +30,7 @@ export type WorkflowJob = {
 };
 
 export type WorkflowDefinition = {
+  env?: Record<string, string>;
   permissions?: Record<string, string>;
   concurrency?: string | { group?: string; 'cancel-in-progress'?: boolean };
   on?: {

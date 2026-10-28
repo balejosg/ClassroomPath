@@ -496,9 +496,18 @@ export function runConfigCheck({
 }
 
 /**
+ * Minimal exec seam for the Windows runner preflight: callers inject a function
+ * that runs one command and returns stdout as text.
+ *
+ * @typedef {(file: string, args: readonly string[], options?: object) => unknown} ExecFileLike
+ */
+
+/**
  * Preflight: every Windows canary runner named by CLASSROOMPATH_WINDOWS_RUNNER_NAME
  * (comma-separated) must be registered and online in the GitHub runners API.
  * Without it the production bootstrap canary would queue forever.
+ *
+ * @param {{ env: Record<string, string | undefined>, execFile?: ExecFileLike }} params
  */
 export function runWindowsRunnerCheck({ env, execFile = execFileSync }) {
   const names = String(env.CLASSROOMPATH_WINDOWS_RUNNER_NAME ?? '')
