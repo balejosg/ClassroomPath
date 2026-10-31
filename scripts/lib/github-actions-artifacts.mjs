@@ -94,12 +94,14 @@ const GITHUB_ARTIFACTS_JQ =
  * @returns {string}
  */
 function runGitHubCli(args, { cwd, stdio = ['ignore', 'pipe', 'pipe'] } = {}) {
-  return execFileSync('gh', args, {
-    cwd,
-    encoding: 'utf8',
-    maxBuffer: GITHUB_CLI_MAX_BUFFER_BYTES,
-    stdio,
-  });
+  return withGitHubCliConnectionRetry(() =>
+    execFileSync('gh', args, {
+      cwd,
+      encoding: 'utf8',
+      maxBuffer: GITHUB_CLI_MAX_BUFFER_BYTES,
+      stdio,
+    })
+  );
 }
 
 /**
@@ -108,11 +110,48 @@ function runGitHubCli(args, { cwd, stdio = ['ignore', 'pipe', 'pipe'] } = {}) {
  * @returns {Buffer}
  */
 function runGitHubCliBuffer(args, { cwd } = {}) {
-  return execFileSync('gh', args, {
-    cwd,
-    maxBuffer: GITHUB_CLI_MAX_BUFFER_BYTES,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  return withGitHubCliConnectionRetry(() =>
+    execFileSync('gh', args, {
+      cwd,
+      maxBuffer: GITHUB_CLI_MAX_BUFFER_BYTES,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+  );
+}
+
+// gh failures where the request never reached GitHub; anything else (4xx/5xx,
+// bad arguments) is returned to the caller unchanged.
+const GITHUB_CLI_CONNECTION_ERROR_PATTERN =
+  /error connecting to|dial tcp|i\/o timeout|TLS handshake timeout|connection reset by peer|no such host/i;
+const GITHUB_CLI_CONNECTION_ATTEMPTS = 4;
+
+/**
+ * Retries a gh invocation when it failed before reaching GitHub, so one dropped
+ * connection on a self-hosted runner does not fail a whole deploy.
+ *
+ * @template T
+ * @param {() => T} run
+ * @returns {T}
+ */
+function withGitHubCliConnectionRetry(run) {
+  const delayMs = Number(process.env.CLASSROOMPATH_GH_CONNECTION_RETRY_DELAY_MS ?? 5000);
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return run();
+    } catch (error) {
+      const stderr = String(/** @type {{stderr?: unknown}} */ (error)?.stderr ?? '');
+      if (
+        attempt >= GITHUB_CLI_CONNECTION_ATTEMPTS ||
+        !GITHUB_CLI_CONNECTION_ERROR_PATTERN.test(stderr)
+      ) {
+        throw error;
+      }
+      process.stderr.write(
+        `gh could not reach GitHub (attempt ${String(attempt)}/${String(GITHUB_CLI_CONNECTION_ATTEMPTS)}); retrying\n`
+      );
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs * attempt);
+    }
+  }
 }
 
 /**

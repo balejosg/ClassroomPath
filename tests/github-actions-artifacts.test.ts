@@ -15,6 +15,7 @@ import { describe, test } from 'node:test';
 import {
   cleanupTemporaryArtifactDir,
   downloadArtifactById,
+  viewGitHubWorkflowRun,
   waitForArtifactResolution,
 } from '../scripts/lib/github-actions-artifacts.mjs';
 
@@ -92,6 +93,59 @@ describe('github-actions-artifacts helper', () => {
   test('requires both the attempt callback and timeout formatter', () => {
     assert.throws(() => waitForArtifactResolution({ formatTimeoutError() {} }), /attempt callback/);
     assert.throws(() => waitForArtifactResolution({ attempt() {} }), /timeout formatter/);
+  });
+
+  test('retries gh calls that fail before reaching GitHub', () => {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'github-actions-artifacts-retry-'));
+    const fakeBin = resolve(tempDir, 'bin');
+    const counter = resolve(tempDir, 'calls');
+    const originalPath = process.env.PATH;
+    const originalDelay = process.env.CLASSROOMPATH_GH_CONNECTION_RETRY_DELAY_MS;
+
+    mkdirSync(fakeBin);
+    writeFileSync(
+      resolve(fakeBin, 'gh'),
+      `#!/usr/bin/env bash
+set -euo pipefail
+calls=$(( $(cat "${counter}" 2>/dev/null || echo 0) + 1 ))
+echo "$calls" > "${counter}"
+if [ "$calls" -lt 3 ]; then
+  echo 'error connecting to api.github.com' >&2
+  exit 1
+fi
+if [ "$1" = run ] && [ "$2" = view ] && [ "$3" = 404 ]; then
+  echo 'HTTP 404: Not Found' >&2
+  exit 1
+fi
+printf '{"databaseId":7,"status":"completed"}'
+`,
+      'utf8'
+    );
+    chmodSync(resolve(fakeBin, 'gh'), 0o755);
+
+    try {
+      process.env.PATH = `${fakeBin}${delimiter}${originalPath ?? ''}`;
+      process.env.CLASSROOMPATH_GH_CONNECTION_RETRY_DELAY_MS = '1';
+
+      const run = viewGitHubWorkflowRun({ repo: 'owner/repo', runId: 7 });
+      assert.equal(run.databaseId, 7);
+      assert.equal(readFileSync(counter, 'utf8').trim(), '3');
+
+      assert.throws(
+        () => viewGitHubWorkflowRun({ repo: 'owner/repo', runId: 404 }),
+        /HTTP 404/,
+        'errors returned by GitHub must not be retried'
+      );
+      assert.equal(readFileSync(counter, 'utf8').trim(), '4');
+    } finally {
+      process.env.PATH = originalPath;
+      if (originalDelay === undefined) {
+        delete process.env.CLASSROOMPATH_GH_CONNECTION_RETRY_DELAY_MS;
+      } else {
+        process.env.CLASSROOMPATH_GH_CONNECTION_RETRY_DELAY_MS = originalDelay;
+      }
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   test('downloads artifact archives through gh stdout when gh api has no output flag', () => {
