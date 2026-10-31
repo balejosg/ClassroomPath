@@ -144,21 +144,28 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
 
-          $dnsServers = @('1.1.1.1', '8.8.8.8')
-          $activeAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue |
-            Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Loopback*' })
-
-          foreach ($adapter in $activeAdapters) {
-            Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
-          }
-
-          if (-not $activeAdapters) {
-            Set-DnsClientServerAddress -InterfaceAlias 'Ethernet' -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
-          }
-
-          Clear-DnsClientCache -ErrorAction SilentlyContinue
-
+          # A previous canary can leave OpenPath active on this persistent runner. Its
+          # firewall blocks DNS to public resolvers while its own resolver still allows
+          # GitHub, so keep the current resolver when it already reaches GitHub and let
+          # the reset step remove the leftover client after checkout.
           $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
+          if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
+            $dnsServers = @('1.1.1.1', '8.8.8.8')
+            $activeAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue |
+              Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Loopback*' })
+
+            foreach ($adapter in $activeAdapters) {
+              Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+            }
+
+            if (-not $activeAdapters) {
+              Set-DnsClientServerAddress -InterfaceAlias 'Ethernet' -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+            }
+
+            Clear-DnsClientCache -ErrorAction SilentlyContinue
+            $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
+          }
+
           if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
             throw "GitHub connectivity failed before checkout. NameResolution=$($githubProbe.NameResolutionSucceeded) Tcp443=$($githubProbe.TcpTestSucceeded)"
           }

@@ -210,6 +210,12 @@ describe('Workflow core contracts', () => {
           /Test-NetConnection github\.com -Port 443/,
           `${location} must prove GitHub connectivity before checkout`
         );
+        const preCheckoutRun = String(preCheckoutDnsStep?.run ?? '');
+        assert.ok(
+          preCheckoutRun.indexOf('Test-NetConnection github.com -Port 443') <
+            preCheckoutRun.indexOf('Set-DnsClientServerAddress'),
+          `${location} must try the current resolver before forcing public DNS, because a leftover OpenPath firewall blocks public resolvers`
+        );
 
         coveredJobs.push(location);
       }

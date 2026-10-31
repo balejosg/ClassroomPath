@@ -999,6 +999,22 @@ describe('Production client update canary workflow contracts', () => {
         guardStepIndex >= 0 && resetStepIndex >= 0 && guardStepIndex < resetStepIndex,
         `${workflowPath} must fail before mutating runner state when another destructive Windows job is active`
       );
+      const preflightResetStepIndex = steps.findIndex(
+        (step) => step.name === 'Remove leftover OpenPath client before dependency install'
+      );
+      const dependencyDnsStepIndex = steps.findIndex(
+        (step) => step.name === 'Restore Windows runner DNS before dependency install'
+      );
+      assert.ok(
+        guardStepIndex >= 0 &&
+          preflightResetStepIndex > guardStepIndex &&
+          preflightResetStepIndex < dependencyDnsStepIndex,
+        `${workflowPath} must remove a leftover OpenPath client after the runner guard and before forcing public DNS for npm ci, because its firewall blocks public resolvers`
+      );
+      assert.match(
+        String(steps[preflightResetStepIndex]?.run ?? ''),
+        /\.\/scripts\/windows-runner-reset\.ps1/
+      );
       assert.equal(guardStep?.env?.GITHUB_TOKEN, '${{ github.token }}');
       assert.match(String(guardStep?.run ?? ''), /assert-destructive-runner-available\.mjs/);
       assert.match(
@@ -2300,6 +2316,20 @@ test('windows bootstrap canary classifies failure_class infra vs product', () =>
   assert.match(text, /failure_class: \$\{\{ steps\.result\.outputs\.failure_class \}\}/);
   assert.match(text, /RESET_RUNNER_OUTCOME: \$\{\{ steps\.reset-runner\.outcome \}\}/);
   assert.match(text, /failure_class=infra\n\s+failure_boundary_id=runner-reset/);
+  assert.match(text, /PRE_CHECKOUT_DNS_OUTCOME: \$\{\{ steps\.pre-checkout-dns\.outcome \}\}/);
+  assert.match(
+    text,
+    /PREFLIGHT_RESET_RUNNER_OUTCOME: \$\{\{ steps\.preflight-reset-runner\.outcome \}\}/
+  );
+  assert.match(
+    text,
+    /"\$PRE_CHECKOUT_DNS_OUTCOME" = "failure" \]; then\n\s+result=failure\n\s+failure_class=infra/,
+    'a runner that cannot reach GitHub before checkout says nothing about the release'
+  );
+  assert.match(
+    text,
+    /"\$PREFLIGHT_RESET_RUNNER_OUTCOME" = "failure" \][^\n]*then\n\s+result=failure\n\s+failure_class=infra/
+  );
   assert.match(text, /failure_class=product/);
   assert.match(text, /echo "failure_class=\$failure_class" >> "\$GITHUB_OUTPUT"/);
 });

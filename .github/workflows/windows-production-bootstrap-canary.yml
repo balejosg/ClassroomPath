@@ -94,23 +94,33 @@ jobs:
 
     steps:
       - name: Restore Windows runner DNS before checkout
+        id: pre-checkout-dns
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
 
-          $dnsServers = @('1.1.1.1', '8.8.8.8')
-          $activeAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue |
-            Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Loopback*' })
+          # A previous canary can leave OpenPath active on this persistent runner. Its
+          # firewall blocks DNS to public resolvers while its own resolver still allows
+          # GitHub, so keep the current resolver when it already reaches GitHub and let
+          # the reset step remove the leftover client after checkout.
+          $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
+          if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
+            $dnsServers = @('1.1.1.1', '8.8.8.8')
+            $activeAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue |
+              Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Loopback*' })
 
-          foreach ($adapter in $activeAdapters) {
-            Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+            foreach ($adapter in $activeAdapters) {
+              Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+            }
+
+            if (-not $activeAdapters) {
+              Set-DnsClientServerAddress -InterfaceAlias 'Ethernet' -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+            }
+
+            Clear-DnsClientCache -ErrorAction SilentlyContinue
+            $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
           }
 
-          if (-not $activeAdapters) {
-            Set-DnsClientServerAddress -InterfaceAlias 'Ethernet' -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
-          }
-
-          Clear-DnsClientCache -ErrorAction SilentlyContinue
           $runnerDnsServers = @(Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
             Where-Object { $_.ServerAddresses } |
             ForEach-Object { $_.ServerAddresses } |
@@ -118,7 +128,6 @@ jobs:
           $runnerDnsServersJson = ConvertTo-Json -Compress -InputObject @($runnerDnsServers)
           "RUNNER_DNS_BEFORE_RESET=$runnerDnsServersJson" >> $env:GITHUB_ENV
 
-          $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
           if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
             throw "GitHub connectivity failed before checkout. NameResolution=$($githubProbe.NameResolutionSucceeded) Tcp443=$($githubProbe.TcpTestSucceeded)"
           }
@@ -136,6 +145,27 @@ jobs:
         with:
           enable-cache: false
           cache-dependency-path: package-lock.json
+
+      - name: Assert destructive Windows runner is available
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/assert-destructive-runner-available.mjs
+
+      - name: Remove leftover OpenPath client before dependency install
+        id: preflight-reset-runner
+        shell: pwsh
+        run: |
+          # Setup Node.js and npm ci need public DNS, which a leftover OpenPath client blocks.
+          $leftover = (Test-Path 'C:\OpenPath') -or
+            [bool](Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue) -or
+            (@(Get-ScheduledTask -TaskName 'OpenPath-*' -ErrorAction SilentlyContinue).Count -gt 0)
+          if (-not $leftover) {
+            Write-Host 'No leftover OpenPath client detected.'
+            exit 0
+          }
+          ./scripts/windows-runner-reset.ps1
+          exit $LASTEXITCODE
 
       - name: Restore Windows runner DNS before dependency install
         uses: ./.github/actions/restore-windows-runner-dns
@@ -273,12 +303,6 @@ jobs:
             }
           }
           JSON
-
-      - name: Assert destructive Windows runner is available
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/assert-destructive-runner-available.mjs
 
       - name: Record Windows runner health before reset
         shell: bash
@@ -721,6 +745,8 @@ jobs:
           FUNCTIONAL_BOUNDARY_ID: ${{ steps.ajax-summary.outputs.failure_boundary_id || 'artifact-written' }}
           FUNCTIONAL_BOUNDARY_MESSAGE: ${{ steps.ajax-summary.outputs.failure_boundary_message || 'Windows AJAX evidence artifact was not written.' }}
           VERIFY_ARTIFACTS_OUTCOME: ${{ steps.verify-artifacts.outcome }}
+          PRE_CHECKOUT_DNS_OUTCOME: ${{ steps.pre-checkout-dns.outcome }}
+          PREFLIGHT_RESET_RUNNER_OUTCOME: ${{ steps.preflight-reset-runner.outcome }}
           RESET_RUNNER_OUTCOME: ${{ steps.reset-runner.outcome }}
           RESTORE_RUNNER_DNS_OUTCOME: ${{ steps.restore-runner-dns.outcome }}
           ARTIFACT_UPLOAD_OUTCOME: ${{ env.TARGET_ENVIRONMENT != 'production' && 'success' || steps.upload-artifacts.outcome }}
@@ -736,7 +762,12 @@ jobs:
 
           # failure_class: infra = runner/reset/transport problem that says nothing about the
           # release; product = the functional canary itself failed on a clean runner.
-          if [ "$RESET_RUNNER_OUTCOME" = "failure" ] || [ "$RESTORE_RUNNER_DNS_OUTCOME" = "failure" ]; then
+          if [ "$PRE_CHECKOUT_DNS_OUTCOME" = "failure" ]; then
+            result=failure
+            failure_class=infra
+            failure_boundary_id=runner-network
+            failure_boundary_message='Persistent Windows runner could not reach GitHub before checkout.'
+          elif [ "$PREFLIGHT_RESET_RUNNER_OUTCOME" = "failure" ] || [ "$RESET_RUNNER_OUTCOME" = "failure" ] || [ "$RESTORE_RUNNER_DNS_OUTCOME" = "failure" ]; then
             result=failure
             failure_class=infra
             failure_boundary_id=runner-reset

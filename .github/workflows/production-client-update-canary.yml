@@ -325,23 +325,33 @@ jobs:
 
     steps:
       - name: Restore Windows runner DNS before checkout
+        id: pre-checkout-dns
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
 
-          $dnsServers = @('1.1.1.1', '8.8.8.8')
-          $activeAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue |
-            Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Loopback*' })
+          # A previous canary can leave OpenPath active on this persistent runner. Its
+          # firewall blocks DNS to public resolvers while its own resolver still allows
+          # GitHub, so keep the current resolver when it already reaches GitHub and let
+          # the reset step remove the leftover client after checkout.
+          $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
+          if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
+            $dnsServers = @('1.1.1.1', '8.8.8.8')
+            $activeAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue |
+              Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Loopback*' })
 
-          foreach ($adapter in $activeAdapters) {
-            Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+            foreach ($adapter in $activeAdapters) {
+              Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+            }
+
+            if (-not $activeAdapters) {
+              Set-DnsClientServerAddress -InterfaceAlias 'Ethernet' -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
+            }
+
+            Clear-DnsClientCache -ErrorAction SilentlyContinue
+            $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
           }
 
-          if (-not $activeAdapters) {
-            Set-DnsClientServerAddress -InterfaceAlias 'Ethernet' -ServerAddresses $dnsServers -ErrorAction SilentlyContinue
-          }
-
-          Clear-DnsClientCache -ErrorAction SilentlyContinue
           $runnerDnsServers = @(Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
             Where-Object { $_.ServerAddresses } |
             ForEach-Object { $_.ServerAddresses } |
@@ -349,7 +359,6 @@ jobs:
           $runnerDnsServersJson = ConvertTo-Json -Compress -InputObject @($runnerDnsServers)
           "RUNNER_DNS_BEFORE_RESET=$runnerDnsServersJson" >> $env:GITHUB_ENV
 
-          $githubProbe = Test-NetConnection github.com -Port 443 -WarningAction SilentlyContinue
           if (-not $githubProbe.NameResolutionSucceeded -or -not $githubProbe.TcpTestSucceeded) {
             throw "GitHub connectivity failed before checkout. NameResolution=$($githubProbe.NameResolutionSucceeded) Tcp443=$($githubProbe.TcpTestSucceeded)"
           }
@@ -366,6 +375,27 @@ jobs:
         with:
           enable-cache: false
           cache-dependency-path: package-lock.json
+
+      - name: Assert destructive Windows runner is available
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/assert-destructive-runner-available.mjs
+
+      - name: Remove leftover OpenPath client before dependency install
+        id: preflight-reset-runner
+        shell: pwsh
+        run: |
+          # Setup Node.js and npm ci need public DNS, which a leftover OpenPath client blocks.
+          $leftover = (Test-Path 'C:\OpenPath') -or
+            [bool](Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue) -or
+            (@(Get-ScheduledTask -TaskName 'OpenPath-*' -ErrorAction SilentlyContinue).Count -gt 0)
+          if (-not $leftover) {
+            Write-Host 'No leftover OpenPath client detected.'
+            exit 0
+          }
+          ./scripts/windows-runner-reset.ps1
+          exit $LASTEXITCODE
 
       - name: Restore Windows runner DNS before dependency install
         uses: ./.github/actions/restore-windows-runner-dns
@@ -396,12 +426,6 @@ jobs:
           fi
 
           node -e "Promise.all([import('selenium-webdriver'), import('selenium-webdriver/firefox.js')])"
-
-      - name: Assert destructive Windows runner is available
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/assert-destructive-runner-available.mjs
 
       - name: Record Windows runner health before reset
         shell: bash
