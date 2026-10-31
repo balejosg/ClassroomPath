@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parseOpenPathPromotionContractBytes } from './lib/openpath-promotion-contract.mjs';
+import { fetchWithConnectionRetry } from './lib/network-retry.mjs';
 
 const DEFAULT_OPENPATH_APT_BASE_URL =
   'https://raw.githubusercontent.com/balejosg/OpenPath/gh-pages/apt';
@@ -291,7 +292,7 @@ echo "Exact OpenPath Linux package ${normalizedPackageName}=${normalizedPackageV
 }
 
 async function fetchText(url) {
-  const response = await fetch(url);
+  const response = await fetchWithConnectionRetry(url);
   if (!response.ok) {
     throw new Error('OpenPath provenance download failed: HTTP ' + response.status + ' ' + url);
   }
@@ -299,7 +300,7 @@ async function fetchText(url) {
 }
 
 async function fetchBytes(url) {
-  const response = await fetch(url);
+  const response = await fetchWithConnectionRetry(url);
   if (!response.ok) {
     throw new Error('OpenPath provenance download failed: HTTP ' + response.status + ' ' + url);
   }

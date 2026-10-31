@@ -15,6 +15,7 @@ import {
   findBlockingDestructiveRunnerJobs,
   formatBlockingDestructiveRunnerMessage,
 } from './lib/destructive-runner-guard.mjs';
+import { fetchWithConnectionRetry } from './lib/network-retry.mjs';
 
 function parseList(value) {
   return String(value ?? '')
@@ -75,7 +76,7 @@ Options:
 }
 
 async function githubJson(url, token) {
-  const response = await fetch(url, {
+  const response = await fetchWithConnectionRetry(url, {
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,

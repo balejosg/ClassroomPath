@@ -32,6 +32,11 @@ import {
 } from './release-evidence-contract.mjs';
 import { renderReleaseEvidenceMarkdown } from './release-evidence.mjs';
 import { verifyReleaseBundleArtifacts } from './release-bundle.mjs';
+import {
+  NETWORK_RETRY_ATTEMPTS,
+  fetchWithConnectionRetry,
+  isTransientGitHubCliError,
+} from './network-retry.mjs';
 
 export {
   parseLinuxBootstrapCanaryArtifact,
@@ -356,8 +361,30 @@ export function buildReleaseEvidenceBundle({
   return bundle;
 }
 
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function spawnGhWithRetry(args, options) {
+  const delayMs = Number(process.env.CLASSROOMPATH_NETWORK_RETRY_DELAY_MS ?? 5000);
+  for (let attempt = 1; ; attempt += 1) {
+    const result = spawnSync('gh', args, options);
+    if (
+      result.status === 0 ||
+      attempt >= NETWORK_RETRY_ATTEMPTS ||
+      !isTransientGitHubCliError(String(result.stderr ?? ''))
+    ) {
+      return result;
+    }
+    process.stderr.write(
+      `gh could not reach GitHub (attempt ${String(attempt)}/${String(NETWORK_RETRY_ATTEMPTS)}); retrying\n`
+    );
+    sleepSync(delayMs * attempt);
+  }
+}
+
 function runGh(args) {
-  const result = spawnSync('gh', args, {
+  const result = spawnGhWithRetry(args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -390,7 +417,7 @@ function tryDownloadRunArtifact({ repo, artifact, outputDir }) {
 
   mkdirSync(outputDir, { recursive: true });
   const archivePath = resolve(outputDir, `.github-artifact-${artifactId}.zip`);
-  const download = spawnSync('gh', ['api', `repos/${repo}/actions/artifacts/${artifactId}/zip`], {
+  const download = spawnGhWithRetry(['api', `repos/${repo}/actions/artifacts/${artifactId}/zip`], {
     encoding: null,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -436,8 +463,8 @@ function tryDownloadRunArtifact({ repo, artifact, outputDir }) {
 
 export async function collectProductionHealth(productionUrl) {
   const [healthResponse, readyResponse] = await Promise.all([
-    fetch(`${productionUrl}/cp/health`),
-    fetch(`${productionUrl}/cp/ready`),
+    fetchWithConnectionRetry(`${productionUrl}/cp/health`),
+    fetchWithConnectionRetry(`${productionUrl}/cp/ready`),
   ]);
   const [healthBody, readyBody] = await Promise.all([healthResponse.text(), readyResponse.text()]);
 

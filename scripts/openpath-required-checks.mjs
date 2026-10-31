@@ -23,6 +23,7 @@ import { buildGitHubApiHeaders, isDirectExecution } from './lib/github-actions.m
 import { rerunGitHubRunFailedJobs } from './lib/github-actions-artifacts.mjs';
 import { classifyWorkflowRunHealth } from './lib/github-actions-health.mjs';
 import { gitOutput } from './lib/git-process.mjs';
+import { fetchWithConnectionRetry } from './lib/network-retry.mjs';
 import {
   classifyOpenPathPrereleaseRecovery,
   formatOpenPathPrereleaseRecoveryDecision,
@@ -164,7 +165,7 @@ export async function fetchCheckRuns({ repo, sha, token }) {
     url.searchParams.set('per_page', String(GITHUB_PAGE_SIZE));
     url.searchParams.set('page', String(page));
 
-    const response = await fetch(url, {
+    const response = await fetchWithConnectionRetry(url, {
       headers: buildGitHubApiHeaders({
         token,
         userAgent: 'classroompath-openpath-required-checks',
@@ -213,12 +214,15 @@ function selectLatestOpenPathCiRunId(checkRuns) {
 }
 
 async function fetchWorkflowRunJobs({ repo, runId, token }) {
-  const response = await fetch(`https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs`, {
-    headers: buildGitHubApiHeaders({
-      token,
-      userAgent: 'classroompath-openpath-required-checks',
-    }),
-  });
+  const response = await fetchWithConnectionRetry(
+    `https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs`,
+    {
+      headers: buildGitHubApiHeaders({
+        token,
+        userAgent: 'classroompath-openpath-required-checks',
+      }),
+    }
+  );
 
   if (!response.ok) {
     const body = await response.text();
@@ -283,7 +287,7 @@ export async function ensureOpenPathEvidenceRef({ repo, sha, token }) {
     userAgent: 'classroompath-openpath-required-checks-dispatch',
   });
   const refUrl = `https://api.github.com/repos/${repo}/git/ref/${refPath}`;
-  const refResponse = await fetch(refUrl, { headers });
+  const refResponse = await fetchWithConnectionRetry(refUrl, { headers });
 
   if (refResponse.ok) {
     return refName;
@@ -294,21 +298,24 @@ export async function ensureOpenPathEvidenceRef({ repo, sha, token }) {
     throw new Error(formatDispatchApiError('OpenPath evidence ref lookup', refResponse, body));
   }
 
-  const createResponse = await fetch(`https://api.github.com/repos/${repo}/git/refs`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      ref: `refs/${refPath}`,
-      sha,
-    }),
-  });
+  const createResponse = await fetchWithConnectionRetry(
+    `https://api.github.com/repos/${repo}/git/refs`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        ref: `refs/${refPath}`,
+        sha,
+      }),
+    }
+  );
 
   if (createResponse.ok) {
     return refName;
   }
 
   if (createResponse.status === 422) {
-    const retryResponse = await fetch(refUrl, { headers });
+    const retryResponse = await fetchWithConnectionRetry(refUrl, { headers });
     if (retryResponse.ok) {
       return refName;
     }
@@ -325,7 +332,7 @@ async function fetchWorkflowRunsForSha({ repo, workflow, sha, token }) {
   url.searchParams.set('head_sha', sha);
   url.searchParams.set('per_page', String(GITHUB_PAGE_SIZE));
 
-  const response = await fetch(url, {
+  const response = await fetchWithConnectionRetry(url, {
     headers: buildGitHubApiHeaders({
       token,
       userAgent: 'classroompath-openpath-required-checks-dispatch',
@@ -354,7 +361,7 @@ function workflowRunMatchesSha(workflowRun, sha) {
 }
 
 async function dispatchOpenPathWorkflow({ repo, workflow, ref, inputs, token }) {
-  const response = await fetch(
+  const response = await fetchWithConnectionRetry(
     `https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`,
     {
       method: 'POST',

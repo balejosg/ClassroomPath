@@ -18,6 +18,8 @@ import {
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
+import { isTransientGitHubCliError } from './network-retry.mjs';
+
 export const GITHUB_CLI_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 const GITHUB_ARTIFACTS_JQ =
   '{artifacts: [.artifacts[] | {id, name, expired, created_at, updated_at, expires_at, workflow_run: {id: .workflow_run.id}}]}';
@@ -119,10 +121,7 @@ function runGitHubCliBuffer(args, { cwd } = {}) {
   );
 }
 
-// gh failures where the request never reached GitHub; anything else (4xx/5xx,
-// bad arguments) is returned to the caller unchanged.
-const GITHUB_CLI_CONNECTION_ERROR_PATTERN =
-  /error connecting to|dial tcp|i\/o timeout|TLS handshake timeout|connection reset by peer|no such host/i;
+// Anything that is not a pre-connection failure (4xx/5xx, bad arguments) is returned unchanged.
 const GITHUB_CLI_CONNECTION_ATTEMPTS = 4;
 
 /**
@@ -140,10 +139,7 @@ function withGitHubCliConnectionRetry(run) {
       return run();
     } catch (error) {
       const stderr = String(/** @type {{stderr?: unknown}} */ (error)?.stderr ?? '');
-      if (
-        attempt >= GITHUB_CLI_CONNECTION_ATTEMPTS ||
-        !GITHUB_CLI_CONNECTION_ERROR_PATTERN.test(stderr)
-      ) {
+      if (attempt >= GITHUB_CLI_CONNECTION_ATTEMPTS || !isTransientGitHubCliError(stderr)) {
         throw error;
       }
       process.stderr.write(

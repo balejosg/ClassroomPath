@@ -15,6 +15,7 @@ import { promisify } from 'node:util';
 
 import { isDirectExecution } from './lib/github-actions.mjs';
 import { classifyWorkflowRunHealth } from './lib/github-actions-health.mjs';
+import { isTransientGitHubCliError, withConnectionRetryAsync } from './lib/network-retry.mjs';
 
 const execFile = promisify(nodeExecFile);
 const GH_RUN_VIEW_FIELDS = 'status,conclusion,jobs,updatedAt,url';
@@ -26,6 +27,19 @@ const DEFAULT_STALE_AFTER_MS = 30 * 60 * 1000;
 const GATE_WORKFLOW_NAMES = new Set(['Deploy', 'Release Candidate Images']);
 const DEFAULT_CHRONIC_THRESHOLD = 5;
 const CHRONIC_FETCH_LIMIT_PER_QUERY = 100;
+
+/**
+ * @param {(file: string, args: string[]) => Promise<any>} runExecFile
+ * @param {string[]} args
+ */
+function runGhWithRetry(runExecFile, args) {
+  return withConnectionRetryAsync(
+    () => runExecFile('gh', args),
+    (error) =>
+      isTransientGitHubCliError(String(/** @type {{stderr?: unknown}} */ (error)?.stderr ?? '')),
+    'gh'
+  );
+}
 
 function usage() {
   return `Usage:
@@ -203,7 +217,7 @@ function classifyRunPayload(run, dependencies) {
 
 async function fetchWorkflowRun(options, dependencies) {
   const runExecFile = dependencies.execFile ?? execFile;
-  const result = await runExecFile('gh', [
+  const result = await runGhWithRetry(runExecFile, [
     'run',
     'view',
     options.runId,
@@ -267,7 +281,7 @@ async function fetchResidualRunCandidates(options, dependencies) {
   }
 
   for (const query of queries) {
-    const result = await runExecFile('gh', [...query, '--json', GH_RUN_LIST_FIELDS]);
+    const result = await runGhWithRetry(runExecFile, [...query, '--json', GH_RUN_LIST_FIELDS]);
     const runs = JSON.parse(String(result.stdout ?? '[]'));
     for (const run of Array.isArray(runs) ? runs : []) {
       const id = String(run.databaseId ?? run.id ?? '');
@@ -353,7 +367,7 @@ async function fetchChronicFailureCandidates(options, dependencies) {
       query.push('--workflow', options.workflow);
     }
 
-    const result = await runExecFile('gh', [...query, '--json', GH_RUN_LIST_FIELDS]);
+    const result = await runGhWithRetry(runExecFile, [...query, '--json', GH_RUN_LIST_FIELDS]);
     const runs = JSON.parse(String(result.stdout ?? '[]'));
     for (const run of Array.isArray(runs) ? runs : []) {
       const id = String(run.databaseId ?? run.id ?? '');

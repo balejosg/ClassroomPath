@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderOpenPathLinuxAgentInstallProbeScript as renderContractInstallProbeScript } from './verify-openpath-promotion-contract.mjs';
+import { fetchWithConnectionRetry } from './lib/network-retry.mjs';
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const scriptDir = dirname(currentFilePath);
@@ -316,7 +317,7 @@ function extractManagedExtensionIdFromDeb(debBuffer) {
 }
 
 async function downloadBufferDefault(url) {
-  const response = await fetch(url);
+  const response = await fetchWithConnectionRetry(url);
   if (!response.ok) {
     throw new Error(`Failed to download ${url} (${response.status} ${response.statusText})`);
   }
@@ -448,7 +449,7 @@ export async function resolveOpenPathLinuxAgentVersionFromContracts({
 }
 
 async function downloadPromotionContract(url) {
-  const response = await fetch(url);
+  const response = await fetchWithConnectionRetry(url);
   if (!response.ok) {
     const error = new Error(
       `Failed to download OpenPath promotion contract from ${url} (${response.status} ${response.statusText})`
