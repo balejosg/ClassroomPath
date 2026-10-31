@@ -748,6 +748,21 @@ describe('Linux AJAX auto-allow canary contracts', () => {
     );
   });
 
+  test('Linux bootstrap canary keeps unattended APT upgrades from replacing the pinned client', () => {
+    const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
+    const resetStep =
+      /name: Reset Linux client state[\s\S]*?(?=\n      - name: Download live linux\/install-openpath\.sh enrollment script)/.exec(
+        workflow
+      )?.[0] ?? '';
+
+    assert.match(
+      resetStep,
+      /systemctl mask apt-daily\.service apt-daily-upgrade\.service/,
+      'the OpenPath package starts the apt-daily timers and allows its own origin, which can upgrade the client mid-canary'
+    );
+    assert.match(resetStep, /APT::Periodic::Unattended-Upgrade "0";/);
+  });
+
   test('Linux bootstrap canary restores runner connectivity before the AJAX step exits', () => {
     const workflow = readProjectText('.github/workflows/linux-production-bootstrap-canary.yml');
     const runtimeScript = readProjectText(runtimeScriptPath);

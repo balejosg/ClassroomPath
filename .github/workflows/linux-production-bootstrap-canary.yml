@@ -303,6 +303,15 @@ jobs:
           sudo systemctl stop openpath-sse-listener.service openpath-update.timer openpath-update.service dnsmasq || true
           sudo rm -rf /etc/openpath /var/lib/openpath /var/log/openpath.log
 
+          # The OpenPath package enables the apt-daily timers and allows unattended upgrades
+          # from its own APT origin. On this runner that can upgrade the client past the pinned
+          # release mid-canary (dpkg lock errors, services stopped during the health check), so
+          # keep periodic APT work off for the whole job.
+          sudo systemctl stop apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service unattended-upgrades.service || true
+          sudo systemctl mask apt-daily.service apt-daily-upgrade.service
+          printf '%s\n' 'APT::Periodic::Update-Package-Lists "0";' 'APT::Periodic::Unattended-Upgrade "0";' |
+            sudo tee /etc/apt/apt.conf.d/99zz-openpath-canary-no-periodic-apt >/dev/null
+
       - name: Download live linux/install-openpath.sh enrollment script
         shell: bash
         env:
