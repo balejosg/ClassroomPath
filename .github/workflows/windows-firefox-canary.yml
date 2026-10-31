@@ -85,6 +85,26 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/assert-destructive-runner-available.mjs
 
+      - name: Remove leftover OpenPath client before the Firefox canary
+        id: preflight-reset-runner
+        shell: pwsh
+        run: |
+          # A previous canary on this persistent runner can leave OpenPath active; its DNS
+          # firewall and managed Firefox policies would skew this canary.
+          $leftover = (Test-Path 'C:\OpenPath') -or
+            [bool](Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue) -or
+            (@(Get-ScheduledTask -TaskName 'OpenPath-*' -ErrorAction SilentlyContinue).Count -gt 0)
+          if (-not $leftover) {
+            Write-Host 'No leftover OpenPath client detected.'
+            exit 0
+          }
+          ./scripts/windows-runner-reset.ps1
+          exit $LASTEXITCODE
+
+      - name: Restore Windows runner DNS after leftover cleanup
+        if: steps.preflight-reset-runner.outcome == 'success'
+        uses: ./.github/actions/restore-windows-runner-dns
+
       - name: Resolve staging host
         id: resolve
         shell: bash

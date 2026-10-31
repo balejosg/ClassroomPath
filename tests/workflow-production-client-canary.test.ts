@@ -1056,6 +1056,18 @@ describe('Production client update canary workflow contracts', () => {
         firefoxGuardStepIndex < firefoxPolicyStepIndex,
       'Windows Firefox canary must guard the shared destructive runner before mutating browser policy'
     );
+    const firefoxPreflightResetStepIndex = firefoxSteps.findIndex(
+      (step) => step.name === 'Remove leftover OpenPath client before the Firefox canary'
+    );
+    assert.ok(
+      firefoxPreflightResetStepIndex > firefoxGuardStepIndex &&
+        firefoxPreflightResetStepIndex < firefoxPolicyStepIndex,
+      'Windows Firefox canary must remove a leftover OpenPath client after the runner guard and before the policy canary'
+    );
+    assert.match(
+      String(firefoxSteps[firefoxPreflightResetStepIndex]?.run ?? ''),
+      /\.\/scripts\/windows-runner-reset\.ps1/
+    );
   });
 
   test('scheduled production enrollment download canary checks live scripts without consuming client runners', () => {
