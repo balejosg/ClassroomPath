@@ -15,7 +15,7 @@ export interface CreateClassroomInput {
 export interface UpdateClassroomInput {
   id: string;
   displayName?: string;
-  defaultGroupId?: string;
+  defaultGroupId?: string | null;
   captivePortalDomains?: string[];
 }
 

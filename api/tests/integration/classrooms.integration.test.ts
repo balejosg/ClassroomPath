@@ -1201,4 +1201,87 @@ describe('ClassroomPath classrooms integration (/cp/trpc)', async () => {
     assert.strictEqual(cleared.currentGroupId, defaultGroupId);
     assert.strictEqual(cleared.currentGroupSource, 'default');
   });
+
+  test('classrooms can clear the default group and choose free browsing as the active override', async () => {
+    await resetDb();
+
+    const adminUserId = 'classrooms-free-admin';
+    const adminEmail = uniqueEmail('free-admin');
+    await ensureOpenPathUser({ userId: adminUserId, email: adminEmail, name: 'Admin User' });
+    const adminToken = signToken({
+      jwtSecret: TEST_JWT_SECRET,
+      userId: adminUserId,
+      email: adminEmail,
+      name: 'Admin User',
+      roles: [{ role: 'admin' }],
+    });
+
+    await bootstrapOrg({
+      baseUrl: integration.baseUrl,
+      token: adminToken,
+      name: 'Classrooms Free Org',
+    });
+
+    const { groupId: defaultGroupId } = await createGroup({ token: adminToken }, 'free-default');
+    const { groupId: manualGroupId } = await createGroup({ token: adminToken }, 'free-manual');
+    const { classroomId } = await createClassroom(
+      { token: adminToken },
+      { name: 'free-classroom', displayName: 'Free Classroom', defaultGroupId }
+    );
+
+    const freeResp = await trpcMutate(
+      integration.baseUrl,
+      'classrooms.setActiveGroup',
+      { id: classroomId, groupId: null, unrestricted: true },
+      bearerAuth(adminToken)
+    );
+    assertStatus(freeResp, 200);
+    const { data: free } = (await parseTRPC(freeResp)) as { data: any };
+    assert.strictEqual(free.activeGroupId, null);
+    assert.strictEqual(free.activeGroupUnrestricted, true);
+    assert.strictEqual(free.currentGroupId, null);
+    assert.strictEqual(free.currentGroupSource, 'manual');
+
+    const manualResp = await trpcMutate(
+      integration.baseUrl,
+      'classrooms.setActiveGroup',
+      { id: classroomId, groupId: manualGroupId },
+      bearerAuth(adminToken)
+    );
+    assertStatus(manualResp, 200);
+    const { data: manual } = (await parseTRPC(manualResp)) as { data: any };
+    assert.strictEqual(manual.activeGroupUnrestricted, false);
+    assert.strictEqual(manual.currentGroupId, manualGroupId);
+
+    const followResp = await trpcMutate(
+      integration.baseUrl,
+      'classrooms.setActiveGroup',
+      { id: classroomId, groupId: null },
+      bearerAuth(adminToken)
+    );
+    assertStatus(followResp, 200);
+    const { data: follow } = (await parseTRPC(followResp)) as { data: any };
+    assert.strictEqual(follow.activeGroupUnrestricted, false);
+    assert.strictEqual(follow.currentGroupId, defaultGroupId);
+
+    const clearDefaultResp = await trpcMutate(
+      integration.baseUrl,
+      'classrooms.update',
+      { id: classroomId, defaultGroupId: null },
+      bearerAuth(adminToken)
+    );
+    assertStatus(clearDefaultResp, 200);
+    const { data: cleared } = (await parseTRPC(clearDefaultResp)) as { data: any };
+    assert.strictEqual(cleared.defaultGroupId, null);
+    assert.strictEqual(cleared.currentGroupId, null);
+    assert.strictEqual(cleared.currentGroupSource, 'none');
+
+    const conflictResp = await trpcMutate(
+      integration.baseUrl,
+      'classrooms.setActiveGroup',
+      { id: classroomId, groupId: manualGroupId, unrestricted: true },
+      bearerAuth(adminToken)
+    );
+    assertStatus(conflictResp, 400);
+  });
 });

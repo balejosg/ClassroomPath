@@ -60,11 +60,21 @@ export async function setActiveGroupForTenant(params: {
   ctx: ClassroomWriteContext;
   classroomId: string;
   groupId: string | null;
+  unrestricted?: boolean | undefined;
 }) {
   await assertOrgClassroomAccess(params.ctx.organizationId!, params.classroomId);
   await assertUsableGroupIfProvided(params.ctx, params.groupId);
 
-  const updated = await setActiveGroupAndNotify(params.classroomId, params.groupId);
+  if (params.unrestricted === true && params.groupId !== null) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'unrestricted cannot be combined with a groupId',
+    });
+  }
+
+  const updated = await setActiveGroupAndNotify(params.classroomId, params.groupId, {
+    unrestricted: params.unrestricted,
+  });
 
   if (!updated) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Classroom not found' });

@@ -91,6 +91,7 @@ export const classrooms = pgTable('classrooms', {
   displayName: varchar('display_name', { length: 255 }).notNull(),
   defaultGroupId: varchar('default_group_id', { length: 100 }),
   activeGroupId: varchar('active_group_id', { length: 100 }),
+  activeUnrestricted: boolean('active_unrestricted').default(false).notNull(),
   captivePortalDomains: text('captive_portal_domains')
     .array()
     .default(sql`'{}'::text[]`)

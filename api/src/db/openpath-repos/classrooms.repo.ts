@@ -70,11 +70,13 @@ function isMissingCaptivePortalDomainsColumnError(err: unknown): boolean {
 
 export async function setActiveGroupAndNotify(
   classroomId: string,
-  groupId: string | null
+  groupId: string | null,
+  options: { unrestricted?: boolean | undefined } = {}
 ): Promise<ClassroomRow | undefined> {
+  const activeUnrestricted = groupId === null && options.unrestricted === true;
   const [updated] = await openpathDb
     .update(classrooms)
-    .set({ activeGroupId: groupId })
+    .set({ activeGroupId: groupId, activeUnrestricted })
     .where(eq(classrooms.id, classroomId))
     .returning();
 

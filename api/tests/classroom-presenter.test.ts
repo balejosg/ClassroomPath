@@ -114,6 +114,28 @@ describe('classroom-presenter', () => {
       assert.strictEqual(presented.currentGroupId, 'g-schedule');
       assert.strictEqual(presented.currentGroupSource, 'schedule');
       assert.deepStrictEqual(presented.captivePortalDomains, ['wifi.example']);
+      assert.strictEqual(presented.activeGroupUnrestricted, false);
+    });
+
+    it('resolves manual free browsing before schedule and default groups', () => {
+      const presented = presentClassroomBase({
+        classroom: {
+          id: 'c2',
+          name: 'cp-0123456789-free-abcdef12',
+          displayName: 'Free Lab',
+          defaultGroupId: 'g-default',
+          activeGroupId: null,
+          activeUnrestricted: true,
+          captivePortalDomains: [],
+          createdAt: null,
+          updatedAt: null,
+        },
+        scheduleGroupId: 'g-schedule',
+      });
+
+      assert.strictEqual(presented.activeGroupUnrestricted, true);
+      assert.strictEqual(presented.currentGroupId, null);
+      assert.strictEqual(presented.currentGroupSource, 'manual');
     });
   });
 

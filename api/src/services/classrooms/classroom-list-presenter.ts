@@ -7,6 +7,7 @@ export type OpenPathClassroomRowForPresent = {
   displayName: string | null;
   defaultGroupId: string | null;
   activeGroupId: string | null;
+  activeUnrestricted?: boolean | null;
   captivePortalDomains?: string[] | null;
   createdAt: Date | null;
   updatedAt: Date | null;
@@ -34,6 +35,7 @@ export function presentClassroomBase(params: {
   defaultGroupId: string | null;
   defaultGroupDisplayName: string | null;
   activeGroupId: string | null;
+  activeGroupUnrestricted: boolean;
   captivePortalDomains: string[];
   currentGroupId: string | null;
   currentGroupDisplayName: string | null;
@@ -44,6 +46,7 @@ export function presentClassroomBase(params: {
   const c = params.classroom;
   const currentGroup = resolveCurrentGroup({
     activeGroupId: c.activeGroupId ?? null,
+    activeUnrestricted: c.activeUnrestricted ?? false,
     scheduleGroupId: params.scheduleGroupId,
     defaultGroupId: c.defaultGroupId ?? null,
   });
@@ -57,6 +60,7 @@ export function presentClassroomBase(params: {
       ? (params.groupDisplayNamesById?.get(c.defaultGroupId) ?? null)
       : null,
     activeGroupId: c.activeGroupId,
+    activeGroupUnrestricted: c.activeUnrestricted ?? false,
     captivePortalDomains: Array.isArray(c.captivePortalDomains) ? c.captivePortalDomains : [],
     currentGroupId: currentGroup.id,
     currentGroupDisplayName: currentGroup.id
@@ -80,6 +84,7 @@ export function presentClassroomListItem(params: {
   defaultGroupId: string | null;
   defaultGroupDisplayName: string | null;
   activeGroupId: string | null;
+  activeGroupUnrestricted: boolean;
   captivePortalDomains: string[];
   currentGroupId: string | null;
   currentGroupDisplayName: string | null;

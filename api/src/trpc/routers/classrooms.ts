@@ -34,7 +34,7 @@ const CreateClassroomSchema = z.object({
 const UpdateClassroomSchema = z.object({
   id: z.string(),
   displayName: z.string().min(1).max(255).optional(),
-  defaultGroupId: z.string().optional(),
+  defaultGroupId: z.string().nullable().optional(),
   captivePortalDomains: z.array(z.string()).max(10).optional(),
 });
 
@@ -100,9 +100,25 @@ export const classroomsRouter = router({
     }),
 
   setActiveGroup: teacherOrAdminProcedure
-    .input(z.object({ id: z.string(), groupId: z.string().nullable() }))
+    .input(
+      z
+        .object({
+          id: z.string(),
+          groupId: z.string().nullable(),
+          unrestricted: z.boolean().optional(),
+        })
+        .refine((input) => !(input.unrestricted === true && input.groupId !== null), {
+          message: 'unrestricted cannot be combined with a groupId',
+          path: ['unrestricted'],
+        })
+    )
     .mutation(async ({ ctx, input }) => {
-      return setActiveGroupForTenant({ ctx, classroomId: input.id, groupId: input.groupId });
+      return setActiveGroupForTenant({
+        ctx,
+        classroomId: input.id,
+        groupId: input.groupId,
+        unrestricted: input.unrestricted,
+      });
     }),
 
   deleteMachine: teacherOrAdminProcedure

@@ -62,6 +62,23 @@ describe('classrooms.repo (1:1 named)', () => {
     }
   });
 
+  it('setActiveGroupAndNotify persists free browsing and clears the flag on follow', async () => {
+    const room = await createClassroom({
+      id: `croom_${RUN_ID}_2`,
+      name: `croom-repo-${RUN_ID}-2`,
+      displayName: 'Classrooms Repo 2',
+    });
+    classroomIds.add(room.id);
+
+    const free = await setActiveGroupAndNotify(room.id, null, { unrestricted: true });
+    assert.equal(free?.activeGroupId, null);
+    assert.equal(free?.activeUnrestricted, true);
+
+    const follow = await setActiveGroupAndNotify(room.id, null);
+    assert.equal(follow?.activeGroupId, null);
+    assert.equal(follow?.activeUnrestricted, false);
+  });
+
   it('deleteMachineFromClassroom and deleteClassroomById notify the classroom', async () => {
     const room = await createClassroom({
       id: `croom_${RUN_ID}_3`,
