@@ -33,6 +33,9 @@ await describe('application-routes', { concurrency: false }, async () => {
     const clientCanaryGroupDiagnosticsHandler: RequestHandler = (_req, res) => {
       res.json({ status: 'canary-diagnostics' });
     };
+    const clientCanaryFleetHealthHandler: RequestHandler = (_req, res) => {
+      res.json({ reports: {} });
+    };
 
     registerGatewayApplicationRoutes(app, {
       jsonBodyLimit: '1kb',
@@ -41,6 +44,7 @@ await describe('application-routes', { concurrency: false }, async () => {
       notificationApproveDomainRequestHandler,
       clientCanaryManualBillingApprovalHandler,
       clientCanaryGroupDiagnosticsHandler,
+      clientCanaryFleetHealthHandler,
     });
 
     server = app.listen(port);

@@ -27,6 +27,7 @@ export {
   PUSH_ENV_NAMES,
   STRIPE_REQUIRED_ENV_NAMES,
   resolveClientCanaryAdminToken,
+  resolveFleetHealthReadToken,
   resolveResendApiKey,
   resolveResendFromEmail,
   resolveRuntimeEnvironmentPolicy,
@@ -49,6 +50,7 @@ import {
 import { type BillingMode, type EmailDeliveryMode } from './config/billing.js';
 import {
   resolveClientCanaryAdminToken,
+  resolveFleetHealthReadToken,
   resolveResendApiKey,
   resolveResendFromEmail,
   resolveRuntimeEnvironmentPolicy,
@@ -96,6 +98,9 @@ export const config = {
   },
   get clientCanaryAdminToken() {
     return resolveClientCanaryAdminToken(process.env);
+  },
+  get fleetHealthReadToken() {
+    return resolveFleetHealthReadToken(process.env);
   },
   get stripe() {
     return resolveRuntimeEnvironmentPolicy(process.env).stripe;

@@ -155,6 +155,10 @@ export function resolveClientCanaryAdminToken(env: RuntimeEnv = process.env): st
   return trimToNull(env.CP_CLIENT_CANARY_ADMIN_TOKEN);
 }
 
+export function resolveFleetHealthReadToken(env: RuntimeEnv = process.env): string | null {
+  return trimToNull(env.CP_FLEET_HEALTH_READ_TOKEN);
+}
+
 export function resolveResendApiKey(env: RuntimeEnv = process.env): string | null {
   return trimToNull(env.RESEND_API_KEY);
 }

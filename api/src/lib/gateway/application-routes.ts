@@ -22,6 +22,7 @@ export interface GatewayApplicationRoutesOptions {
   notificationApproveDomainRequestHandler: RequestHandler;
   clientCanaryManualBillingApprovalHandler: RequestHandler;
   clientCanaryGroupDiagnosticsHandler: RequestHandler;
+  clientCanaryFleetHealthHandler: RequestHandler;
 }
 
 export function registerGatewayApplicationRoutes(
@@ -46,6 +47,7 @@ export function registerGatewayApplicationRoutes(
     '/cp/internal/client-canary/group/:groupId/diagnostics',
     options.clientCanaryGroupDiagnosticsHandler
   );
+  app.get('/cp/internal/client-canary/fleet-health', options.clientCanaryFleetHealthHandler);
   app.get('/cp/qa-fixtures/basic', (_req, res) => {
     res.type('html').send(`<!doctype html>
 <html lang="en">

@@ -30,6 +30,9 @@ await describe('compose-gateway', { concurrency: false }, async () => {
     const clientCanaryGroupDiagnosticsHandler: RequestHandler = (_req, res) => {
       res.json({ status: 'canary-diagnostics' });
     };
+    const clientCanaryFleetHealthHandler: RequestHandler = (_req, res) => {
+      res.json({ reports: {} });
+    };
 
     const composed = composeGatewayApp({
       app,
@@ -52,6 +55,7 @@ await describe('compose-gateway', { concurrency: false }, async () => {
       notificationApproveDomainRequestHandler,
       clientCanaryManualBillingApprovalHandler,
       clientCanaryGroupDiagnosticsHandler,
+      clientCanaryFleetHealthHandler,
       serveSpa: false,
       reactSpaPath: '/tmp/classroompath-missing-spa',
     });

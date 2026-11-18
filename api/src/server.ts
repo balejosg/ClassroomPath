@@ -8,6 +8,7 @@ import { createGatewayRateLimitRules, createRateLimitMiddleware } from './lib/ga
 import { type GatewayAppOptions, resolveGatewayConfig } from './lib/gateway-config.js';
 import { composeGatewayApp } from './lib/gateway/compose-gateway.js';
 import { getGatewayReadiness } from './lib/gateway-readiness.js';
+import { clientCanaryFleetHealthHandler } from './lib/client-canary-fleet-health-route.js';
 import {
   clientCanaryGroupDiagnosticsHandler,
   clientCanaryManualBillingApprovalHandler,
@@ -52,6 +53,7 @@ export function createGatewayApp(options: GatewayAppOptions = {}) {
     notificationApproveDomainRequestHandler,
     clientCanaryManualBillingApprovalHandler,
     clientCanaryGroupDiagnosticsHandler,
+    clientCanaryFleetHealthHandler,
     serveSpa: gatewayConfig.serveSpa,
     reactSpaPath,
   });

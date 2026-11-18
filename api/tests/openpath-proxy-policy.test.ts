@@ -185,4 +185,17 @@ void describe('openpath-proxy-policy', () => {
       'requests.list'
     );
   });
+
+  test('lets canary release publication and retirement reach the release-token-protected upstream', () => {
+    // The gateway does not hold a release credential: OpenPath rejects a bad or
+    // missing OPENPATH_AGENT_RELEASE_TOKEN itself. The proxy only has to avoid
+    // blocking the paths or inventing a public tRPC procedure for them.
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/agent/windows/releases'), null);
+    assert.strictEqual(
+      findBlockedOpenPathPassthroughPath('/api/agent/windows/releases/abc123/retire'),
+      null
+    );
+    assert.strictEqual(findBlockedOpenPathPassthroughPath('/api/agent/windows/rings'), null);
+    assert.deepStrictEqual(OPENPATH_PROXY_MANIFEST.allowedTrpcProcedures, ['healthReports.submit']);
+  });
 });

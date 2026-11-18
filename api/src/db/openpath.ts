@@ -150,9 +150,27 @@ export const machines = pgTable('machines', {
   lastSeen: timestamp('last_seen', { withTimezone: true }).defaultNow(),
   downloadTokenHash: varchar('download_token_hash', { length: 64 }).unique(),
   downloadTokenLastRotatedAt: timestamp('download_token_last_rotated_at', { withTimezone: true }),
+  // Mirror of OpenPath machines.agent_ring: server-side canary assignment.
+  agentRing: varchar('agent_ring', { length: 20 }).default('stable').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
+
+// Mirror of OpenPath health_reports: read-only fleet health. The agent writes
+// these rows through OpenPath's tRPC surface; ClassroomPath only reads the
+// latest row per hostname for the operator fleet view.
+export const healthReports = pgTable(
+  'health_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    hostname: varchar('hostname', { length: 255 }).notNull(),
+    status: varchar('status', { length: 50 }).notNull(),
+    reasonCodes: text('reason_codes').array(),
+    version: varchar('version', { length: 50 }),
+    reportedAt: timestamp('reported_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => [index('health_reports_hostname_reported_at_idx').on(table.hostname, table.reportedAt)]
+);
 
 export const schedules = pgTable('schedules', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -245,6 +263,7 @@ export const openpathSchema = {
   users,
   classrooms,
   machines,
+  healthReports,
   schedules,
   machineExemptions,
   whitelistGroups,
