@@ -717,14 +717,14 @@ prepare_staging_checkout() {
   if [ "${STAGING_USE_RELEASE_CANDIDATE:-0}" = "1" ] &&
     [[ "${STAGING_RELEASE_SHA:-}" =~ ^[0-9a-f]{40}$ ]]; then
     log_info "Fetching exact staging Release Candidate ${STAGING_RELEASE_SHA}..."
-    git fetch origin "$STAGING_RELEASE_SHA"
+    git -c fetch.recurseSubmodules=false fetch --no-recurse-submodules origin "$STAGING_RELEASE_SHA"
     log_info "Resetting to the exact Release Candidate..."
-    git reset --hard "$STAGING_RELEASE_SHA"
+    git -c submodule.recurse=false reset --hard "$STAGING_RELEASE_SHA"
   else
     log_info "Fetching latest from origin..."
-    git fetch origin main
+    git -c fetch.recurseSubmodules=false fetch --no-recurse-submodules origin main
     log_info "Resetting to origin/main..."
-    git reset --hard origin/main
+    git -c submodule.recurse=false reset --hard origin/main
   fi
 
   log_info "Updating submodules..."
