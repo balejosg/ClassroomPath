@@ -148,6 +148,20 @@ export const OPERATOR_CONFIG_VARS = [
     required: false,
     purpose: 'Admin token for the post-production Windows canary; skipped gracefully if absent.',
   },
+  {
+    name: 'CP_FLEET_HEALTH_READ_TOKEN',
+    stage: 'production',
+    required: false,
+    purpose:
+      'Read-only fleet-health token set in the server config/.env; the operator copy lives in ~/.config/openpath/fleet-health.env. Unset keeps the route closed.',
+  },
+  {
+    name: 'OPENPATH_AGENT_RELEASE_TOKEN',
+    stage: 'production',
+    required: false,
+    purpose:
+      'OpenPath canary agent release token set in the server config/.env and the windows-canary-release CI environment; the operator copy lives in ~/.config/openpath/canary.env. Unset disables publish, retire and ring routes.',
+  },
 ];
 
 function isMissing(value) {
