@@ -729,7 +729,26 @@ prepare_staging_checkout() {
 
   log_info "Updating submodules..."
   git submodule sync --recursive
-  git submodule update --init --recursive --force
+
+  # A staging host can keep a submodule HEAD from a previous candidate whose
+  # commit was never published (for example after a local release burn). Fetch
+  # the exact gitlink recorded by this release candidate and update without a
+  # network fetch so git cannot ask origin for that stale, unpublished commit.
+  upstream_submodule_path="upstream/openpath"
+  if [ -e "$upstream_submodule_path/.git" ]; then
+    upstream_submodule_sha="$(git rev-parse "HEAD:$upstream_submodule_path")"
+    upstream_submodule_url="$(git config --file .gitmodules --get "submodule.${upstream_submodule_path}.url" || true)"
+    if [ -n "$upstream_submodule_sha" ] && [ -n "$upstream_submodule_url" ]; then
+      git -C "$upstream_submodule_path" fetch "$upstream_submodule_url" "$upstream_submodule_sha"
+      if ! git submodule update --init --recursive --force --no-fetch; then
+        git submodule update --init --recursive --force
+      fi
+    else
+      git submodule update --init --recursive --force
+    fi
+  else
+    git submodule update --init --recursive --force
+  fi
   remote_deploy_reload_checked_out_helpers "$APP_DIR/scripts/lib/common.sh"
   RELEASE_EXECUTION_HELPER_PATH="$(resolve_remote_helper_path "$SCRIPT_DIR" "$APP_DIR" "lib/release-execution.sh")"
   if release_execution_helper_supports_contract "$RELEASE_EXECUTION_HELPER_PATH"; then
